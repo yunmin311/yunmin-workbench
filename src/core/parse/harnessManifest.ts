@@ -17,27 +17,40 @@ export function parseHarnessManifest(yamlText: string, observed: Observation = F
   if (!doc) return [];
   const out: HarnessInfo[] = [];
 
+  // Canonical manifest shape (v2): harness.<name>.hooks[].
+  // Legacy tolerated shape: hooks.<name> as list, or map of lists.
+  // Projection must find hooks in BOTH; reading only one path silently
+  // empties Control Room's hook health while the file is perfectly valid.
   const hooksByHarness = new Map<string, HarnessInfo['hooks']>();
-  const hooksSection = doc.hooks as Record<string, unknown> | undefined;
-  // manifest shape: hooks.<harness>.<list|map>; tolerate both
-  if (hooksSection && typeof hooksSection === 'object') {
-    for (const [harness, val] of Object.entries(hooksSection)) {
-      const list: HarnessInfo['hooks'] = [];
-      const entries = Array.isArray(val)
-        ? val
-        : typeof val === 'object' && val !== null
-          ? Object.values(val as Record<string, unknown>).flatMap((v) => (Array.isArray(v) ? v : []))
-          : [];
-      for (const h of entries as Record<string, unknown>[]) {
-        if (typeof h?.id === 'string') {
-          list.push({
-            id: h.id,
-            event: String(h.event ?? ''),
-            enforcement: String(h.enforcement ?? ''),
-          });
-        }
+  const legacyHooks = doc.hooks as Record<string, unknown> | undefined;
+  const harnessSections = doc.harness as Record<string, unknown> | undefined;
+  const collect = (harness: string, val: unknown) => {
+    const list: HarnessInfo['hooks'] = [];
+    const entries = Array.isArray(val)
+      ? val
+      : typeof val === 'object' && val !== null
+        ? Object.values(val as Record<string, unknown>).flatMap((v) => (Array.isArray(v) ? v : []))
+        : [];
+    for (const h of entries as Record<string, unknown>[]) {
+      if (typeof h?.id === 'string') {
+        list.push({
+          id: h.id,
+          event: String(h.event ?? ''),
+          enforcement: String(h.enforcement ?? ''),
+        });
       }
-      hooksByHarness.set(harness, list);
+    }
+    hooksByHarness.set(harness, list);
+  };
+  if (legacyHooks && typeof legacyHooks === 'object') {
+    for (const [harness, val] of Object.entries(legacyHooks)) collect(harness, val);
+  }
+  if (harnessSections && typeof harnessSections === 'object') {
+    for (const [harness, section] of Object.entries(harnessSections)) {
+      if (hooksByHarness.has(harness)) continue;
+      // register every declared harness, even one with no hooks key yet,
+      // so Control Room still renders its (empty) hook-health row
+      collect(harness, (section as Record<string, unknown> | null)?.hooks);
     }
   }
 
