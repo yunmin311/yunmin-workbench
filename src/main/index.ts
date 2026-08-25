@@ -4,7 +4,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, type OpenDialogOptions 
 import { watch, type FSWatcher } from 'chokidar';
 import { z } from 'zod';
 import { freezePacket } from '../core/project/packet';
-import type { FrozenPacket, OverlaySnapshot, TaskPacket } from '../core/types';
+import type { FrozenPacket, OverlaySnapshot, SourceFingerprint, TaskPacket } from '../core/types';
 import {
   defaultOverlaySearchRoot,
   discoverOverlayRoot,
@@ -13,7 +13,13 @@ import {
   watchTargets,
 } from './adapters/overlaySource';
 import { readGitFacts } from './adapters/gitFacts';
-import { createProjectFileContext } from './adapters/projectFiles';
+import { createProjectFileContext, fingerprintFileAtRoot, fingerprintProjectFile } from './adapters/projectFiles';
+import {
+  clearWorkbenchDraft,
+  readWorkbenchDraft,
+  WorkbenchDraftSchema,
+  writeWorkbenchDraftAtomic,
+} from './draftPersistence';
 import { encodeStateKey } from './stateKey';
 
 // test hook: Playwright E2E redirects Workbench-owned state to a temp dir
@@ -199,6 +205,57 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     return { entries, errors };
   });
 
+  const SourceRecheckSchema = z.object({
+    projectId: KeySchema,
+    sourceRefs: z.array(z.string().min(1).max(2048)).max(500),
+  });
+  ipcMain.handle('sources:recheck', async (_event, rawRequest: unknown) => {
+    const request = SourceRecheckSchema.parse(rawRequest);
+    const snap = cache?.snapshot ?? (await refresh());
+    const projectRoot = snap.machine?.projectRoots[request.projectId];
+    const fingerprints: SourceFingerprint[] = [];
+    const errors: { sourceRef: string; message: string }[] = [];
+    for (const sourceRef of [...new Set(request.sourceRefs)]) {
+      try {
+        const projectPrefix = `project-file:${request.projectId}:`;
+        if (sourceRef.startsWith(projectPrefix)) {
+          if (!projectRoot) throw new Error(`no local root binding for project ${request.projectId}`);
+          fingerprints.push(await fingerprintProjectFile(
+            request.projectId,
+            projectRoot,
+            sourceRef.slice(projectPrefix.length),
+          ));
+        } else if (sourceRef.startsWith('overlay:')) {
+          if (!snap.overlayRoot) throw new Error('overlay root is unavailable');
+          fingerprints.push(await fingerprintFileAtRoot(
+            snap.overlayRoot,
+            sourceRef.slice('overlay:'.length),
+            sourceRef,
+          ));
+        } else {
+          throw new Error('unsupported source identity');
+        }
+      } catch (error) {
+        errors.push({ sourceRef, message: String(error) });
+      }
+    }
+    return { checkedSourceRefs: [...new Set(request.sourceRefs)], fingerprints, errors };
+  });
+
+  const DraftScopeSchema = z.object({ projectId: KeySchema, conversationKey: KeySchema });
+  ipcMain.handle('draft:load', (_event, rawScope: unknown) => {
+    const scope = DraftScopeSchema.parse(rawScope);
+    return readWorkbenchDraft(stateDir(), scope.projectId, scope.conversationKey);
+  });
+  ipcMain.handle('draft:save', async (_event, rawDraft: unknown) => {
+    const draft = WorkbenchDraftSchema.parse(rawDraft);
+    return { path: await writeWorkbenchDraftAtomic(stateDir(), draft) };
+  });
+  ipcMain.handle('draft:clear', async (_event, rawScope: unknown) => {
+    const scope = DraftScopeSchema.parse(rawScope);
+    await clearWorkbenchDraft(stateDir(), scope.projectId, scope.conversationKey);
+  });
+
   ipcMain.handle('packet:freeze', async (_e, rawPacket: unknown) => {
     const packet: TaskPacket = TaskPacketSchema.parse(rawPacket);
     const existing = await listFrozen(packet.projectId, packet.conversationKey);
@@ -258,6 +315,9 @@ function createWindow(refresh: () => Promise<OverlaySnapshot>): void {
     root = s.overlayRoot || undefined;
   });
   watchOverlay(() => root, win);
+  win.on('focus', () => {
+    if (!win.isDestroyed()) win.webContents.send('app:focus');
+  });
   if (process.env.ELECTRON_RENDERER_URL) {
     void win.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {

@@ -20,7 +20,7 @@ test.describe('Yunmin Workbench vertical slice (real overlay, read-only)', () =>
     const projectCanonicalBefore = hash(PROJECT_CANONICAL);
 
     const stateDir = mkdtempSync(join(tmpdir(), 'wb-e2e-'));
-    const app = await electron.launch({
+    let app = await electron.launch({
       args: ['out/main/index.js'],
       env: { ...process.env, WB_STATE_DIR: stateDir },
     });
@@ -80,6 +80,30 @@ test.describe('Yunmin Workbench vertical slice (real overlay, read-only)', () =>
     expect(frozen.hash).toMatch(/^[0-9a-f]{64}$/);
     expect(frozen.taskSummary).toBe('E2E 冒烟：验证 Freeze 链路');
     expect(frozen.included.some((item: { provenance?: string }) => item.provenance === 'USER PROVIDED')).toBe(true);
+
+    // Debounced Workbench-owned draft survives a full application restart.
+    await win.waitForTimeout(700);
+    await app.close();
+    app = await electron.launch({
+      args: ['out/main/index.js'],
+      env: { ...process.env, WB_STATE_DIR: stateDir },
+    });
+    const resumed = await app.firstWindow();
+    await expect(resumed.locator('.brand')).toHaveText('Yunmin Workbench');
+    await resumed.locator('.project-card', { hasText: 'Creative OS' }).click();
+    await resumed.locator('nav button', { hasText: 'Canvas' }).click();
+    await resumed.locator('.wb-conversation').first().click();
+    await expect(resumed.locator('tr', { hasText: 'E2E user context' })).toBeVisible();
+    await resumed.locator('button.primary', { hasText: 'Packet Preview' }).click();
+    await expect(resumed.locator('textarea')).toHaveValue('E2E 冒烟：验证 Freeze 链路');
+    await expect(resumed.locator('li', { hasText: 'v1' })).toBeVisible();
+    await resumed.locator('button.refresh').click();
+    await expect(resumed.locator('.validity-current').first()).toBeVisible();
+    const resumedPreview = await resumed.locator('.agent-input-text').textContent();
+    await resumed.locator('button', { hasText: 'Copy Agent Input' }).click();
+    const resumedCopy = await app.evaluate(({ clipboard }) => clipboard.readText());
+    expect(resumedCopy).toBe(resumedPreview);
+    expect(resumedCopy).toContain('User supplied text that must reach the Harness.');
 
     await app.close();
 

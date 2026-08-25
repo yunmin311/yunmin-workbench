@@ -7,13 +7,22 @@ import { ContextStagingView } from './views/ContextStagingView';
 import { PacketPanel } from './components/PacketPanel';
 
 export default function App() {
-  const { snapshot, loading, view, projectId, load, setView } = useWorkbench();
+  const { snapshot, loading, view, projectId, load, reloadAndRecheck, setView } = useWorkbench();
 
   useEffect(() => {
     void load();
     // P4: overlay canonical files changed on disk -> cheap invalidation + reload
-    const off = window.wb.onOverlayChanged(() => void useWorkbench.getState().load(true));
-    return off;
+    const offOverlay = window.wb.onOverlayChanged(() => void useWorkbench.getState().reloadAndRecheck());
+    let focusTimer: ReturnType<typeof setTimeout> | null = null;
+    const offFocus = window.wb.onAppFocus(() => {
+      if (focusTimer) clearTimeout(focusTimer);
+      focusTimer = setTimeout(() => void useWorkbench.getState().recheckSources(), 300);
+    });
+    return () => {
+      offOverlay();
+      offFocus();
+      if (focusTimer) clearTimeout(focusTimer);
+    };
   }, [load]);
 
   if (loading && !snapshot) return <div className="center">Loading overlay…</div>;
@@ -47,7 +56,7 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <button className="refresh" onClick={() => void load(true)}>↻ reload</button>
+        <button className="refresh" onClick={() => void reloadAndRecheck()}>↻ reload</button>
       </header>
       {snapshot.problems.length > 0 && (
         <div className="problems">

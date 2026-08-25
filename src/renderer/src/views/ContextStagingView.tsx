@@ -21,6 +21,7 @@ export function ContextStagingView() {
     loadMemoryBody,
     addProjectFile,
     addManualContext,
+    clearDraft,
   } = useWorkbench();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
@@ -114,6 +115,11 @@ export function ContextStagingView() {
         <button onClick={() => void addProjectFile(false)}>+ File Context</button>
         <button onClick={() => void addProjectFile(true)}>+ File Reference</button>
         <button onClick={() => setManualOpen((open) => !open)}>+ Manual Context</button>
+        {conversation && (
+          <button onClick={() => window.confirm('Clear this conversation draft?') && void clearDraft()}>
+            Clear Draft
+          </button>
+        )}
       </div>
       {manualOpen && (
         <div className="manual-context-form">

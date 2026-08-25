@@ -11,23 +11,28 @@ export function PacketPanel() {
     staging,
     taskSummary,
     projectFingerprints,
+    recheckedSourceRefs,
+    recheckedFingerprints,
+    sourceChanges,
     setTaskSummary,
     frozen,
     refreshFrozen,
-    refreshProjectFiles,
+    recheckSources,
   } = useWorkbench();
   const [lastFrozen, setLastFrozen] = useState<string>('');
   const [copyMessage, setCopyMessage] = useState('');
 
   useEffect(() => {
-    void refreshProjectFiles();
-  }, [projectId, conversation?.key, refreshProjectFiles]);
+    void recheckSources();
+  }, [projectId, conversation?.key, recheckSources]);
 
   const currentFingerprints = useMemo(() => {
     const merged = new Map(snapshot?.sourceFingerprints.map((item) => [item.sourceRef, item.sha256]) ?? []);
+    for (const sourceRef of recheckedSourceRefs) merged.delete(sourceRef);
+    for (const item of recheckedFingerprints) merged.set(item.sourceRef, item.sha256);
     for (const item of projectFingerprints) merged.set(item.sourceRef, item.sha256);
     return [...merged].map(([sourceRef, sha256]) => ({ sourceRef, sha256 }));
-  }, [snapshot, projectFingerprints]);
+  }, [snapshot, projectFingerprints, recheckedSourceRefs, recheckedFingerprints]);
 
   const packet = useMemo(() => {
     if (!projectId || !conversation || !snapshot) return null;
@@ -39,6 +44,7 @@ export function PacketPanel() {
     return compilePacket({
       projectId,
       conversationKey: conversation.key,
+      conversationId: conversation.conversationId,
       taskSummary,
       governanceRefs,
       staging,
@@ -84,6 +90,11 @@ export function PacketPanel() {
         </p>
         {packet.unresolvedDependencies.length > 0 && (
           <p className="packet-alert">Cannot verify: {packet.unresolvedDependencies.join(', ')}</p>
+        )}
+        {sourceChanges.length > 0 && (
+          <p className="packet-alert">
+            Source changed since the prior draft observation: {sourceChanges.join(', ')}. Current Draft content was refreshed; Frozen bodies were not changed.
+          </p>
         )}
         <pre className="agent-input-text">{compiledText}</pre>
         <div className="packet-copy-row">

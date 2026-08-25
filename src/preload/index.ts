@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import type { ContextItem, FrozenPacket, GitFacts, OverlaySnapshot, SourceFingerprint, TaskPacket } from '../core/types';
+import type { WorkbenchDraftV1 } from '../core/project/draft';
 
 const api = {
   loadOverlay: (opts?: { refresh?: boolean }): Promise<OverlaySnapshot> =>
@@ -24,11 +25,33 @@ const api = {
     entries: { item: ContextItem; fingerprint: SourceFingerprint }[];
     errors: string[];
   }> => ipcRenderer.invoke('project-file:refresh', { projectId, files }),
+  recheckSources: (
+    projectId: string,
+    sourceRefs: string[],
+  ): Promise<{
+    checkedSourceRefs: string[];
+    fingerprints: SourceFingerprint[];
+    errors: { sourceRef: string; message: string }[];
+  }> => ipcRenderer.invoke('sources:recheck', { projectId, sourceRefs }),
+  loadDraft: (
+    projectId: string,
+    conversationKey: string,
+  ): Promise<{ draft: WorkbenchDraftV1 | null; problem?: string }> =>
+    ipcRenderer.invoke('draft:load', { projectId, conversationKey }),
+  saveDraft: (draft: WorkbenchDraftV1): Promise<{ path: string }> =>
+    ipcRenderer.invoke('draft:save', draft),
+  clearDraft: (projectId: string, conversationKey: string): Promise<void> =>
+    ipcRenderer.invoke('draft:clear', { projectId, conversationKey }),
   copyText: (text: string): Promise<void> => ipcRenderer.invoke('clipboard:writeText', text),
   onOverlayChanged: (cb: () => void): (() => void) => {
     const listener = (_e: IpcRendererEvent) => cb();
     ipcRenderer.on('overlay:changed', listener);
     return () => ipcRenderer.removeListener('overlay:changed', listener);
+  },
+  onAppFocus: (cb: () => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent) => cb();
+    ipcRenderer.on('app:focus', listener);
+    return () => ipcRenderer.removeListener('app:focus', listener);
   },
 };
 

@@ -64,6 +64,16 @@ export async function fingerprintProjectFile(
   };
 }
 
+/** Fingerprint an explicitly named file under any trusted bound root. */
+export async function fingerprintFileAtRoot(
+  root: string,
+  requestedPath: string,
+  sourceRef: string,
+): Promise<SourceFingerprint> {
+  const resolved = await resolveProjectFile(root, requestedPath);
+  return { sourceRef, sha256: await sha256File(resolved.absolutePath) };
+}
+
 export async function createProjectFileContext(
   projectId: string,
   projectRoot: string,
