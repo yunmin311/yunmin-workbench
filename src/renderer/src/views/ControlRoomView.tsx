@@ -80,15 +80,15 @@ export function ControlRoomView() {
 
       <section>
         <h3>Current Focus · Active ({room.active.length})</h3>
-        <ul>{room.active.map((c) => <ConvoRow key={c.id} c={c} selected={conversation?.id === c.id} onSelect={() => select(c)} />)}</ul>
+        <ul>{room.active.map((c) => <ConvoRow key={c.key} c={c} selected={conversation?.key === c.key} onSelect={() => select(c)} />)}</ul>
       </section>
       <section>
         <h3>Waiting ({room.waiting.length})</h3>
-        <ul>{room.waiting.map((c) => <ConvoRow key={c.id} c={c} selected={conversation?.id === c.id} onSelect={() => select(c)} />)}</ul>
+        <ul>{room.waiting.map((c) => <ConvoRow key={c.key} c={c} selected={conversation?.key === c.key} onSelect={() => select(c)} />)}</ul>
       </section>
       <section>
         <h3>Blocked / Frozen ({room.blocked.length})</h3>
-        <ul>{room.blocked.map((c) => <ConvoRow key={c.id} c={c} selected={conversation?.id === c.id} onSelect={() => select(c)} />)}</ul>
+        <ul>{room.blocked.map((c) => <ConvoRow key={c.key} c={c} selected={conversation?.key === c.key} onSelect={() => select(c)} />)}</ul>
       </section>
 
       {room.needsAttention.length > 0 && (

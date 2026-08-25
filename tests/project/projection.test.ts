@@ -11,7 +11,7 @@ import { buildCanvasGraph } from '../../src/core/project/canvas';
 import { buildStaging } from '../../src/core/project/staging';
 import type { OverlaySnapshot } from '../../src/core/types';
 
-const fx = (n: string) => readFileSync(join(__dirname, '../fixtures', n), 'utf8');
+const fx = (n: string) => readFileSync(join(__dirname, '../fixtures/legacy', n), 'utf8');
 
 function snapshot(): OverlaySnapshot {
   return {

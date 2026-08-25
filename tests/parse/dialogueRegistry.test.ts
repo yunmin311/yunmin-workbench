@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parseDialogueRegistry } from '../../src/core/parse/dialogueRegistry';
 
-const fixture = readFileSync(join(__dirname, '../fixtures/dialogues.yaml'), 'utf8');
+const fixture = readFileSync(join(__dirname, '../fixtures/legacy/dialogues.yaml'), 'utf8');
 
 describe('parseDialogueRegistry', () => {
   const convos = parseDialogueRegistry(fixture);

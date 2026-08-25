@@ -23,6 +23,17 @@ Project/Git/Harness 之上的**投影层 GUI**。不替代 Harness，不复制�
 5. **Intent/Receipt**：仅 domain seam（DRAFT→DISPATCHED→ACCEPTED|REJECTED|FAILED）；无实现。
 6. **Write-surface collision**：不实现；未来只做纯 projection warning，无 lock/scheduler。
 
+## 上游契约迁移边界（MIGRATING，2026-08-25）
+
+Governance 侧 project_id/aliases、task_source、conversation_id↔session_id 分离、
+INBOX scope 语义均在迁移中。Workbench 的规则：
+
+- 差异只收敛在 `src/core/parse` + `src/main/adapters`；core/UI 不依赖文件命名
+- 上游未提供的字段保持 absent/UNKNOWN：`Conversation.conversationId` 目前缺省，
+  UI 用 `key`（本地渲染键），绝不用 role/session_id 冒充身份
+- parser 带 schema 版本护栏：未知版本抛错进 `problems[]`，不静默误解
+- fixture 分 `tests/fixtures/legacy/`（现行结构）与未来 `new-contract/`；
+  真实 Overlay 只进 smoke 测试
 ## 架构边界
 
 | 层 | 位置 | 说明 |

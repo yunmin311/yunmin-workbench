@@ -29,6 +29,7 @@ export function parseInbox(markdown: string, sourceRef = 'INBOX.md'): InboxItem[
     if (body === undefined) return;
     items.push({
       id: `inbox:${idx + 1}`,
+      scope: 'global', // overlay-root INBOX only; project-scope semantics MIGRATING upstream
       raw: body.trim(),
       done: Boolean(done),
       date: body.match(DATE_RE)?.[1],

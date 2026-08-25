@@ -34,8 +34,14 @@ export type Verification = 'VERIFIED' | 'UNVERIFIED' | 'UNKNOWN';
 export type Platform = 'claude' | 'codex' | 'deepseek' | 'other';
 
 export interface Conversation {
-  /** Stable id derived from role+project+platform (session_id is external fact, not our key). */
-  id: string;
+  /**
+   * Workbench-LOCAL render key, derived from project+platform+role.
+   * NOT an identity: upstream conversation_id is MIGRATING (contract not frozen);
+   * we never impersonate it with role or session_id (migration rule §4).
+   */
+  key: string;
+  /** Canonical conversation id from Governance. UNKNOWN until the upstream contract lands. */
+  conversationId?: string;
   role: string;
   level?: string;
   project: string;
@@ -68,7 +74,10 @@ export interface RuntimeBinding {
 
 export interface RuntimeSession {
   id: string;
-  conversationId: string;
+  /** Canonical conversation id; may be absent while the upstream contract is MIGRATING. */
+  conversationId?: string;
+  /** Workbench-local key fallback for associating with a projected Conversation. */
+  conversationKey?: string;
   binding: RuntimeBinding;
   state: RuntimeState;
   observed: Observation;
@@ -120,6 +129,8 @@ export interface ProjectAdapter {
 
 export interface InboxItem {
   id: string;
+  /** Global vs project INBOX semantics are MIGRATING upstream; we only assert what we read. */
+  scope: 'global' | 'project' | 'unknown';
   raw: string;
   done: boolean;
   date?: string;
@@ -237,7 +248,10 @@ export interface TaskPacket {
   packetId: string;
   createdAt: string;
   projectId: string;
-  conversationId: string;
+  /** Workbench-local key of the target conversation (identity contract MIGRATING). */
+  conversationKey: string;
+  /** Canonical conversation id when the upstream contract provides one; else absent. */
+  conversationId?: string;
   taskSummary: string;
   governanceRefs: string[];
   included: ContextItem[];

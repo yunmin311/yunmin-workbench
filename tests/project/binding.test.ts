@@ -7,7 +7,7 @@ import { bindingCandidate } from '../../src/core/project/binding';
 import { normalizeGitFacts } from '../../src/main/adapters/gitFacts';
 import type { MachineProfile, Observation, OverlaySnapshot } from '../../src/core/types';
 
-const fx = (n: string) => readFileSync(join(__dirname, '../fixtures', n), 'utf8');
+const fx = (n: string) => readFileSync(join(__dirname, '../fixtures/legacy', n), 'utf8');
 const obs: Observation = { source: 'canonical-file', sourceRef: 'fixture', observedAt: 't', verification: 'OBSERVED' };
 const machine: MachineProfile = {
   deviceId: 'claude-company-d',

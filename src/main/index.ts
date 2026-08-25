@@ -90,9 +90,9 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
   });
 
   ipcMain.handle('packet:freeze', async (_e, packet: TaskPacket) => {
-    const existing = await listFrozen(packet.projectId, packet.conversationId);
+    const existing = await listFrozen(packet.projectId, packet.conversationKey);
     const frozen = freezePacket(packet, existing);
-    const dir = await frozenPacketDir(packet.projectId, packet.conversationId);
+    const dir = await frozenPacketDir(packet.projectId, packet.conversationKey);
     const file = join(dir, `v${frozen.version}-${frozen.hash.slice(0, 8)}.json`);
     await writeFile(file, JSON.stringify(frozen, null, 2), 'utf8');
     return { frozen, path: file };

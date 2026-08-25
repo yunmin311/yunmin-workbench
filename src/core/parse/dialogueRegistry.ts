@@ -40,10 +40,18 @@ const FALLBACK_OBSERVED: Observation = {
   verification: 'UNKNOWN',
 };
 
-/** Parse a dialogue-registry YAML (schema_version 1) into Workbench Conversations. */
+/** Schema versions this parser understands. Upstream contract MIGRATING:
+ *  unknown versions must fail loudly into problems[], never silently misparse. */
+const KNOWN_SCHEMA_VERSIONS = new Set([1]);
+
+/** Parse a dialogue-registry YAML (legacy schema_version 1) into Workbench Conversations. */
 export function parseDialogueRegistry(yamlText: string, observed: Observation = FALLBACK_OBSERVED): Conversation[] {
   const doc = load(yamlText) as Record<string, unknown> | null;
   if (!doc || !Array.isArray(doc.dialogues)) return [];
+  const version = typeof doc.schema_version === 'number' ? doc.schema_version : 1;
+  if (!KNOWN_SCHEMA_VERSIONS.has(version)) {
+    throw new Error(`unsupported dialogue-registry schema_version: ${String(doc.schema_version)}`);
+  }
   return doc.dialogues
     .filter((d): d is Record<string, unknown> => typeof d === 'object' && d !== null)
     .map((d) => {
@@ -63,7 +71,8 @@ export function parseDialogueRegistry(yamlText: string, observed: Observation = 
       };
       const attention: AttentionState = 'none'; // attention comes from INBOX projection, not registry
       return {
-        id: `${project}::${platform}::${role}`,
+        key: `${project}::${platform}::${role}`,
+        // conversationId intentionally absent: upstream identity contract is MIGRATING
         role,
         level: typeof d.level === 'string' ? d.level : undefined,
         project,

@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parseMemoryIndex } from '../../src/core/parse/memoryIndex';
 
-const fixture = readFileSync(join(__dirname, '../fixtures/MEMORY.md'), 'utf8');
+const fixture = readFileSync(join(__dirname, '../fixtures/legacy/MEMORY.md'), 'utf8');
 
 describe('parseMemoryIndex', () => {
   const entries = parseMemoryIndex(fixture);

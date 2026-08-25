@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { parseDialogueRegistry, toTaskState } from '../../src/core/parse/dialogueRegistry';
 import type { Observation } from '../../src/core/types';
 
-const fixture = readFileSync(join(__dirname, '../fixtures/dialogues.yaml'), 'utf8');
+const fixture = readFileSync(join(__dirname, '../fixtures/legacy/dialogues.yaml'), 'utf8');
 const observed: Observation = {
   source: 'canonical-file',
   sourceRef: 'profiles/machines/instances/test-dialogues.yaml',

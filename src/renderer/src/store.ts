@@ -102,7 +102,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   refreshFrozen: async () => {
     const { projectId, conversation } = get();
     if (!projectId || !conversation) return;
-    const frozen = await window.wb.listFrozen(projectId, conversation.id);
+    const frozen = await window.wb.listFrozen(projectId, conversation.key);
     set({ frozen });
   },
 

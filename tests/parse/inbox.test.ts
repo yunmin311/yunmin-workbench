@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parseInbox } from '../../src/core/parse/inbox';
 
-const fixture = readFileSync(join(__dirname, '../fixtures/INBOX.md'), 'utf8');
+const fixture = readFileSync(join(__dirname, '../fixtures/legacy/INBOX.md'), 'utf8');
 
 describe('parseInbox', () => {
   const items = parseInbox(fixture);

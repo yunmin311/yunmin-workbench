@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parseProjectAdapter } from '../../src/core/parse/projectAdapter';
 
-const fixture = readFileSync(join(__dirname, '../fixtures/creative-os.adapter.yaml'), 'utf8');
+const fixture = readFileSync(join(__dirname, '../fixtures/legacy/creative-os.adapter.yaml'), 'utf8');
 
 describe('parseProjectAdapter', () => {
   const adapter = parseProjectAdapter(fixture)!;

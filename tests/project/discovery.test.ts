@@ -8,7 +8,7 @@ import { parseProjectAdapter } from '../../src/core/parse/projectAdapter';
 import { discoverProjects } from '../../src/core/project/discovery';
 import type { MachineProfile, Observation, OverlaySnapshot } from '../../src/core/types';
 
-const fx = (n: string) => readFileSync(join(__dirname, '../fixtures', n), 'utf8');
+const fx = (n: string) => readFileSync(join(__dirname, '../fixtures/legacy', n), 'utf8');
 const obs: Observation = { source: 'canonical-file', sourceRef: 'fixture', observedAt: 't', verification: 'OBSERVED' };
 
 function snapshot(machine?: MachineProfile): OverlaySnapshot {

@@ -20,7 +20,8 @@ export function roughTokenEstimate(text: string): number {
 
 export interface CompileInput {
   projectId: string;
-  conversationId: string;
+  conversationKey: string;
+  conversationId?: string;
   taskSummary: string;
   governanceRefs: string[];
   staging: ContextItem[];
@@ -68,6 +69,7 @@ export function compilePacket(input: CompileInput): TaskPacket {
     packetId: input.packetId ?? globalThis.crypto.randomUUID(),
     createdAt: input.now ?? new Date().toISOString(),
     projectId: input.projectId,
+    conversationKey: input.conversationKey,
     conversationId: input.conversationId,
     taskSummary: input.taskSummary,
     governanceRefs,
@@ -119,7 +121,7 @@ export function canonicalPacketJson(packet: TaskPacket): string {
 
 export function freezePacket(packet: TaskPacket, existing: FrozenPacket[], now?: string): FrozenPacket {
   const prior = existing.filter(
-    (p) => p.projectId === packet.projectId && p.conversationId === packet.conversationId,
+    (p) => p.projectId === packet.projectId && p.conversationKey === packet.conversationKey,
   );
   const version = prior.length === 0 ? 1 : Math.max(...prior.map((p) => p.version)) + 1;
   const hash = bytesToHex(sha256(new TextEncoder().encode(canonicalPacketJson(packet))));

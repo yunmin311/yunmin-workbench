@@ -18,6 +18,10 @@ const FALLBACK_OBSERVED: Observation = {
 export function parseProjectAdapter(yamlText: string, observed: Observation = FALLBACK_OBSERVED): ProjectAdapter | null {
   const doc = load(yamlText) as Record<string, unknown> | null;
   if (!doc || typeof doc.project_id !== 'string') return null;
+  const version = typeof doc.schema_version === 'number' ? doc.schema_version : 2;
+  if (version !== 2) {
+    throw new Error(`unsupported project-adapter schema_version: ${String(doc.schema_version)}`);
+  }
   const cs = (doc.canonical_source ?? {}) as Record<string, unknown>;
   const roles = Array.isArray(doc.roles)
     ? doc.roles

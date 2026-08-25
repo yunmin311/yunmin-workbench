@@ -40,7 +40,7 @@ export function CanvasView() {
         onNodeClick={(_e, node) => {
           if (!snapshot || !node.id.startsWith('conversation:')) return;
           const convoId = node.id.slice('conversation:'.length);
-          const convo = snapshot.conversations.find((c) => c.id === convoId);
+          const convo = snapshot.conversations.find((c) => c.key === convoId);
           if (convo) {
             selectConversation(convo);
             setView('context');

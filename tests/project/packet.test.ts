@@ -22,7 +22,7 @@ const ctx = (id: string, state: ContextItem['state'], isReference = false, sourc
 
 const base = {
   projectId: 'creative-os',
-  conversationId: 'creative-os::claude::CO 主对话',
+  conversationKey: 'creative-os::claude::CO 主对话',
   taskSummary: '推进 001-inspiration-capture 收尾',
   governanceRefs: ['project-constitution:CLAUDE.md'],
   now: '2026-08-25T00:00:00.000Z',

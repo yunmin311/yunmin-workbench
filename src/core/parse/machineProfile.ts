@@ -15,6 +15,10 @@ const FALLBACK_OBSERVED: Observation = {
 export function parseMachineProfile(yamlText: string, observed: Observation = FALLBACK_OBSERVED): MachineProfile | null {
   const doc = load(yamlText) as Record<string, unknown> | null;
   if (!doc || doc.profile_type !== 'machine' || typeof doc.device_id !== 'string') return null;
+  const version = typeof doc.schema_version === 'number' ? doc.schema_version : 2;
+  if (version !== 2) {
+    throw new Error(`unsupported machine-profile schema_version: ${String(doc.schema_version)}`);
+  }
 
   const projectRoots: Record<string, string> = {};
   if (Array.isArray(doc.project_roots)) {

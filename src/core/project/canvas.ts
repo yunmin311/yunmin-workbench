@@ -30,7 +30,7 @@ export function buildCanvasGraph(
   const convos: Conversation[] = snapshot.conversations.filter((c) => c.project === projectId);
   for (const c of convos) {
     nodes.push({
-      id: `conversation:${c.id}`,
+      id: `conversation:${c.key}`,
       kind: 'conversation',
       label: c.role,
       status: c.status,
@@ -39,9 +39,9 @@ export function buildCanvasGraph(
       y: 0,
     });
     edges.push({
-      id: `exec:${projectId}->${c.id}`,
+      id: `exec:${projectId}->${c.key}`,
       source: `project:${projectId}`,
-      target: `conversation:${c.id}`,
+      target: `conversation:${c.key}`,
       kind: 'execution',
     });
   }

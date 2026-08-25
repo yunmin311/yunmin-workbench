@@ -15,7 +15,7 @@ export function PacketPanel() {
     ].filter((x): x is string => Boolean(x));
     return compilePacket({
       projectId,
-      conversationId: conversation.id,
+      conversationKey: conversation.key,
       taskSummary,
       governanceRefs,
       staging,
