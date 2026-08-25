@@ -1,0 +1,42 @@
+{
+  "name": "yunmin-workbench",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Yunmin Workbench (product category: Agent Workbench) - projection layer over Governance/Overlay/Git/Harness",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "e2e": "pnpm build && playwright test"
+  },
+  "dependencies": {
+    "@noble/hashes": "1.7.1",
+    "@xyflow/react": "^12.3.6",
+    "chokidar": "^5.0.0",
+    "dagre": "^0.8.5",
+    "js-yaml": "^4.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "simple-git": "^3.36.0",
+    "zod": "^3.24.1",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/dagre": "^0.7.52",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.10.5",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^34.0.0",
+    "electron-vite": "^2.3.0",
+    "typescript": "^5.7.3",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.8"
+  }
+}

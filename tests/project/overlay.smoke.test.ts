@@ -1,0 +1,45 @@
+import { existsSync } from 'node:fs';
+import { describe, expect, it } from 'vitest';
+import { discoverOverlayRoot, loadOverlay } from '../../src/main/adapters/overlaySource';
+import { buildControlRoom, listProjects } from '../../src/core/project/controlRoom';
+import { buildCanvasGraph } from '../../src/core/project/canvas';
+import { buildStaging } from '../../src/core/project/staging';
+
+const REAL_ROOT = 'D:\\ai-governance-system';
+const hasReal = existsSync(`${REAL_ROOT}\\overlay.yaml`);
+
+describe.runIf(hasReal)('real overlay smoke (read-only)', () => {
+  it('discovers exactly one overlay on D:\\', async () => {
+    const { root, candidates } = await discoverOverlayRoot('D:\\');
+    expect(root).toBe(REAL_ROOT);
+    expect(candidates).toEqual([REAL_ROOT]);
+  });
+
+  it('loads conversations, adapters, inbox and memory index from real data', async () => {
+    const snap = await loadOverlay(REAL_ROOT);
+    expect(snap.problems).toEqual([]);
+    expect(snap.conversations.length).toBeGreaterThan(5);
+    expect(snap.projects.some((p) => p.projectId === 'creative-os')).toBe(true);
+    expect(snap.inbox.length).toBeGreaterThan(0);
+    expect(snap.memoryIndex.length).toBeGreaterThan(10);
+  });
+
+  it('full slice: control room -> canvas -> staging over real data', async () => {
+    const snap = await loadOverlay(REAL_ROOT);
+    const projects = listProjects(snap);
+    expect(projects.length).toBeGreaterThan(2);
+
+    const room = buildControlRoom(snap, 'creative-os')!;
+    expect(room.active.length + room.waiting.length + room.blocked.length).toBeGreaterThan(0);
+    expect(Object.keys(room.gates).length).toBeGreaterThan(0);
+
+    const g = buildCanvasGraph(snap, 'creative-os');
+    expect(g.nodes.length).toBeGreaterThan(2);
+    expect(g.edges.filter((e) => e.kind === 'execution').length).toBeGreaterThan(0);
+    expect(g.edges.filter((e) => e.kind === 'data-context').length).toBe(1);
+
+    const staging = buildStaging(snap, 'creative-os');
+    expect(staging.length).toBeGreaterThan(10);
+    expect(staging.filter((c) => c.source.startsWith('memory:')).length).toBeGreaterThan(10);
+  });
+});

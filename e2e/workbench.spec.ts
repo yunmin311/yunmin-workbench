@@ -1,0 +1,72 @@
+import { createHash } from 'node:crypto';
+import { existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { _electron as electron, expect, test } from '@playwright/test';
+
+const OVERLAY = 'D:\\ai-governance-system';
+const hasOverlay = existsSync(join(OVERLAY, 'overlay.yaml'));
+
+const hash = (p: string) => createHash('sha256').update(readFileSync(p)).digest('hex');
+
+test.describe('Yunmin Workbench vertical slice (real overlay, read-only)', () => {
+  test.skip(!hasOverlay, 'real overlay not present on this machine');
+
+  test('Projects -> Control Room -> Canvas -> Context Staging -> Packet Freeze', async () => {
+    // evidence for "UI never writes back into the overlay"
+    const inboxBefore = hash(join(OVERLAY, 'INBOX.md'));
+    const memoryBefore = hash(join(OVERLAY, 'memory', 'MEMORY.md'));
+
+    const stateDir = mkdtempSync(join(tmpdir(), 'wb-e2e-'));
+    const app = await electron.launch({
+      args: ['out/main/index.js'],
+      env: { ...process.env, WB_STATE_DIR: stateDir },
+    });
+    const win = await app.firstWindow();
+
+    // Projects
+    await expect(win.locator('.brand')).toHaveText('Yunmin Workbench');
+    const card = win.locator('.project-card', { hasText: 'Creative OS' });
+    await expect(card).toBeVisible();
+    await card.click();
+
+    // Control Room shows real registry data
+    await expect(win.locator('h2', { hasText: 'Creative OS' })).toBeVisible();
+    await expect(win.locator('.convo').first()).toBeVisible();
+    await expect(win.locator('.binding-summary')).toBeVisible();
+
+    // Canvas: projection nodes, click a conversation -> Context
+    await win.locator('nav button', { hasText: 'Canvas' }).click();
+    await expect(win.locator('.wb-project')).toBeVisible();
+    const convoNode = win.locator('.wb-conversation').first();
+    await expect(convoNode).toBeVisible();
+    await convoNode.click();
+
+    // Context Staging: toggle one available item to included
+    await expect(win.locator('h2', { hasText: 'Context Staging' })).toBeVisible();
+    const availableBtn = win.locator('.state-available').first();
+    await availableBtn.click();
+    await expect(win.locator('.state-included').first()).toBeVisible();
+
+    // Packet: fill summary, freeze
+    await win.locator('button.primary', { hasText: 'Packet Preview' }).click();
+    await win.locator('textarea').fill('E2E 冒烟：验证 Freeze 链路');
+    await win.locator('button.primary', { hasText: 'Freeze Current Task Packet' }).click();
+    await expect(win.locator('.ok')).toContainText('v1');
+
+    // frozen packet file exists in Workbench-owned state dir
+    const packetsDir = join(stateDir, 'state', 'frozen-packets', 'creative-os');
+    const files = readdirSync(packetsDir, { recursive: true }).filter((f) => String(f).endsWith('.json'));
+    expect(files.length).toBe(1);
+    const frozen = JSON.parse(readFileSync(join(packetsDir, String(files[0])), 'utf8'));
+    expect(frozen.version).toBe(1);
+    expect(frozen.hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(frozen.taskSummary).toBe('E2E 冒烟：验证 Freeze 链路');
+
+    await app.close();
+
+    // overlay canonical files untouched by the whole UI session
+    expect(hash(join(OVERLAY, 'INBOX.md'))).toBe(inboxBefore);
+    expect(hash(join(OVERLAY, 'memory', 'MEMORY.md'))).toBe(memoryBefore);
+  });
+});

@@ -1,0 +1,8 @@
+# INBOX
+
+## 待办
+
+- [ ] 2026-08-19 · 用户 · **关掉 Google Drive 连接器**:只能在 claude.ai 里关
+- [ ] 2026-08-19 · 统领 · **看板视觉要提上去**:先找现成 skill 与开源项目参考
+- [ ] 用户自理 · claude-sync 推送(~900MB)
+- [x] 2026-08-19 · 统领 · doctor 建成:tools\doctor.ps1

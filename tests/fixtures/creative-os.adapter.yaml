@@ -1,0 +1,23 @@
+schema_version: 2
+adapter_type: project
+project_id: creative-os
+display_name: Creative OS
+status: CANDIDATE
+last_verified_at: '2026-07-31T19:45:00+08:00'
+canonical_source:
+  repository: yunmin311/creative-os
+  remote: 'https://github.com/yunmin311/creative-os.git'
+  default_branch: 001-inspiration-capture
+  path: CLAUDE.md
+  commit: aa0395fcc741a0d8e0cc5f4138f2664542223417
+  verification: VERIFIED
+roles:
+  - name: 主对话
+    primary_responsibility: code, repository root, git ownership
+  - name: 顾问对话
+    primary_responsibility: read-only final review
+project_gates:
+  code_closeout_approver: 顾问对话
+  commit_decider: 主对话
+  push_owner: 主对话
+  history_rewrite_approver: 用户

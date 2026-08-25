@@ -1,0 +1,33 @@
+schema_version: 1
+artifact: dialogue-registry
+device_id: claude-company-d
+status: CANDIDATE
+dialogues:
+  - role: 统领对话
+    level: L1
+    project: governance
+    platform: claude
+    session_id: '231ab833'
+    status: ACTIVE
+    verification: VERIFIED
+    git_authority: 两治理仓日常提交推送
+  - role: CO 设计对话
+    level: L3
+    project: creative-os
+    platform: claude
+    session_id: '317e0807'
+    status: PAUSED
+    verification: VERIFIED
+    note: 只写 design\；设计角色不碰项目 Git
+  - role: CO Codex 替补
+    level: L4
+    project: creative-os
+    platform: codex
+    session_id: UNVERIFIED
+    status: STANDBY
+    verification: UNVERIFIED
+  - role: 无状态对话
+    project: personal-site
+    platform: claude
+    status: NONSENSE
+    verification: VERIFIED

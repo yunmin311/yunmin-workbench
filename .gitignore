@@ -1,0 +1,7 @@
+node_modules/
+out/
+dist/
+.workbench-state/
+*.log
+smoke-screenshot.png
+test-results/
