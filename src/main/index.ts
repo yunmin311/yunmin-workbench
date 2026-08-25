@@ -2,10 +2,18 @@ import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { watch, type FSWatcher } from 'chokidar';
+import { z } from 'zod';
 import { freezePacket } from '../core/project/packet';
 import type { FrozenPacket, OverlaySnapshot, TaskPacket } from '../core/types';
-import { discoverOverlayRoot, loadOverlay, readMemoryBody, watchTargets } from './adapters/overlaySource';
+import {
+  defaultOverlaySearchRoot,
+  discoverOverlayRoot,
+  loadOverlay,
+  readMemoryBody,
+  watchTargets,
+} from './adapters/overlaySource';
 import { readGitFacts } from './adapters/gitFacts';
+import { encodeStateKey } from './stateKey';
 
 // test hook: Playwright E2E redirects Workbench-owned state to a temp dir
 if (process.env.WB_STATE_DIR) app.setPath('userData', process.env.WB_STATE_DIR);
@@ -16,10 +24,42 @@ function stateDir(): string {
 }
 
 async function frozenPacketDir(projectId: string, conversationId: string): Promise<string> {
-  const dir = join(stateDir(), 'frozen-packets', projectId, encodeURIComponent(conversationId));
+  const dir = join(
+    stateDir(),
+    'frozen-packets',
+    encodeStateKey(projectId),
+    encodeStateKey(conversationId),
+  );
   await mkdir(dir, { recursive: true });
   return dir;
 }
+
+const KeySchema = z.string().min(1).max(1024);
+const ContextItemSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  source: z.string(),
+  body: z.string(),
+  state: z.enum(['available', 'included', 'excluded']),
+  pinned: z.boolean(),
+  isReference: z.boolean(),
+  sourceRef: z.string().optional(),
+});
+const TaskPacketSchema = z.object({
+  schemaVersion: z.literal(1),
+  packetId: z.string(),
+  createdAt: z.string(),
+  projectId: KeySchema,
+  conversationKey: KeySchema,
+  conversationId: z.string().optional(),
+  taskSummary: z.string(),
+  governanceRefs: z.array(z.string()),
+  included: z.array(ContextItemSchema),
+  references: z.array(ContextItemSchema),
+  sourceFingerprints: z.array(z.object({ sourceRef: z.string(), sha256: z.string() })),
+  unresolvedDependencies: z.array(z.string()),
+  roughTokens: z.number().int().nonnegative(),
+});
 
 async function listFrozen(projectId: string, conversationId: string): Promise<FrozenPacket[]> {
   try {
@@ -53,7 +93,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
   let cache: { snapshot: OverlaySnapshot; at: number } | null = null;
 
   const refresh = async (): Promise<OverlaySnapshot> => {
-    const { root, candidates } = await discoverOverlayRoot('D:\\');
+    const { root, candidates } = await discoverOverlayRoot(defaultOverlaySearchRoot());
     if (!root) {
       return emptySnapshot(
         candidates.length === 0
@@ -66,17 +106,20 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     return snapshot;
   };
 
-  ipcMain.handle('overlay:load', async (_e, opts?: { refresh?: boolean }) => {
+  ipcMain.handle('overlay:load', async (_e, rawOpts?: unknown) => {
+    const opts = z.object({ refresh: z.boolean().optional() }).optional().parse(rawOpts);
     if (cache && !opts?.refresh && Date.now() - cache.at < 5_000) return cache.snapshot;
     return refresh();
   });
 
-  ipcMain.handle('memory:read', (_e, memoryId: string) => {
+  ipcMain.handle('memory:read', (_e, rawMemoryId: unknown) => {
+    const memoryId = KeySchema.parse(rawMemoryId);
     const root = cache?.snapshot.overlayRoot;
     return root ? readMemoryBody(root, memoryId) : null;
   });
 
-  ipcMain.handle('git:load', async (_e, projectId: string) => {
+  ipcMain.handle('git:load', async (_e, rawProjectId: unknown) => {
+    const projectId = KeySchema.parse(rawProjectId);
     const snap = cache?.snapshot ?? (await refresh());
     const localRoot = snap.machine?.projectRoots[projectId];
     if (!localRoot) {
@@ -89,7 +132,8 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     }
   });
 
-  ipcMain.handle('packet:freeze', async (_e, packet: TaskPacket) => {
+  ipcMain.handle('packet:freeze', async (_e, rawPacket: unknown) => {
+    const packet: TaskPacket = TaskPacketSchema.parse(rawPacket);
     const existing = await listFrozen(packet.projectId, packet.conversationKey);
     const frozen = freezePacket(packet, existing);
     const dir = await frozenPacketDir(packet.projectId, packet.conversationKey);
@@ -98,9 +142,11 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     return { frozen, path: file };
   });
 
-  ipcMain.handle('packet:list', (_e, projectId: string, conversationId: string) =>
-    listFrozen(projectId, conversationId),
-  );
+  ipcMain.handle('packet:list', (_e, rawProjectId: unknown, rawConversationId: unknown) => {
+    const projectId = KeySchema.parse(rawProjectId);
+    const conversationId = KeySchema.parse(rawConversationId);
+    return listFrozen(projectId, conversationId);
+  });
 
   return { refresh };
 }

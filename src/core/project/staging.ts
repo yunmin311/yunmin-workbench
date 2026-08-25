@@ -51,7 +51,9 @@ export function buildStaging(snapshot: OverlaySnapshot, projectId: string): Cont
     });
   }
 
-  for (const i of snapshot.inbox.filter((x) => x.attention)) {
+  for (const i of snapshot.inbox.filter(
+    (x) => x.attention && x.scope === 'project' && x.projectId === projectId,
+  )) {
     items.push({
       id: i.id,
       title: `INBOX #${i.line}`,

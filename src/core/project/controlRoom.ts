@@ -1,5 +1,6 @@
 import type {
   Conversation,
+  DialogueStatus,
   InboxItem,
   MachineProfile,
   OverlaySnapshot,
@@ -11,10 +12,8 @@ export interface ControlRoomModel {
   projectId: string;
   displayName: string;
   trust: TrustLevel;
-  /** Current Focus: task-state buckets (domain-separated from runtime/attention). */
-  active: Conversation[];
-  waiting: Conversation[];
-  blocked: Conversation[];
+  /** Explicitly Conversation lifecycle; never a substitute for canonical Task state. */
+  conversationLifecycle: Record<DialogueStatus, Conversation[]>;
   gates: Record<string, string>;
   /** Needs Attention: projection of overlay INBOX, never a second task store. */
   needsAttention: InboxItem[];
@@ -25,12 +24,6 @@ export interface ControlRoomModel {
   localRoot?: string;
 }
 
-function bucket(c: Conversation): 'active' | 'waiting' | 'blocked' {
-  if (c.taskState === 'active' || c.taskState === 'standby') return 'active';
-  if (c.taskState === 'waiting') return 'waiting';
-  return 'blocked';
-}
-
 export function buildControlRoom(snapshot: OverlaySnapshot, projectId: string): ControlRoomModel | null {
   const adapter = snapshot.projects.find((p) => p.projectId === projectId);
   const convos = snapshot.conversations.filter((c) => c.project === projectId);
@@ -39,16 +32,22 @@ export function buildControlRoom(snapshot: OverlaySnapshot, projectId: string): 
     projectId,
     displayName: adapter?.displayName ?? projectId,
     trust: adapter?.trust ?? 'DISCOVERED',
-    active: [],
-    waiting: [],
-    blocked: [],
+    conversationLifecycle: {
+      ACTIVE: [],
+      PAUSED: [],
+      FROZEN: [],
+      STANDBY: [],
+      UNKNOWN: [],
+    },
     gates: adapter?.gates ?? {},
-    needsAttention: snapshot.inbox.filter((i) => i.attention),
+    needsAttention: snapshot.inbox.filter(
+      (i) => i.attention && i.scope === 'project' && i.projectId === projectId,
+    ),
     roles: adapter?.roles ?? [],
     canonicalSource: adapter?.canonicalSource,
     machine: snapshot.machine,
     localRoot: snapshot.machine?.projectRoots[projectId],
   };
-  for (const c of convos) model[bucket(c)].push(c);
+  for (const c of convos) model.conversationLifecycle[c.status].push(c);
   return model;
 }

@@ -5,7 +5,6 @@ import type {
   DialogueStatus,
   Observation,
   Platform,
-  TaskState,
   Verification,
 } from '../types';
 
@@ -15,22 +14,6 @@ const PLATFORMS: Platform[] = ['claude', 'codex', 'deepseek'];
 
 function pick<T extends string>(value: unknown, allowed: T[], fallback: T): T {
   return typeof value === 'string' && (allowed as string[]).includes(value) ? (value as T) : fallback;
-}
-
-/** Registry routing status -> TaskState. Runtime/attention stay separate (Integrity §3). */
-export function toTaskState(status: DialogueStatus): TaskState {
-  switch (status) {
-    case 'ACTIVE':
-      return 'active';
-    case 'STANDBY':
-      return 'standby';
-    case 'PAUSED':
-      return 'waiting';
-    case 'FROZEN':
-      return 'blocked';
-    default:
-      return 'unknown';
-  }
 }
 
 const FALLBACK_OBSERVED: Observation = {
@@ -79,7 +62,9 @@ export function parseDialogueRegistry(yamlText: string, observed: Observation = 
         platform,
         sessionId,
         status,
-        taskState: toTaskState(status),
+        // The registry owns Conversation routing/lifecycle only. Until the
+        // upstream task_source contract lands, it cannot establish Task truth.
+        taskState: 'unknown',
         runtimeState: 'unknown',
         attention,
         verification,

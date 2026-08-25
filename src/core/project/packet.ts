@@ -31,26 +31,48 @@ export interface CompileInput {
   packetId?: string;
 }
 
-/** Fingerprints of the canonical files this packet actually depends on. */
+export interface PacketDependencyResolution {
+  resolved: SourceFingerprint[];
+  unresolved: string[];
+}
+
+/** Resolve every declared canonical dependency without guessing ambiguous paths. */
 export function packetDependencies(
   governanceRefs: string[],
   staging: ContextItem[],
   fingerprints: SourceFingerprint[],
-): SourceFingerprint[] {
+): PacketDependencyResolution {
   const byRef = new Map(fingerprints.map((f) => [f.sourceRef, f.sha256]));
-  const wanted = new Set<string>();
+  const declarations: { label: string; path: string }[] = [];
   // governance refs like "overlay:MEMORY.md" / "project-constitution:CLAUDE.md"
   for (const ref of governanceRefs) {
     const path = ref.split(':').slice(1).join(':');
-    if (byRef.has(path)) wanted.add(path);
-    // tolerate suffix matches (e.g. registry file paths)
-    for (const key of byRef.keys()) if (key.endsWith(path)) wanted.add(key);
+    declarations.push({ label: ref, path });
   }
   for (const item of staging) {
     if (item.state !== 'included' || !item.sourceRef) continue;
-    if (byRef.has(item.sourceRef)) wanted.add(item.sourceRef);
+    declarations.push({ label: item.sourceRef, path: item.sourceRef });
   }
-  return [...wanted].sort().map((sourceRef) => ({ sourceRef, sha256: byRef.get(sourceRef)! }));
+
+  const resolved = new Map<string, string>();
+  const unresolved = new Set<string>();
+  for (const declaration of declarations) {
+    const exact = byRef.has(declaration.path) ? [declaration.path] : [];
+    const suffix = exact.length > 0
+      ? exact
+      : [...byRef.keys()].filter((key) => key.endsWith(`/${declaration.path}`));
+    if (suffix.length === 1) {
+      resolved.set(suffix[0], byRef.get(suffix[0])!);
+    } else {
+      unresolved.add(declaration.label);
+    }
+  }
+  return {
+    resolved: [...resolved].sort(([a], [b]) => a.localeCompare(b)).map(
+      ([sourceRef, sha256]) => ({ sourceRef, sha256 }),
+    ),
+    unresolved: [...unresolved].sort(),
+  };
 }
 
 export function compilePacket(input: CompileInput): TaskPacket {
@@ -64,6 +86,11 @@ export function compilePacket(input: CompileInput): TaskPacket {
     governanceRefs.join('\n').length +
     included.reduce((n, c) => n + c.body.length, 0) +
     references.reduce((n, c) => n + c.body.length, 0);
+  const dependencies = packetDependencies(
+    governanceRefs,
+    input.staging,
+    input.fingerprints ?? [],
+  );
   return {
     schemaVersion: 1,
     packetId: input.packetId ?? globalThis.crypto.randomUUID(),
@@ -75,7 +102,8 @@ export function compilePacket(input: CompileInput): TaskPacket {
     governanceRefs,
     included,
     references,
-    sourceFingerprints: packetDependencies(governanceRefs, input.staging, input.fingerprints ?? []),
+    sourceFingerprints: dependencies.resolved,
+    unresolvedDependencies: dependencies.unresolved,
     // fixed overhead for packet scaffolding, deterministic
     roughTokens: roughTokenEstimate('§'.repeat(64) + 'x'.repeat(bodyChars)),
   };
@@ -92,6 +120,11 @@ export function checkPacketValidity(
   packet: TaskPacket,
   current: SourceFingerprint[],
 ): PacketValidity {
+  // Legacy packets did not record unresolved declarations. They cannot prove
+  // CURRENT, so fail closed rather than silently treating missing data as zero.
+  if (!Array.isArray(packet.unresolvedDependencies) || packet.unresolvedDependencies.length > 0) {
+    return 'INVALID';
+  }
   const byRef = new Map(current.map((f) => [f.sourceRef, f.sha256]));
   let stale = false;
   for (const dep of packet.sourceFingerprints) {

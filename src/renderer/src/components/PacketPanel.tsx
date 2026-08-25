@@ -45,8 +45,13 @@ export function PacketPanel() {
         <h3>Agent 实际会收到什么（确定性装配，非模型总结）</h3>
         <p>
           rough tokens ≈ {packet.roughTokens} · governance refs: {packet.governanceRefs.join(', ')} ·
-          dependencies: {packet.sourceFingerprints.length} files fingerprinted
+          dependencies: {packet.sourceFingerprints.length} resolved · {packet.unresolvedDependencies.length} unresolved
         </p>
+        {packet.unresolvedDependencies.length > 0 && (
+          <p className="problems">
+            INVALID until dependencies resolve: {packet.unresolvedDependencies.join(', ')}
+          </p>
+        )}
         <h4>Included context（{packet.included.length}）</h4>
         <ul>{packet.included.map((c) => <li key={c.id}>{c.pinned ? '★ ' : ''}{c.title} — {c.body.slice(0, 120)}</li>)}</ul>
         <h4>References（{packet.references.length}）</h4>

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseDialogueRegistry, toTaskState } from '../../src/core/parse/dialogueRegistry';
+import { parseDialogueRegistry } from '../../src/core/parse/dialogueRegistry';
 import type { Observation } from '../../src/core/types';
 
 const fixture = readFileSync(join(__dirname, '../fixtures/legacy/dialogues.yaml'), 'utf8');
@@ -33,15 +33,13 @@ describe('Observation Contract (Integrity §1)', () => {
 describe('State Separation (Integrity §3)', () => {
   const convos = parseDialogueRegistry(fixture, observed);
 
-  it('registry status maps to taskState only; runtime/attention never merged', () => {
-    expect(toTaskState('ACTIVE')).toBe('active');
-    expect(toTaskState('PAUSED')).toBe('waiting');
-    expect(toTaskState('FROZEN')).toBe('blocked');
-    expect(toTaskState('STANDBY')).toBe('standby');
-    expect(toTaskState('UNKNOWN')).toBe('unknown');
+  it('Conversation lifecycle never contaminates TaskState', () => {
     for (const c of convos) {
+      expect(c.taskState).toBe('unknown'); // no canonical task_source yet
       expect(c.runtimeState).toBe('unknown'); // no runtime adapter yet
       expect(c.attention).toBe('none'); // attention comes from INBOX projection only
     }
+    expect(convos.find((c) => c.role === '统领对话')!.status).toBe('ACTIVE');
+    expect(convos.find((c) => c.role === 'CO 设计对话')!.status).toBe('PAUSED');
   });
 });

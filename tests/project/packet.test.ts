@@ -24,7 +24,7 @@ const base = {
   projectId: 'creative-os',
   conversationKey: 'creative-os::claude::CO 主对话',
   taskSummary: '推进 001-inspiration-capture 收尾',
-  governanceRefs: ['project-constitution:CLAUDE.md'],
+  governanceRefs: [] as string[],
   now: '2026-08-25T00:00:00.000Z',
   packetId: 'fixed-id',
 };
@@ -53,12 +53,14 @@ describe('compilePacket', () => {
       ctx('x', 'excluded', true, 'memory/MEMORY.md'), // excluded -> not a dependency
     ];
     const deps = packetDependencies(['overlay:MEMORY.md'], staging, fps);
-    expect(deps.map((d) => d.sourceRef).sort()).toEqual([
+    expect(deps.resolved.map((d) => d.sourceRef).sort()).toEqual([
       'memory/MEMORY.md',
       'projects/instances/creative-os.adapter.yaml',
     ]);
-    const p = compilePacket({ ...base, staging, fingerprints: fps });
+    expect(deps.unresolved).toEqual([]);
+    const p = compilePacket({ ...base, governanceRefs: ['overlay:MEMORY.md'], staging, fingerprints: fps });
     expect(p.sourceFingerprints.length).toBe(2);
+    expect(p.unresolvedDependencies).toEqual([]);
   });
 });
 
@@ -85,9 +87,38 @@ describe('Frozen Packet Validity (Integrity §4)', () => {
     expect(checkPacketValidity(packet, removed)).toBe('INVALID');
   });
 
-  it('packet with no resolvable dependencies is CURRENT (nothing to compare)', () => {
+  it('truly zero-dependency packet is CURRENT', () => {
     const p = compilePacket({ ...base, staging: [], fingerprints: [] });
+    expect(p.sourceFingerprints).toEqual([]);
+    expect(p.unresolvedDependencies).toEqual([]);
     expect(checkPacketValidity(p, [])).toBe('CURRENT');
+  });
+
+  it('external project-constitution path without a fingerprint is INVALID', () => {
+    const p = compilePacket({
+      ...base,
+      governanceRefs: ['project-constitution:D:\\project\\CLAUDE.md'],
+      staging: [],
+      fingerprints: fps,
+    });
+    expect(p.unresolvedDependencies).toEqual(['project-constitution:D:\\project\\CLAUDE.md']);
+    expect(checkPacketValidity(p, fps)).toBe('INVALID');
+  });
+
+  it('included canonical source with a missing compile-time fingerprint is INVALID', () => {
+    const p = compilePacket({
+      ...base,
+      staging: [ctx('missing', 'included', false, 'project/.governance/INBOX.md')],
+      fingerprints: fps,
+    });
+    expect(p.unresolvedDependencies).toEqual(['project/.governance/INBOX.md']);
+    expect(checkPacketValidity(p, fps)).toBe('INVALID');
+  });
+
+  it('legacy packet without unresolved-dependency evidence fails closed', () => {
+    const p = compilePacket({ ...base, staging: [], fingerprints: [] });
+    const legacy = { ...p, unresolvedDependencies: undefined } as unknown as typeof p;
+    expect(checkPacketValidity(legacy, [])).toBe('INVALID');
   });
 });
 

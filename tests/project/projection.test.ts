@@ -30,15 +30,18 @@ function snapshot(): OverlaySnapshot {
 describe('buildControlRoom', () => {
   const room = buildControlRoom(snapshot(), 'creative-os')!;
 
-  it('buckets conversations by status', () => {
-    expect(room.active.map((c) => c.role)).toEqual(['CO Codex 替补']);
-    expect(room.waiting.map((c) => c.role)).toEqual(['CO 设计对话']);
-    expect(room.blocked).toHaveLength(0);
+  it('groups by Conversation lifecycle without inventing Task truth', () => {
+    expect(room.conversationLifecycle.ACTIVE).toHaveLength(0);
+    expect(room.conversationLifecycle.PAUSED.map((c) => c.role)).toEqual(['CO 设计对话']);
+    expect(room.conversationLifecycle.STANDBY.map((c) => c.role)).toEqual(['CO Codex 替补']);
+    expect(
+      [...room.conversationLifecycle.PAUSED, ...room.conversationLifecycle.STANDBY]
+        .every((c) => c.taskState === 'unknown'),
+    ).toBe(true);
   });
 
-  it('projects INBOX attention without copying it into a task store', () => {
-    expect(room.needsAttention.length).toBeGreaterThan(0);
-    expect(room.needsAttention.every((i) => !i.done)).toBe(true);
+  it('does not copy global INBOX attention into a project Control Room', () => {
+    expect(room.needsAttention).toEqual([]);
   });
 
   it('returns null for a project with neither adapter nor conversations', () => {
@@ -60,12 +63,14 @@ describe('discoverProjects', () => {
 describe('buildCanvasGraph', () => {
   const g = buildCanvasGraph(snapshot(), 'creative-os');
 
-  it('creates project + conversation + memory nodes with execution vs data edges', () => {
+  it('creates structural membership/mount edges without fabricating flow', () => {
     expect(g.nodes.some((n) => n.kind === 'project')).toBe(true);
     expect(g.nodes.filter((n) => n.kind === 'conversation')).toHaveLength(2);
     expect(g.nodes.some((n) => n.kind === 'memory')).toBe(true);
-    expect(g.edges.filter((e) => e.kind === 'execution')).toHaveLength(2);
-    expect(g.edges.filter((e) => e.kind === 'data-context')).toHaveLength(1);
+    expect(g.edges.filter((e) => e.kind === 'membership')).toHaveLength(2);
+    expect(g.edges.filter((e) => e.kind === 'mount')).toHaveLength(1);
+    expect(g.edges.filter((e) => e.kind === 'execution')).toHaveLength(0);
+    expect(g.edges.filter((e) => e.kind === 'data-context')).toHaveLength(0);
   });
 
   it('lays out nodes with dagre (positions differ from origin)', () => {
@@ -87,5 +92,9 @@ describe('buildStaging', () => {
     const mem = staging.filter((c) => c.source.startsWith('memory:'));
     expect(mem).toHaveLength(3);
     expect(mem.every((c) => c.isReference && c.state === 'available')).toBe(true);
+  });
+
+  it('does not offer global root INBOX in project Context Staging', () => {
+    expect(staging.filter((c) => c.source.startsWith('inbox:'))).toEqual([]);
   });
 });

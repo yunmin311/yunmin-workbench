@@ -48,7 +48,8 @@ export interface Conversation {
   platform: Platform;
   sessionId?: string;
   status: DialogueStatus; // external routing status, verbatim
-  taskState: TaskState; // derived, never merged with runtime/attention
+  /** UNKNOWN until a canonical Task source exists; lifecycle status is not Task truth. */
+  taskState: TaskState;
   runtimeState: RuntimeState; // 'unknown' until a runtime adapter observes it
   attention: AttentionState;
   verification: Verification;
@@ -131,6 +132,8 @@ export interface InboxItem {
   id: string;
   /** Global vs project INBOX semantics are MIGRATING upstream; we only assert what we read. */
   scope: 'global' | 'project' | 'unknown';
+  /** Present only when the source contract identifies a project-scoped INBOX. */
+  projectId?: string;
   raw: string;
   done: boolean;
   date?: string;
@@ -204,7 +207,8 @@ export interface OverlaySnapshot {
 // --- Canvas projection (Workbench node/edge semantics; engine is React Flow) ---
 
 export type WbNodeKind = 'project' | 'conversation' | 'memory' | 'gate';
-export type WbEdgeKind = 'execution' | 'data-context';
+/** Structure/mount edges are not evidence that execution or context flow occurred. */
+export type WbEdgeKind = 'membership' | 'mount' | 'execution' | 'handoff' | 'data-context';
 
 export interface WbNode {
   id: string;
@@ -258,6 +262,8 @@ export interface TaskPacket {
   references: ContextItem[];
   /** fingerprints of every canonical file the packet depends on, at compile time. */
   sourceFingerprints: SourceFingerprint[];
+  /** Declared canonical dependencies that could not be resolved at compile time. */
+  unresolvedDependencies: string[];
   /** deterministic rough estimate: ceil(chars/4), no model call (PDF §8). */
   roughTokens: number;
 }

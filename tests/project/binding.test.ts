@@ -56,16 +56,23 @@ describe('bindingCandidate (Integrity §2: confirm what real data confirms)', ()
 
   it('missing git/machine data stays UNKNOWN, not guessed', () => {
     const bare: OverlaySnapshot = { ...snap, machine: undefined };
-    const { binding, observed } = bindingCandidate(bare, design, null);
+    const { binding, verification } = bindingCandidate(bare, design, null);
     expect(binding.machine).toBe('UNKNOWN');
     expect(binding.cwd).toBeUndefined();
     expect(binding.branch).toBeUndefined();
-    expect(observed.verification).toBe('UNKNOWN');
+    expect(verification).toBe('UNKNOWN');
   });
 
   it('ignores git facts from a different project', () => {
     const other = { ...git, projectId: 'personal-site' };
     const { binding } = bindingCandidate(snap, design, other);
     expect(binding.branch).toBeUndefined();
+  });
+
+  it('keeps canonical-file and Git process evidence separate', () => {
+    const candidate = bindingCandidate(snap, design, git);
+    expect(candidate.evidence.map((e) => e.source)).toContain('canonical-file');
+    expect(candidate.evidence.map((e) => e.source)).toContain('process');
+    expect(candidate.verification).toBe('OBSERVED');
   });
 });

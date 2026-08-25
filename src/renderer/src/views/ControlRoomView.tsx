@@ -70,26 +70,42 @@ export function ControlRoomView() {
           </p>
         )}
         {binding && (
-          <p className="hint" title="Execution Binding 候选：只投影可确认字段，无法确认保持 UNKNOWN">
+          <p
+            className="hint"
+            title={`Execution Binding 候选证据：${binding.evidence.map((e) => `${e.source}:${e.sourceRef}`).join(' + ')}`}
+          >
             binding[{conversation!.role.slice(0, 12)}…]: harness={binding.binding.harness} · machine={show(binding.binding.machine)} ·
             cwd={show(binding.binding.cwd)} · branch={show(binding.binding.branch)} · head={show(binding.binding.head?.slice(0, 8))} ·
-            session={show(binding.binding.externalSessionRef)} · {binding.observed.verification}
+            session={show(binding.binding.externalSessionRef)} · {binding.verification} · evidence={binding.evidence.map((e) => e.source).join('+')}
           </p>
         )}
       </section>
 
+      <p className="hint">
+        以下是 Conversation lifecycle（对话生命周期），不是 Task 状态；canonical Task source 尚未接入。
+      </p>
       <section>
-        <h3>Current Focus · Active ({room.active.length})</h3>
-        <ul>{room.active.map((c) => <ConvoRow key={c.key} c={c} selected={conversation?.key === c.key} onSelect={() => select(c)} />)}</ul>
+        <h3>Conversation · Active ({room.conversationLifecycle.ACTIVE.length})</h3>
+        <ul>{room.conversationLifecycle.ACTIVE.map((c) => <ConvoRow key={c.key} c={c} selected={conversation?.key === c.key} onSelect={() => select(c)} />)}</ul>
       </section>
       <section>
-        <h3>Waiting ({room.waiting.length})</h3>
-        <ul>{room.waiting.map((c) => <ConvoRow key={c.key} c={c} selected={conversation?.key === c.key} onSelect={() => select(c)} />)}</ul>
+        <h3>Conversation · Paused ({room.conversationLifecycle.PAUSED.length})</h3>
+        <ul>{room.conversationLifecycle.PAUSED.map((c) => <ConvoRow key={c.key} c={c} selected={conversation?.key === c.key} onSelect={() => select(c)} />)}</ul>
       </section>
       <section>
-        <h3>Blocked / Frozen ({room.blocked.length})</h3>
-        <ul>{room.blocked.map((c) => <ConvoRow key={c.key} c={c} selected={conversation?.key === c.key} onSelect={() => select(c)} />)}</ul>
+        <h3>Conversation · Frozen ({room.conversationLifecycle.FROZEN.length})</h3>
+        <ul>{room.conversationLifecycle.FROZEN.map((c) => <ConvoRow key={c.key} c={c} selected={conversation?.key === c.key} onSelect={() => select(c)} />)}</ul>
       </section>
+      <section>
+        <h3>Conversation · Standby ({room.conversationLifecycle.STANDBY.length})</h3>
+        <ul>{room.conversationLifecycle.STANDBY.map((c) => <ConvoRow key={c.key} c={c} selected={conversation?.key === c.key} onSelect={() => select(c)} />)}</ul>
+      </section>
+      {room.conversationLifecycle.UNKNOWN.length > 0 && (
+        <section>
+          <h3>Conversation · Unknown ({room.conversationLifecycle.UNKNOWN.length})</h3>
+          <ul>{room.conversationLifecycle.UNKNOWN.map((c) => <ConvoRow key={c.key} c={c} selected={conversation?.key === c.key} onSelect={() => select(c)} />)}</ul>
+        </section>
+      )}
 
       {room.needsAttention.length > 0 && (
         <section>

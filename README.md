@@ -4,8 +4,8 @@
 Project/Git/Harness 之上的**投影层 GUI**。不替代 Harness，不复制外部 Source of Truth。
 
 正本：
-- 产品定义 `Agent-Workbench-项目完整描述-最终更新版.pdf`（桌面）
-- Reuse Map `新建 文本文档 (2).txt`（桌面）
+- 产品定义 `Yunmin-Workbench-项目完整描述.pdf`（桌面）
+- Reuse Map `Yunmin-Workbench-REUSE-MAP.md`（桌面）
 - Projection Integrity 约束（2026-08-25 用户批准，见下）
 
 ## Projection Integrity（domain 级约束）
@@ -17,9 +17,10 @@ Project/Git/Harness 之上的**投影层 GUI**。不替代 Harness，不复制�
    worktree/branch/HEAD/externalSessionRef）；Binding 属于一次 Session，不永久绑 Conversation。
    尚无 Runtime Adapter 写入。
 3. **State Separation**：`TaskState` / `RuntimeState` / `AttentionState` 三个枚举永久分开；
-   登记表原始 status 原样保留，派生 taskState 由 `toTaskState` 唯一映射；UI 可合并展示。
-4. **Frozen Packet Validity**：Packet 编译时记录所依赖 canonical 文件的 sha256；
-   `checkPacketValidity` 本地确定性给出 CURRENT / STALE / INVALID，不调用模型、不自动重建。
+   登记表原始 status 只表示 Conversation lifecycle。canonical `task_source` 尚未落地时
+   `taskState=unknown`，绝不由 Conversation status 推导；Control Room 明示按 Conversation 分组。
+4. **Frozen Packet Validity**：Packet 编译时分别记录已解析 fingerprint 与未解析声明依赖；
+   unresolved/missing → INVALID，hash changed → STALE，全部可验证 → CURRENT，不调用模型、不自动重建。
 5. **Intent/Receipt**：仅 domain seam（DRAFT→DISPATCHED→ACCEPTED|REJECTED|FAILED）；无实现。
 6. **Write-surface collision**：不实现；未来只做纯 projection warning，无 lock/scheduler。
 
@@ -38,7 +39,7 @@ INBOX scope 语义均在迁移中。Workbench 的规则：
 
 | 层 | 位置 | 说明 |
 |---|---|---|
-| `src/core` | 纯函数零 IO：parse（对话登记/项目适配/INBOX/记忆索引/机器档案/Harness Manifest）、project（Control Room / Canvas+dagre / Staging / Packet 编译·Freeze·Validity） | Vitest 直测 |
+| `src/core` | 纯函数零 IO：parse（对话登记/项目适配/INBOX/记忆索引/机器档案/Harness Manifest）、project（Control Room / Canvas+dagre / Staging / Packet 编译·Freeze·Validity）；Canvas 区分 membership/mount 结构关系与 execution/handoff/data-context 真实流 | Vitest 直测 |
 | `src/main/adapters` | `overlaySource.ts`（只读 Overlay + 发现规则 + 文件指纹 + 记忆正文懒加载）、`gitFacts.ts`（simple-git 只读 remote/branch/HEAD/status） | 只读外部事实 |
 | `src/main` | IPC；chokidar 监听 Overlay canonical 文件→`overlay:changed` 失效通知；Frozen Packet 落 `userData/state/frozen-packets/` | 只写 Workbench 自有状态 |
 | `src/renderer` | React + @xyflow/react + zustand；五视图 Projects / Control Room / Canvas / Context Staging / Packet | 投影渲染，拖动不改外部事实 |

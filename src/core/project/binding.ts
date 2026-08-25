@@ -19,7 +19,9 @@ import type {
  */
 export interface BindingCandidate {
   binding: RuntimeBinding;
-  observed: Observation;
+  /** Each contributing source stays visible; mixed file+process evidence is not collapsed. */
+  evidence: Observation[];
+  verification: Observation['verification'];
 }
 
 export function bindingCandidate(
@@ -41,14 +43,12 @@ export function bindingCandidate(
       conversation.verification === 'VERIFIED' ? conversation.sessionId : undefined,
   };
 
-  const observed: Observation = {
-    source: 'canonical-file',
-    sourceRef: conversation.observed.sourceRef,
-    observedAt: new Date().toISOString(),
-    verification:
-      binding.machine !== 'UNKNOWN' && binding.cwd && gitForProject?.head
-        ? 'OBSERVED'
-        : 'UNKNOWN',
-  };
-  return { binding, observed };
+  const evidence: Observation[] = [conversation.observed];
+  if (machine) evidence.push(machine.observed);
+  if (gitForProject) evidence.push(gitForProject.observed);
+  const verification =
+    binding.machine !== 'UNKNOWN' && binding.cwd && gitForProject?.head
+      ? 'OBSERVED'
+      : 'UNKNOWN';
+  return { binding, evidence, verification };
 }

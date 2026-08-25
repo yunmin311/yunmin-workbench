@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readdir, readFile, stat } from 'node:fs/promises';
-import { join, relative } from 'node:path';
+import { join, parse, relative } from 'node:path';
 import {
   parseDialogueRegistry,
   parseHarnessManifest,
@@ -37,6 +37,11 @@ export async function discoverOverlayRoot(driveRoot: string, env: NodeJS.Process
     }
   } catch { /* drive not readable */ }
   return { root: candidates.length === 1 ? candidates[0] : undefined, candidates };
+}
+
+/** Configurable discovery seam; defaults to the current filesystem root. */
+export function defaultOverlaySearchRoot(env: NodeJS.ProcessEnv = process.env): string {
+  return env.WB_OVERLAY_SEARCH_ROOT || parse(process.cwd()).root;
 }
 
 async function readYamlFiles(dir: string, suffix: string): Promise<{ file: string; text: string }[]> {
@@ -117,7 +122,9 @@ export async function loadOverlay(overlayRoot: string): Promise<OverlaySnapshot>
       const doc = (await import('js-yaml')).load(text) as Record<string, unknown>;
       const repo = (doc.paths as Record<string, unknown> | undefined)?.governance_repo;
       if (repo === overlayRoot) snapshot.machine = machine;
-    } catch { /* not a machine profile */ }
+    } catch (err) {
+      problems.push({ source: rel(file), message: String(err) });
+    }
   }
 
   const manifestPath = join(overlayRoot, 'harness/manifest.yaml');

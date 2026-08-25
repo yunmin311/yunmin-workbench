@@ -55,7 +55,7 @@ test.describe('Yunmin Workbench vertical slice (real overlay, read-only)', () =>
     await expect(win.locator('.ok')).toContainText('v1');
 
     // frozen packet file exists in Workbench-owned state dir
-    const packetsDir = join(stateDir, 'state', 'frozen-packets', 'creative-os');
+    const packetsDir = join(stateDir, 'state', 'frozen-packets');
     const files = readdirSync(packetsDir, { recursive: true }).filter((f) => String(f).endsWith('.json'));
     expect(files.length).toBe(1);
     const frozen = JSON.parse(readFileSync(join(packetsDir, String(files[0])), 'utf8'));

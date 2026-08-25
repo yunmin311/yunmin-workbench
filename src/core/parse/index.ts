@@ -1,4 +1,4 @@
-export { parseDialogueRegistry, toTaskState } from './dialogueRegistry';
+export { parseDialogueRegistry } from './dialogueRegistry';
 export { parseProjectAdapter } from './projectAdapter';
 export { parseInbox } from './inbox';
 export { parseMemoryIndex } from './memoryIndex';

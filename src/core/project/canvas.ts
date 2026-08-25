@@ -5,9 +5,10 @@ const NODE_W = 220;
 const NODE_H = 64;
 
 /**
- * Canvas projection (PDF §4): project + its conversations + memory vault mount.
- * Execution edges: project -> conversation (who carries work).
- * Data/context edges: memory vault -> project (long-term memory flows in).
+ * Canvas projection (PDF §4): project + registered conversations + available
+ * memory vault mount. Membership/mount are structural availability only.
+ * Execution/Handoff requires Runtime/Intent evidence; Context/Data requires an
+ * actual included/attached/observed flow. This snapshot has neither.
  * Canvas is projection only; dragging nodes never mutates external facts.
  */
 export function buildCanvasGraph(
@@ -39,10 +40,10 @@ export function buildCanvasGraph(
       y: 0,
     });
     edges.push({
-      id: `exec:${projectId}->${c.key}`,
+      id: `member:${projectId}->${c.key}`,
       source: `project:${projectId}`,
       target: `conversation:${c.key}`,
-      kind: 'execution',
+      kind: 'membership',
     });
   }
 
@@ -56,10 +57,10 @@ export function buildCanvasGraph(
       y: 0,
     });
     edges.push({
-      id: `data:memory->${projectId}`,
+      id: `mount:memory->${projectId}`,
       source: 'memory:vault',
       target: `project:${projectId}`,
-      kind: 'data-context',
+      kind: 'mount',
     });
   }
 
