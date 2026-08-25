@@ -35,6 +35,13 @@ export function ControlRoomView() {
   const gitFacts = git && 'branch' in git ? git : null;
   const binding = conversation ? bindingCandidate(snapshot, conversation, gitFacts) : null;
   const show = (v: string | undefined) => v ?? 'UNKNOWN';
+  const lifecycleGroups = [
+    ['ACTIVE', room.conversationLifecycle.ACTIVE],
+    ['PAUSED', room.conversationLifecycle.PAUSED],
+    ['FROZEN', room.conversationLifecycle.FROZEN],
+    ['STANDBY', room.conversationLifecycle.STANDBY],
+    ['UNKNOWN', room.conversationLifecycle.UNKNOWN],
+  ] as const;
 
   return (
     <div className="panel">
@@ -42,17 +49,37 @@ export function ControlRoomView() {
         {room.displayName}
         <span className={`trust trust-${room.trust.toLowerCase()}`}>{room.trust}</span>
       </h2>
-      {room.canonicalSource?.path && (
-        <p className="hint">
-          canonical: {room.canonicalSource.repository}/{room.canonicalSource.path}
-          {room.canonicalSource.commit ? ` @ ${room.canonicalSource.commit.slice(0, 8)}` : ''}
-          {room.canonicalSource.verification ? ` (${room.canonicalSource.verification})` : ''}
-        </p>
+      <p className="hint">
+        Conversations are execution carriers. Lifecycle is shown here; canonical Task state remains unavailable.
+      </p>
+      {lifecycleGroups.filter(([, items]) => items.length > 0).map(([status, items]) => (
+        <section key={status}>
+          <h3>{status} <span className="section-count">{items.length}</span></h3>
+          <ul>{items.map((c) => <ConvoRow key={c.key} c={c} selected={conversation?.key === c.key} onSelect={() => select(c)} />)}</ul>
+        </section>
+      ))}
+
+      {room.needsAttention.length > 0 && (
+        <section>
+          <h3>Needs Attention（INBOX 投影，回正本核验）</h3>
+          <ul className="attention">
+            {room.needsAttention.map((i) => (
+              <li key={i.id} title={i.sourceRef}>{i.raw}</li>
+            ))}
+          </ul>
+        </section>
       )}
 
-      {/* P3: only a health/binding summary here; full machine/harness goes to Inspector later */}
-      <section className="binding-summary">
-        <h3>Binding / Health 摘要</h3>
+      {/* Supporting facts stay available without turning the room into a governance debugger. */}
+      <details className="binding-summary auxiliary-panel">
+        <summary>Project facts & technical evidence</summary>
+        {room.canonicalSource?.path && (
+          <p className="hint">
+            canonical: {room.canonicalSource.repository}/{room.canonicalSource.path}
+            {room.canonicalSource.commit ? ` @ ${room.canonicalSource.commit.slice(0, 8)}` : ''}
+            {room.canonicalSource.verification ? ` (${room.canonicalSource.verification})` : ''}
+          </p>
+        )}
         <p className="hint">
           {room.machine ? `machine: ${room.machine.displayName}` : 'machine: UNKNOWN'}
           {room.localRoot ? ` · local: ${room.localRoot}` : ' · local: 未绑定'}
@@ -70,53 +97,13 @@ export function ControlRoomView() {
           </p>
         )}
         {binding && (
-          <p
-            className="hint"
-            title={`Execution Binding 候选证据：${binding.evidence.map((e) => `${e.source}:${e.sourceRef}`).join(' + ')}`}
-          >
+          <p className="hint" title={binding.evidence.map((e) => `${e.source}:${e.sourceRef}`).join(' + ')}>
             binding[{conversation!.role.slice(0, 12)}…]: harness={binding.binding.harness} · machine={show(binding.binding.machine)} ·
             cwd={show(binding.binding.cwd)} · branch={show(binding.binding.branch)} · head={show(binding.binding.head?.slice(0, 8))} ·
-            session={show(binding.binding.externalSessionRef)} · {binding.verification} · evidence={binding.evidence.map((e) => e.source).join('+')}
+            session={show(binding.binding.externalSessionRef)} · {binding.verification}
           </p>
         )}
-      </section>
-
-      <p className="hint">
-        以下是 Conversation lifecycle（对话生命周期），不是 Task 状态；canonical Task source 尚未接入。
-      </p>
-      <section>
-        <h3>Conversation · Active ({room.conversationLifecycle.ACTIVE.length})</h3>
-        <ul>{room.conversationLifecycle.ACTIVE.map((c) => <ConvoRow key={c.key} c={c} selected={conversation?.key === c.key} onSelect={() => select(c)} />)}</ul>
-      </section>
-      <section>
-        <h3>Conversation · Paused ({room.conversationLifecycle.PAUSED.length})</h3>
-        <ul>{room.conversationLifecycle.PAUSED.map((c) => <ConvoRow key={c.key} c={c} selected={conversation?.key === c.key} onSelect={() => select(c)} />)}</ul>
-      </section>
-      <section>
-        <h3>Conversation · Frozen ({room.conversationLifecycle.FROZEN.length})</h3>
-        <ul>{room.conversationLifecycle.FROZEN.map((c) => <ConvoRow key={c.key} c={c} selected={conversation?.key === c.key} onSelect={() => select(c)} />)}</ul>
-      </section>
-      <section>
-        <h3>Conversation · Standby ({room.conversationLifecycle.STANDBY.length})</h3>
-        <ul>{room.conversationLifecycle.STANDBY.map((c) => <ConvoRow key={c.key} c={c} selected={conversation?.key === c.key} onSelect={() => select(c)} />)}</ul>
-      </section>
-      {room.conversationLifecycle.UNKNOWN.length > 0 && (
-        <section>
-          <h3>Conversation · Unknown ({room.conversationLifecycle.UNKNOWN.length})</h3>
-          <ul>{room.conversationLifecycle.UNKNOWN.map((c) => <ConvoRow key={c.key} c={c} selected={conversation?.key === c.key} onSelect={() => select(c)} />)}</ul>
-        </section>
-      )}
-
-      {room.needsAttention.length > 0 && (
-        <section>
-          <h3>Needs Attention（INBOX 投影，回正本核验）</h3>
-          <ul className="attention">
-            {room.needsAttention.map((i) => (
-              <li key={i.id} title={i.sourceRef}>{i.raw}</li>
-            ))}
-          </ul>
-        </section>
-      )}
+      </details>
     </div>
   );
 }

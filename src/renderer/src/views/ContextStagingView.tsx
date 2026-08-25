@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useWorkbench } from '../store';
 
 const CYCLE: Record<string, 'available' | 'included' | 'excluded'> = {
@@ -17,6 +17,11 @@ export function ContextStagingView() {
     available: staging.filter((c) => c.state === 'available').length,
     excluded: staging.filter((c) => c.state === 'excluded').length,
   };
+  const groups = [
+    { state: 'included' as const, label: 'Included', note: 'Agent will receive these items' },
+    { state: 'available' as const, label: 'Available', note: 'Not injected until selected' },
+    { state: 'excluded' as const, label: 'Excluded', note: 'Explicitly left out' },
+  ];
 
   const expand = (id: string) => {
     const next = expanded === id ? null : id;
@@ -32,42 +37,57 @@ export function ContextStagingView() {
         project: {projectId}
         {conversation ? ` · conversation: ${conversation.role}` : ' · （未选 Conversation，先回 Control Room 或 Canvas 点一个）'}
       </p>
-      <p className="hint">included {counts.included} · available {counts.available} · excluded {counts.excluded}（点击状态切换；★ = Pinned，仅对 included 有效；Available ≠ Injected）</p>
-      <table className="staging">
-        <thead>
-          <tr><th>state</th><th>pin</th><th>title</th><th>source</th><th>kind</th></tr>
-        </thead>
-        <tbody>
-          {staging.map((c) => (
-            <>
-              <tr key={c.id} className={`row-${c.state}`}>
-                <td>
-                  <button className={`state state-${c.state}`} onClick={() => setStagingState(c.id, CYCLE[c.state])}>
-                    {c.state}
-                  </button>
-                </td>
-                <td>
-                  <button className={`pin ${c.pinned ? 'on' : ''}`} disabled={c.state !== 'included'} onClick={() => togglePin(c.id)}>
-                    {c.pinned ? '★' : '☆'}
-                  </button>
-                </td>
-                <td title={c.body}>
-                  <button className="linklike" onClick={() => expand(c.id)}>{c.title}</button>
-                </td>
-                <td className="source">{c.source}</td>
-                <td>{c.isReference ? 'reference' : 'body'}</td>
-              </tr>
-              {expanded === c.id && (
-                <tr key={`${c.id}:body`} className="body-row">
-                  <td colSpan={5}>
-                    <pre>{c.id.startsWith('memory:') ? memoryBodies[c.id.slice('memory:'.length)] ?? 'loading…' : c.body}</pre>
-                  </td>
-                </tr>
-              )}
-            </>
-          ))}
-        </tbody>
-      </table>
+      <div className="context-counts">
+        <span className="state-included">{counts.included} Included</span>
+        <span className="state-available">{counts.available} Available</span>
+        <span className="state-excluded">{counts.excluded} Excluded</span>
+      </div>
+      {groups.map((group) => {
+        const items = staging.filter((item) => item.state === group.state);
+        return (
+          <section className="context-group" key={group.state}>
+            <h3>{group.label} <span className="section-count">{items.length}</span></h3>
+            <p className="hint group-note">{group.note}</p>
+            {items.length === 0 ? (
+              <p className="empty-state">No items</p>
+            ) : (
+              <table className="staging">
+                <thead>
+                  <tr><th>Item</th><th>Type</th><th>Source</th><th>State</th><th>Pin</th></tr>
+                </thead>
+                <tbody>
+                  {items.map((c) => (
+                    <Fragment key={c.id}>
+                      <tr className={`row-${c.state}`}>
+                        <td title={c.body}><button className="linklike" onClick={() => expand(c.id)}>{c.title}</button></td>
+                        <td><span className="kind-label">{c.isReference ? 'Reference' : 'Context'}</span></td>
+                        <td className="source">{c.source}</td>
+                        <td>
+                          <button className={`state state-${c.state}`} onClick={() => setStagingState(c.id, CYCLE[c.state])}>
+                            {c.state}
+                          </button>
+                        </td>
+                        <td>
+                          <button className={`pin ${c.pinned ? 'on' : ''}`} disabled={c.state !== 'included'} onClick={() => togglePin(c.id)}>
+                            {c.pinned ? '★' : '☆'}
+                          </button>
+                        </td>
+                      </tr>
+                      {expanded === c.id && (
+                        <tr className="body-row">
+                          <td colSpan={5}>
+                            <pre>{c.id.startsWith('memory:') ? memoryBodies[c.id.slice('memory:'.length)] ?? 'loading…' : c.body}</pre>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </section>
+        );
+      })}
       <button className="primary" disabled={!conversation} onClick={() => setView('packet')}>
         → Packet Preview / Freeze
       </button>

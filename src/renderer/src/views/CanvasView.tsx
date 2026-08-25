@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Background, Controls, ReactFlow, type Edge, type Node } from '@xyflow/react';
+import { Background, Controls, Panel, ReactFlow, type Edge, type Node } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { buildCanvasGraph } from '../../../core/project/canvas';
 import { useWorkbench } from '../store';
@@ -20,7 +20,6 @@ export function CanvasView() {
       id: e.id,
       source: e.source,
       target: e.target,
-      label: e.kind,
       animated: e.kind === 'execution' || e.kind === 'handoff',
       className: `wb-edge-${e.kind}`,
       style:
@@ -55,6 +54,11 @@ export function CanvasView() {
       >
         <Background />
         <Controls />
+        <Panel position="top-left" className="canvas-legend">
+          <span><i className="legend-line" /> membership</span>
+          <span><i className="legend-line legend-mount" /> mount</span>
+          <span className="legend-note">Flow edges appear only with evidence</span>
+        </Panel>
       </ReactFlow>
       <p className="hint canvas-hint">
         Canvas 只是投影：拖动节点不会改外部事实。当前 membership / mount 只表示登记结构与可用挂载；

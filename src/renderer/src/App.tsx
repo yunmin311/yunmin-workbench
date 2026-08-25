@@ -19,6 +19,14 @@ export default function App() {
   if (loading && !snapshot) return <div className="center">Loading overlay…</div>;
   if (!snapshot) return <div className="center">No overlay snapshot.</div>;
 
+  const navItems = [
+    { id: 'projects' as const, label: 'Projects', needsProject: false },
+    { id: 'control' as const, label: 'Control Room', needsProject: true },
+    { id: 'canvas' as const, label: 'Canvas', needsProject: true },
+    { id: 'context' as const, label: 'Context', needsProject: true },
+    { id: 'packet' as const, label: 'Packet', needsProject: true },
+  ];
+
   return (
     <div className="app">
       <header className="topbar">
@@ -27,11 +35,17 @@ export default function App() {
           overlay: {snapshot.overlayRoot || 'UNKNOWN'}
         </span>
         <nav>
-          <button onClick={() => setView('projects')} disabled={view === 'projects'}>Projects</button>
-          <button onClick={() => projectId && setView('control')} disabled={!projectId || view === 'control'}>Control Room</button>
-          <button onClick={() => projectId && setView('canvas')} disabled={!projectId || view === 'canvas'}>Canvas</button>
-          <button onClick={() => projectId && setView('context')} disabled={!projectId || view === 'context'}>Context</button>
-          <button onClick={() => projectId && setView('packet')} disabled={!projectId || view === 'packet'}>Packet</button>
+          {navItems.map((item) => (
+            <button
+              key={item.id}
+              className={view === item.id ? 'active' : ''}
+              aria-current={view === item.id ? 'page' : undefined}
+              onClick={() => (!item.needsProject || projectId) && setView(item.id)}
+              disabled={item.needsProject && !projectId}
+            >
+              {item.label}
+            </button>
+          ))}
         </nav>
         <button className="refresh" onClick={() => void load(true)}>↻ reload</button>
       </header>

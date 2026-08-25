@@ -27,6 +27,7 @@ export function PacketPanel() {
   if (!conversation || !packet || !snapshot) {
     return <div className="panel"><h2>Task Packet</h2><p className="hint">先在 Control Room / Canvas 选择一个 Conversation。</p></div>;
   }
+  const previewValidity = checkPacketValidity(packet, snapshot.sourceFingerprints);
 
   const freeze = async () => {
     const { frozen: f, path } = await window.wb.freezePacket(packet);
@@ -42,20 +43,29 @@ export function PacketPanel() {
         <textarea value={taskSummary} onChange={(e) => setTaskSummary(e.target.value)} rows={3} placeholder="例：把 INBOX 里 needs-user 项分诊到各对话" />
       </label>
       <div className="packet-preview">
-        <h3>Agent 实际会收到什么（确定性装配，非模型总结）</h3>
-        <p>
-          rough tokens ≈ {packet.roughTokens} · governance refs: {packet.governanceRefs.join(', ')} ·
-          dependencies: {packet.sourceFingerprints.length} resolved · {packet.unresolvedDependencies.length} unresolved
+        <div className="packet-heading">
+          <div>
+            <p className="eyebrow">Agent input</p>
+            <h3>Agent 实际会收到什么</h3>
+          </div>
+          <span className={`validity validity-${previewValidity.toLowerCase()}`}>{previewValidity}</span>
+        </div>
+        <p className="packet-summary">
+          ≈ {packet.roughTokens} tokens · {packet.included.length} context · {packet.references.length} references
         </p>
         {packet.unresolvedDependencies.length > 0 && (
-          <p className="problems">
-            INVALID until dependencies resolve: {packet.unresolvedDependencies.join(', ')}
-          </p>
+          <p className="packet-alert">Cannot verify: {packet.unresolvedDependencies.join(', ')}</p>
         )}
         <h4>Included context（{packet.included.length}）</h4>
         <ul>{packet.included.map((c) => <li key={c.id}>{c.pinned ? '★ ' : ''}{c.title} — {c.body.slice(0, 120)}</li>)}</ul>
         <h4>References（{packet.references.length}）</h4>
         <ul>{packet.references.map((c) => <li key={c.id}>{c.title} <span className="source">({c.source})</span></li>)}</ul>
+        <details className="source-details">
+          <summary>Sources & validity details</summary>
+          <p className="hint">Deterministic local assembly; no model summary.</p>
+          <p className="source">Governance: {packet.governanceRefs.join(', ') || 'none'}</p>
+          <p className="source">Dependencies: {packet.sourceFingerprints.length} resolved · {packet.unresolvedDependencies.length} unresolved</p>
+        </details>
       </div>
       <button className="primary" onClick={() => void freeze()}>Freeze Current Task Packet</button>
       {lastFrozen && <p className="ok">frozen: {lastFrozen}</p>}
