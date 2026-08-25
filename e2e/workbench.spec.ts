@@ -28,6 +28,7 @@ test.describe('Yunmin Workbench vertical slice (real overlay, read-only)', () =>
     await expect(win.locator('.brand')).toHaveText('Yunmin Workbench');
     const card = win.locator('.project-card', { hasText: 'Creative OS' });
     await expect(card).toBeVisible();
+    await expect(card.locator('.source-summary')).toBeVisible();
     await card.click();
 
     // Control Room shows real registry data
@@ -38,13 +39,17 @@ test.describe('Yunmin Workbench vertical slice (real overlay, read-only)', () =>
     // Canvas: projection nodes, click a conversation -> Context
     await win.locator('nav button', { hasText: 'Canvas' }).click();
     await expect(win.locator('.wb-project')).toBeVisible();
+    await expect(win.locator('.canvas-hint')).toHaveCount(0);
     const convoNode = win.locator('.wb-conversation').first();
     await expect(convoNode).toBeVisible();
     await convoNode.click();
 
     // Context Staging: toggle one available item to included
     await expect(win.locator('h2', { hasText: 'Context Staging' })).toBeVisible();
-    const availableBtn = win.locator('.state-available').first();
+    const governanceContext = win.locator('details.governance-context');
+    await expect(governanceContext).toBeVisible();
+    await expect(governanceContext).not.toHaveAttribute('open', '');
+    const availableBtn = win.locator('button.state-available').first();
     await availableBtn.click();
     await expect(win.locator('.state-included').first()).toBeVisible();
 

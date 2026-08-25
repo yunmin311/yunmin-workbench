@@ -60,10 +60,6 @@ export function CanvasView() {
           <span className="legend-note">Flow edges appear only with evidence</span>
         </Panel>
       </ReactFlow>
-      <p className="hint canvas-hint">
-        Canvas 只是投影：拖动节点不会改外部事实。当前 membership / mount 只表示登记结构与可用挂载；
-        只有 Runtime/Intent 证据才能画 execution / handoff，只有真实 Included/attached 证据才能画 data-context。
-      </p>
     </div>
   );
 }

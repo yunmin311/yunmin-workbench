@@ -24,20 +24,30 @@ export function ProjectsView() {
         选择一个项目进入工作区。轻任务仍可直接在原 Harness 完成。
       </p>
       <ul className="project-list">
-        {projects.map((p) => (
-          <li key={p.projectId}>
-            <button className="project-card" onClick={() => selectProject(p.projectId)}>
-              <span className="name">{p.displayName}</span>
-              <span className={`trust trust-${p.trust.toLowerCase()}`}>{p.trust}</span>
-              <span className="coverage">
-                {p.coverage.map((c) => (
-                  <span key={c} className="coverage-tag">{COVERAGE_LABEL[c]}</span>
-                ))}
-              </span>
-              <span className="count">{p.conversationCount} conversations</span>
-            </button>
-          </li>
-        ))}
+        {projects.map((p) => {
+          const coverageDetails = p.coverage.map((source) => COVERAGE_LABEL[source]).join(' · ');
+          return (
+            <li key={p.projectId}>
+              <button className="project-card" onClick={() => selectProject(p.projectId)}>
+                <span className="project-identity">
+                  <span className="name">{p.displayName}</span>
+                  <span className="project-secondary">
+                    <span>{p.conversationCount} conversations</span>
+                    <span className="source-summary" title={`Coverage: ${coverageDetails}`}>
+                      {p.coverage.length === 1 ? coverageDetails : `${p.coverage.length} sources`}
+                    </span>
+                  </span>
+                </span>
+                <span
+                  className={`project-health health-${p.trust.toLowerCase()}`}
+                  title={`Trust: ${p.trust} · Coverage: ${coverageDetails}`}
+                >
+                  <i aria-hidden="true" />{p.trust}
+                </span>
+              </button>
+            </li>
+          );
+        })}
       </ul>
       {globalAttention.length > 0 && (
         <details className="auxiliary-panel attention-summary">

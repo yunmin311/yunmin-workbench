@@ -3,6 +3,9 @@
 （产品类别名：Agent Workbench）个人 Agent 工作环境：Governance Kernel + Personal Overlay +
 Project/Git/Harness 之上的**投影层 GUI**。不替代 Harness，不复制外部 Source of Truth。
 
+**Information Architecture: FROZEN (2026-08-25).** 正本路径为 Projects → Control Room →
+Canvas → Context → Packet；下一阶段直接进入 Visual Language / Interaction Language。
+
 正本：
 - 产品定义 `Yunmin-Workbench-项目完整描述.pdf`（桌面）
 - Reuse Map `Yunmin-Workbench-REUSE-MAP.md`（桌面）
