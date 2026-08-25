@@ -1,6 +1,6 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { join, relative } from 'node:path';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, type OpenDialogOptions } from 'electron';
 import { watch, type FSWatcher } from 'chokidar';
 import { z } from 'zod';
 import { freezePacket } from '../core/project/packet';
@@ -13,6 +13,7 @@ import {
   watchTargets,
 } from './adapters/overlaySource';
 import { readGitFacts } from './adapters/gitFacts';
+import { createProjectFileContext } from './adapters/projectFiles';
 import { encodeStateKey } from './stateKey';
 
 // test hook: Playwright E2E redirects Workbench-owned state to a temp dir
@@ -44,6 +45,8 @@ const ContextItemSchema = z.object({
   pinned: z.boolean(),
   isReference: z.boolean(),
   sourceRef: z.string().optional(),
+  provenance: z.enum(['EXTERNAL', 'USER PROVIDED']).optional(),
+  relativePath: z.string().optional(),
 });
 const TaskPacketSchema = z.object({
   schemaVersion: z.literal(1),
@@ -91,19 +94,26 @@ function emptySnapshot(message: string): OverlaySnapshot {
 
 function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
   let cache: { snapshot: OverlaySnapshot; at: number } | null = null;
+  let refreshing: Promise<OverlaySnapshot> | null = null;
 
-  const refresh = async (): Promise<OverlaySnapshot> => {
-    const { root, candidates } = await discoverOverlayRoot(defaultOverlaySearchRoot());
-    if (!root) {
-      return emptySnapshot(
-        candidates.length === 0
-          ? 'no overlay found (set GOV_OVERLAY)'
-          : `ambiguous overlays: ${candidates.join(', ')} — refusing to guess`,
-      );
-    }
-    const snapshot = await loadOverlay(root);
-    cache = { snapshot, at: Date.now() };
-    return snapshot;
+  const refresh = (): Promise<OverlaySnapshot> => {
+    if (refreshing) return refreshing;
+    refreshing = (async () => {
+      const { root, candidates } = await discoverOverlayRoot(defaultOverlaySearchRoot());
+      if (!root) {
+        return emptySnapshot(
+          candidates.length === 0
+            ? 'no overlay found (set GOV_OVERLAY)'
+            : `ambiguous overlays: ${candidates.join(', ')} — refusing to guess`,
+        );
+      }
+      const snapshot = await loadOverlay(root);
+      cache = { snapshot, at: Date.now() };
+      return snapshot;
+    })().finally(() => {
+      refreshing = null;
+    });
+    return refreshing;
   };
 
   ipcMain.handle('overlay:load', async (_e, rawOpts?: unknown) => {
@@ -132,6 +142,63 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     }
   });
 
+  const ProjectFileRequestSchema = z.object({
+    projectId: KeySchema,
+    asReference: z.boolean(),
+  });
+  ipcMain.handle('project-file:choose', async (event, rawRequest: unknown) => {
+    const request = ProjectFileRequestSchema.parse(rawRequest);
+    const snap = cache?.snapshot ?? (await refresh());
+    const projectRoot = snap.machine?.projectRoots[request.projectId];
+    if (!projectRoot) return { error: `no local root binding for project ${request.projectId}` };
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    const options: OpenDialogOptions = {
+      title: request.asReference ? 'Add Project File Reference' : 'Add Project File Context',
+      defaultPath: projectRoot,
+      properties: ['openFile'],
+    };
+    const chosen = owner
+      ? await dialog.showOpenDialog(owner, options)
+      : await dialog.showOpenDialog(options);
+    if (chosen.canceled || chosen.filePaths.length !== 1) return { canceled: true };
+    try {
+      return await createProjectFileContext(
+        request.projectId,
+        projectRoot,
+        relative(projectRoot, chosen.filePaths[0]),
+        request.asReference,
+      );
+    } catch (err) {
+      return { error: String(err) };
+    }
+  });
+
+  const RefreshProjectFilesSchema = z.object({
+    projectId: KeySchema,
+    files: z.array(z.object({ relativePath: z.string(), asReference: z.boolean() })).max(200),
+  });
+  ipcMain.handle('project-file:refresh', async (_event, rawRequest: unknown) => {
+    const request = RefreshProjectFilesSchema.parse(rawRequest);
+    const snap = cache?.snapshot ?? (await refresh());
+    const projectRoot = snap.machine?.projectRoots[request.projectId];
+    if (!projectRoot) return { entries: [], errors: [`no local root binding for project ${request.projectId}`] };
+    const entries = [];
+    const errors: string[] = [];
+    for (const file of request.files) {
+      try {
+        entries.push(await createProjectFileContext(
+          request.projectId,
+          projectRoot,
+          file.relativePath,
+          file.asReference,
+        ));
+      } catch (err) {
+        errors.push(`${file.relativePath}: ${String(err)}`);
+      }
+    }
+    return { entries, errors };
+  });
+
   ipcMain.handle('packet:freeze', async (_e, rawPacket: unknown) => {
     const packet: TaskPacket = TaskPacketSchema.parse(rawPacket);
     const existing = await listFrozen(packet.projectId, packet.conversationKey);
@@ -146,6 +213,11 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     const projectId = KeySchema.parse(rawProjectId);
     const conversationId = KeySchema.parse(rawConversationId);
     return listFrozen(projectId, conversationId);
+  });
+
+  ipcMain.handle('clipboard:writeText', (_event, rawText: unknown) => {
+    const text = z.string().max(5_000_000).parse(rawText);
+    clipboard.writeText(text);
   });
 
   return { refresh };

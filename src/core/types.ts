@@ -243,6 +243,10 @@ export interface ContextItem {
   isReference: boolean;
   /** Resolvable canonical file for staleness checks, when the item projects one. */
   sourceRef?: string;
+  /** Manual input remains visibly user-owned and never impersonates external truth. */
+  provenance?: 'EXTERNAL' | 'USER PROVIDED';
+  /** Project-root-relative locator for an explicitly selected file. */
+  relativePath?: string;
 }
 
 // ===== 4. Frozen Packet Validity =====

@@ -1,4 +1,5 @@
 import type { ContextItem, OverlaySnapshot } from '../types';
+import { projectFileSourceRef } from './sourceIdentity';
 
 /**
  * Context staging candidates for a task (PDF §5).
@@ -22,6 +23,7 @@ export function buildStaging(snapshot: OverlaySnapshot, projectId: string): Cont
         pinned: false,
         isReference: false,
         sourceRef: adapterRef,
+        provenance: 'EXTERNAL',
       });
     }
     if (adapter.canonicalSource?.path) {
@@ -33,7 +35,8 @@ export function buildStaging(snapshot: OverlaySnapshot, projectId: string): Cont
         state: 'included',
         pinned: false,
         isReference: true,
-        sourceRef: adapterRef,
+        sourceRef: projectFileSourceRef(projectId, adapter.canonicalSource.path),
+        provenance: 'EXTERNAL',
       });
     }
   }
@@ -48,6 +51,7 @@ export function buildStaging(snapshot: OverlaySnapshot, projectId: string): Cont
       pinned: false,
       isReference: true,
       sourceRef: m.sourceRef,
+      provenance: 'EXTERNAL',
     });
   }
 
@@ -63,8 +67,25 @@ export function buildStaging(snapshot: OverlaySnapshot, projectId: string): Cont
       pinned: false,
       isReference: true,
       sourceRef: i.sourceRef.split('#')[0],
+      provenance: 'EXTERNAL',
     });
   }
 
   return items;
+}
+
+export function createManualContext(id: string, title: string, body: string): ContextItem {
+  const trimmedTitle = title.trim();
+  const trimmedBody = body.trim();
+  if (!trimmedTitle || !trimmedBody) throw new Error('Manual Context needs both a title and content.');
+  return {
+    id: `manual:${id}`,
+    title: trimmedTitle,
+    source: 'manual',
+    body: trimmedBody,
+    state: 'included',
+    pinned: false,
+    isReference: false,
+    provenance: 'USER PROVIDED',
+  };
 }

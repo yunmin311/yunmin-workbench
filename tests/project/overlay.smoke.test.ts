@@ -5,6 +5,7 @@ import { buildControlRoom } from '../../src/core/project/controlRoom';
 import { discoverProjects } from '../../src/core/project/discovery';
 import { buildCanvasGraph } from '../../src/core/project/canvas';
 import { buildStaging } from '../../src/core/project/staging';
+import { projectFileSourceRef } from '../../src/core/project/sourceIdentity';
 
 const REAL_ROOT = 'D:\\ai-governance-system';
 const hasReal = existsSync(`${REAL_ROOT}\\overlay.yaml`);
@@ -23,6 +24,9 @@ describe.runIf(hasReal)('real overlay smoke (read-only)', () => {
     expect(snap.projects.some((p) => p.projectId === 'creative-os')).toBe(true);
     expect(snap.inbox.length).toBeGreaterThan(0);
     expect(snap.memoryIndex.length).toBeGreaterThan(10);
+    expect(snap.sourceFingerprints.some(
+      (fingerprint) => fingerprint.sourceRef === projectFileSourceRef('creative-os', 'CLAUDE.md'),
+    )).toBe(true);
   });
 
   it('full slice: control room -> canvas -> staging over real data', async () => {

@@ -1,17 +1,40 @@
-import { useMemo, useState } from 'react';
-import { checkPacketValidity, compilePacket } from '../../../core/project/packet';
+import { useEffect, useMemo, useState } from 'react';
+import { checkPacketValidity, compilePacket, renderAgentInput } from '../../../core/project/packet';
+import { overlayFileSourceRef, projectFileSourceRef } from '../../../core/project/sourceIdentity';
 import { useWorkbench } from '../store';
 
 export function PacketPanel() {
-  const { snapshot, projectId, conversation, staging, taskSummary, setTaskSummary, frozen, refreshFrozen } = useWorkbench();
+  const {
+    snapshot,
+    projectId,
+    conversation,
+    staging,
+    taskSummary,
+    projectFingerprints,
+    setTaskSummary,
+    frozen,
+    refreshFrozen,
+    refreshProjectFiles,
+  } = useWorkbench();
   const [lastFrozen, setLastFrozen] = useState<string>('');
+  const [copyMessage, setCopyMessage] = useState('');
+
+  useEffect(() => {
+    void refreshProjectFiles();
+  }, [projectId, conversation?.key, refreshProjectFiles]);
+
+  const currentFingerprints = useMemo(() => {
+    const merged = new Map(snapshot?.sourceFingerprints.map((item) => [item.sourceRef, item.sha256]) ?? []);
+    for (const item of projectFingerprints) merged.set(item.sourceRef, item.sha256);
+    return [...merged].map(([sourceRef, sha256]) => ({ sourceRef, sha256 }));
+  }, [snapshot, projectFingerprints]);
 
   const packet = useMemo(() => {
     if (!projectId || !conversation || !snapshot) return null;
     const adapter = snapshot.projects.find((p) => p.projectId === projectId);
     const governanceRefs = [
-      adapter?.canonicalSource?.path ? `project-constitution:${adapter.canonicalSource.path}` : null,
-      'overlay:MEMORY.md',
+      adapter?.canonicalSource?.path ? projectFileSourceRef(projectId, adapter.canonicalSource.path) : null,
+      overlayFileSourceRef('memory/MEMORY.md'),
     ].filter((x): x is string => Boolean(x));
     return compilePacket({
       projectId,
@@ -19,20 +42,26 @@ export function PacketPanel() {
       taskSummary,
       governanceRefs,
       staging,
-      fingerprints: snapshot.sourceFingerprints,
+      fingerprints: currentFingerprints,
     });
-  }, [snapshot, projectId, conversation, staging, taskSummary]);
+  }, [snapshot, projectId, conversation, staging, taskSummary, currentFingerprints]);
 
   if (!projectId) return null;
   if (!conversation || !packet || !snapshot) {
     return <div className="panel"><h2>Task Packet</h2><p className="hint">先在 Control Room / Canvas 选择一个 Conversation。</p></div>;
   }
-  const previewValidity = checkPacketValidity(packet, snapshot.sourceFingerprints);
+  const previewValidity = checkPacketValidity(packet, currentFingerprints);
+  const compiledText = renderAgentInput(packet);
 
   const freeze = async () => {
     const { frozen: f, path } = await window.wb.freezePacket(packet);
     setLastFrozen(`v${f.version} · ${f.hash.slice(0, 12)} → ${path}`);
     await refreshFrozen();
+  };
+
+  const copy = async () => {
+    await window.wb.copyText(compiledText);
+    setCopyMessage('Copied exact preview text.');
   };
 
   return (
@@ -56,10 +85,11 @@ export function PacketPanel() {
         {packet.unresolvedDependencies.length > 0 && (
           <p className="packet-alert">Cannot verify: {packet.unresolvedDependencies.join(', ')}</p>
         )}
-        <h4>Included context（{packet.included.length}）</h4>
-        <ul>{packet.included.map((c) => <li key={c.id}>{c.pinned ? '★ ' : ''}{c.title} — {c.body.slice(0, 120)}</li>)}</ul>
-        <h4>References（{packet.references.length}）</h4>
-        <ul>{packet.references.map((c) => <li key={c.id}>{c.title} <span className="source">({c.source})</span></li>)}</ul>
+        <pre className="agent-input-text">{compiledText}</pre>
+        <div className="packet-copy-row">
+          <button onClick={() => void copy()}>Copy Agent Input</button>
+          {copyMessage && <span className="ok">{copyMessage}</span>}
+        </div>
         <details className="source-details">
           <summary>Sources & validity details</summary>
           <p className="hint">Deterministic local assembly; no model summary.</p>
@@ -74,7 +104,7 @@ export function PacketPanel() {
           <h4>Frozen versions（不可变快照；变化只能产生新版本）</h4>
           <ul>
             {frozen.map((f) => {
-              const validity = checkPacketValidity(f, snapshot.sourceFingerprints);
+              const validity = checkPacketValidity(f, currentFingerprints);
               return (
                 <li key={f.hash}>
                   v{f.version} · {f.frozenAt} · {f.hash.slice(0, 12)} · ≈{f.roughTokens} tok ·{' '}

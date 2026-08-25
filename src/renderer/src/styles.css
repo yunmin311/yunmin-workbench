@@ -96,6 +96,11 @@ table.staging td { padding: 5px 8px; border-bottom: 1px solid #23262e; }
 .field { display: block; margin: 12px 0; }
 .field span { display: block; font-size: 13px; color: #9aa1ad; margin-bottom: 4px; }
 textarea { width: 100%; background: #1e2128; color: #d7dae0; border: 1px solid #39404d; border-radius: 6px; padding: 8px 10px; font: inherit; resize: vertical; }
+input { width: 100%; background: #1e2128; color: #d7dae0; border: 1px solid #39404d; border-radius: 6px; padding: 8px 10px; font: inherit; }
+.context-actions { display: flex; gap: 6px; margin: 10px 0 4px; }
+.manual-context-form { margin: 10px 0 14px; padding: 12px 14px; border: 1px solid #2c313c; border-radius: 8px; background: #1a1d23; }
+.manual-context-form .field { margin: 8px 0; }
+.context-message { margin: 8px 0; color: #b7bdc8; font-size: 12px; white-space: pre-wrap; }
 .packet-preview { background: #1a1d23; border: 1px solid #2c313c; border-radius: 8px; padding: 18px 20px; margin: 14px 0; }
 .packet-preview h3 { margin: 2px 0 0; font-size: 20px; }
 .packet-preview h4 { margin: 18px 0 6px; font-size: 15px; }
@@ -104,6 +109,8 @@ textarea { width: 100%; background: #1e2128; color: #d7dae0; border: 1px solid #
 .eyebrow { margin: 0; color: #8b909a; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
 .packet-summary { margin: 10px 0 14px; color: #b7bdc8; font-size: 13px; }
 .packet-alert { margin: 10px 0 14px; padding: 9px 12px; border-radius: 6px; background: #3a2a1a; color: #e8b06a; font-size: 13px; }
+.agent-input-text { max-height: 460px; overflow: auto; margin: 12px 0; padding: 14px 16px; border: 1px solid #2c313c; border-radius: 6px; background: #14161a; color: #d7dae0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.55 ui-monospace, 'Cascadia Code', monospace; }
+.packet-copy-row { display: flex; align-items: center; gap: 10px; margin: 8px 0 2px; }
 .source-details { margin-top: 18px; border-top: 1px solid #2c313c; }
 .source-details > summary { padding-left: 0; padding-right: 0; }
 .ok { color: #6fd08c; font-size: 13px; }

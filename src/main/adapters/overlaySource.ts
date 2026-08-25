@@ -10,6 +10,8 @@ import {
   parseProjectAdapter,
 } from '../../core/parse';
 import type { Observation, OverlaySnapshot, SourceFingerprint } from '../../core/types';
+import { overlayFileSourceRef } from '../../core/project/sourceIdentity';
+import { fingerprintProjectFile } from './projectFiles';
 
 function sha256(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex');
@@ -62,7 +64,7 @@ export async function loadOverlay(overlayRoot: string): Promise<OverlaySnapshot>
   const rel = (abs: string) => relative(overlayRoot, abs).split('\\').join('/');
 
   const track = (file: string, text: string): Observation => {
-    const sourceRef = rel(file);
+    const sourceRef = overlayFileSourceRef(rel(file));
     fingerprints.push({ sourceRef, sha256: sha256(text) });
     return observation(sourceRef);
   };
@@ -133,6 +135,20 @@ export async function loadOverlay(overlayRoot: string): Promise<OverlaySnapshot>
     snapshot.harness = parseHarnessManifest(text, track(manifestPath, text));
   } catch {
     problems.push({ source: 'harness/manifest.yaml', message: 'not found' });
+  }
+
+  // Project canonical files are external facts resolved only through the
+  // current machine's explicit projectRoots binding. Missing/unreadable files
+  // simply remain unresolved so Packet validity fails closed.
+  for (const project of snapshot.projects) {
+    const projectRoot = snapshot.machine?.projectRoots[project.projectId];
+    const canonicalPath = project.canonicalSource?.path;
+    if (!projectRoot || !canonicalPath) continue;
+    try {
+      fingerprints.push(await fingerprintProjectFile(project.projectId, projectRoot, canonicalPath));
+    } catch {
+      // No guessing or similar-file search. Packet dependency remains unresolved.
+    }
   }
 
   return snapshot;

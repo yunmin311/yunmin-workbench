@@ -18,6 +18,38 @@ export function roughTokenEstimate(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
+function renderContextItem(item: ContextItem): string {
+  const provenance = item.provenance === 'USER PROVIDED' ? ' [USER PROVIDED]' : '';
+  const source = item.sourceRef ?? item.source;
+  return [`## ${item.title}${provenance}`, `Source: ${source}`, item.body].join('\n');
+}
+
+/** Exact deterministic text handed to a Harness. No timestamps, ids, or model calls. */
+export function renderAgentInput(packet: TaskPacket): string {
+  const governance = packet.governanceRefs.length > 0
+    ? [...packet.governanceRefs].sort().map((ref) => `- ${ref}`).join('\n')
+    : '- none';
+  const context = packet.included.length > 0
+    ? packet.included.map(renderContextItem).join('\n\n')
+    : '(none)';
+  const references = packet.references.length > 0
+    ? packet.references.map(renderContextItem).join('\n\n')
+    : '(none)';
+  return [
+    '# Governance',
+    governance,
+    '',
+    '# Task Summary',
+    packet.taskSummary || '(not provided)',
+    '',
+    '# Context',
+    context,
+    '',
+    '# References',
+    references,
+  ].join('\n');
+}
+
 export interface CompileInput {
   projectId: string;
   conversationKey: string;
@@ -43,28 +75,23 @@ export function packetDependencies(
   fingerprints: SourceFingerprint[],
 ): PacketDependencyResolution {
   const byRef = new Map(fingerprints.map((f) => [f.sourceRef, f.sha256]));
-  const declarations: { label: string; path: string }[] = [];
-  // governance refs like "overlay:MEMORY.md" / "project-constitution:CLAUDE.md"
+  const declarations: string[] = [];
+  // Governance refs and Context sourceRefs are exact, namespaced identities.
   for (const ref of governanceRefs) {
-    const path = ref.split(':').slice(1).join(':');
-    declarations.push({ label: ref, path });
+    declarations.push(ref);
   }
   for (const item of staging) {
     if (item.state !== 'included' || !item.sourceRef) continue;
-    declarations.push({ label: item.sourceRef, path: item.sourceRef });
+    declarations.push(item.sourceRef);
   }
 
   const resolved = new Map<string, string>();
   const unresolved = new Set<string>();
   for (const declaration of declarations) {
-    const exact = byRef.has(declaration.path) ? [declaration.path] : [];
-    const suffix = exact.length > 0
-      ? exact
-      : [...byRef.keys()].filter((key) => key.endsWith(`/${declaration.path}`));
-    if (suffix.length === 1) {
-      resolved.set(suffix[0], byRef.get(suffix[0])!);
+    if (byRef.has(declaration)) {
+      resolved.set(declaration, byRef.get(declaration)!);
     } else {
-      unresolved.add(declaration.label);
+      unresolved.add(declaration);
     }
   }
   return {
@@ -81,17 +108,12 @@ export function compilePacket(input: CompileInput): TaskPacket {
     (c) => c.state === 'included' && c.isReference,
   );
   const governanceRefs = [...input.governanceRefs].sort();
-  const bodyChars =
-    input.taskSummary.length +
-    governanceRefs.join('\n').length +
-    included.reduce((n, c) => n + c.body.length, 0) +
-    references.reduce((n, c) => n + c.body.length, 0);
   const dependencies = packetDependencies(
     governanceRefs,
     input.staging,
     input.fingerprints ?? [],
   );
-  return {
+  const packet: TaskPacket = {
     schemaVersion: 1,
     packetId: input.packetId ?? globalThis.crypto.randomUUID(),
     createdAt: input.now ?? new Date().toISOString(),
@@ -104,9 +126,10 @@ export function compilePacket(input: CompileInput): TaskPacket {
     references,
     sourceFingerprints: dependencies.resolved,
     unresolvedDependencies: dependencies.unresolved,
-    // fixed overhead for packet scaffolding, deterministic
-    roughTokens: roughTokenEstimate('§'.repeat(64) + 'x'.repeat(bodyChars)),
+    roughTokens: 0,
   };
+  packet.roughTokens = roughTokenEstimate(renderAgentInput(packet));
+  return packet;
 }
 
 /**

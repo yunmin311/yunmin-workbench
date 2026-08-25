@@ -8,8 +8,24 @@ const CYCLE: Record<string, 'available' | 'included' | 'excluded'> = {
 };
 
 export function ContextStagingView() {
-  const { snapshot, projectId, conversation, staging, memoryBodies, setStagingState, togglePin, setView, loadMemoryBody } = useWorkbench();
+  const {
+    snapshot,
+    projectId,
+    conversation,
+    staging,
+    memoryBodies,
+    contextMessage,
+    setStagingState,
+    togglePin,
+    setView,
+    loadMemoryBody,
+    addProjectFile,
+    addManualContext,
+  } = useWorkbench();
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualTitle, setManualTitle] = useState('');
+  const [manualBody, setManualBody] = useState('');
   if (!projectId) return null;
 
   const boundGovernance = staging.filter((item) => item.source.startsWith('adapter:'));
@@ -51,7 +67,12 @@ export function ContextStagingView() {
           <Fragment key={c.id}>
             <tr className={`row-${c.state}`}>
               <td title={c.body}><button className="linklike" onClick={() => expand(c.id)}>{c.title}</button></td>
-              <td><span className="kind-label">{c.isReference ? 'Reference' : 'Context'}</span></td>
+              <td>
+                <span className="kind-label">
+                  {c.provenance === 'USER PROVIDED' ? 'USER PROVIDED · ' : ''}
+                  {c.isReference ? 'Reference' : 'Context'}
+                </span>
+              </td>
               <td className="source">{c.source}</td>
               <td>
                 <button className={`state state-${c.state}`} onClick={() => setStagingState(c.id, CYCLE[c.state])}>
@@ -89,6 +110,37 @@ export function ContextStagingView() {
         <span className="state-available">{counts.available} Available</span>
         <span className="state-excluded">{counts.excluded} Excluded</span>
       </div>
+      <div className="context-actions">
+        <button onClick={() => void addProjectFile(false)}>+ File Context</button>
+        <button onClick={() => void addProjectFile(true)}>+ File Reference</button>
+        <button onClick={() => setManualOpen((open) => !open)}>+ Manual Context</button>
+      </div>
+      {manualOpen && (
+        <div className="manual-context-form">
+          <label className="field">
+            <span>Title</span>
+            <input value={manualTitle} onChange={(event) => setManualTitle(event.target.value)} placeholder="What this context is" />
+          </label>
+          <label className="field">
+            <span>USER PROVIDED content</span>
+            <textarea value={manualBody} onChange={(event) => setManualBody(event.target.value)} rows={4} />
+          </label>
+          <button
+            className="primary"
+            onClick={() => {
+              addManualContext(manualTitle, manualBody);
+              if (manualTitle.trim() && manualBody.trim()) {
+                setManualTitle('');
+                setManualBody('');
+                setManualOpen(false);
+              }
+            }}
+          >
+            Add to Included
+          </button>
+        </div>
+      )}
+      {contextMessage && <p className="context-message">{contextMessage}</p>}
       {boundGovernance.length > 0 && (
         <details className="governance-context">
           <summary>

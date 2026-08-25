@@ -5,6 +5,7 @@ import {
   compilePacket,
   freezePacket,
   packetDependencies,
+  renderAgentInput,
   roughTokenEstimate,
 } from '../../src/core/project/packet';
 import type { ContextItem, SourceFingerprint } from '../../src/core/types';
@@ -30,8 +31,8 @@ const base = {
 };
 
 const fps: SourceFingerprint[] = [
-  { sourceRef: 'projects/instances/creative-os.adapter.yaml', sha256: 'aaa' },
-  { sourceRef: 'memory/MEMORY.md', sha256: 'bbb' },
+  { sourceRef: 'overlay:projects/instances/creative-os.adapter.yaml', sha256: 'aaa' },
+  { sourceRef: 'overlay:memory/MEMORY.md', sha256: 'bbb' },
 ];
 
 describe('compilePacket', () => {
@@ -48,17 +49,17 @@ describe('compilePacket', () => {
 
   it('records fingerprints of the canonical files the packet depends on', () => {
     const staging = [
-      ctx('g', 'included', false, 'projects/instances/creative-os.adapter.yaml'),
-      ctx('m', 'included', true, 'memory/MEMORY.md'),
-      ctx('x', 'excluded', true, 'memory/MEMORY.md'), // excluded -> not a dependency
+      ctx('g', 'included', false, 'overlay:projects/instances/creative-os.adapter.yaml'),
+      ctx('m', 'included', true, 'overlay:memory/MEMORY.md'),
+      ctx('x', 'excluded', true, 'overlay:memory/MEMORY.md'), // excluded -> not a dependency
     ];
-    const deps = packetDependencies(['overlay:MEMORY.md'], staging, fps);
+    const deps = packetDependencies(['overlay:memory/MEMORY.md'], staging, fps);
     expect(deps.resolved.map((d) => d.sourceRef).sort()).toEqual([
-      'memory/MEMORY.md',
-      'projects/instances/creative-os.adapter.yaml',
+      'overlay:memory/MEMORY.md',
+      'overlay:projects/instances/creative-os.adapter.yaml',
     ]);
     expect(deps.unresolved).toEqual([]);
-    const p = compilePacket({ ...base, governanceRefs: ['overlay:MEMORY.md'], staging, fingerprints: fps });
+    const p = compilePacket({ ...base, governanceRefs: ['overlay:memory/MEMORY.md'], staging, fingerprints: fps });
     expect(p.sourceFingerprints.length).toBe(2);
     expect(p.unresolvedDependencies).toEqual([]);
   });
@@ -67,7 +68,7 @@ describe('compilePacket', () => {
 describe('Frozen Packet Validity (Integrity §4)', () => {
   const packet = compilePacket({
     ...base,
-    staging: [ctx('g', 'included', false, 'projects/instances/creative-os.adapter.yaml')],
+    staging: [ctx('g', 'included', false, 'overlay:projects/instances/creative-os.adapter.yaml')],
     fingerprints: fps,
   });
 
@@ -97,11 +98,11 @@ describe('Frozen Packet Validity (Integrity §4)', () => {
   it('external project-constitution path without a fingerprint is INVALID', () => {
     const p = compilePacket({
       ...base,
-      governanceRefs: ['project-constitution:D:\\project\\CLAUDE.md'],
+      governanceRefs: ['project-file:creative-os:CLAUDE.md'],
       staging: [],
       fingerprints: fps,
     });
-    expect(p.unresolvedDependencies).toEqual(['project-constitution:D:\\project\\CLAUDE.md']);
+    expect(p.unresolvedDependencies).toEqual(['project-file:creative-os:CLAUDE.md']);
     expect(checkPacketValidity(p, fps)).toBe('INVALID');
   });
 
@@ -137,5 +138,36 @@ describe('freezePacket', () => {
   it('hash changes when content changes', () => {
     const changed = { ...packet, taskSummary: '别的事' };
     expect(canonicalPacketJson(changed)).not.toBe(canonicalPacketJson(packet));
+  });
+});
+
+describe('deterministic Agent Input text', () => {
+  it('renders fixed Governance -> Task -> Context -> References sections', () => {
+    const packet = compilePacket({
+      ...base,
+      governanceRefs: ['overlay:memory/MEMORY.md'],
+      staging: [
+        { ...ctx('manual', 'included'), provenance: 'USER PROVIDED' as const, source: 'manual' },
+        ctx('ref', 'included', true),
+      ],
+      fingerprints: [{ sourceRef: 'overlay:memory/MEMORY.md', sha256: 'abc' }],
+    });
+    const text = renderAgentInput(packet);
+    expect(text.indexOf('# Governance')).toBeLessThan(text.indexOf('# Task Summary'));
+    expect(text.indexOf('# Task Summary')).toBeLessThan(text.indexOf('# Context'));
+    expect(text.indexOf('# Context')).toBeLessThan(text.indexOf('# References'));
+    expect(text).toContain('## t-manual [USER PROVIDED]');
+    expect(text).toContain('## t-ref');
+  });
+
+  it('is byte-identical for the same content and order regardless of packet id/time', () => {
+    const first = compilePacket({ ...base, staging: [ctx('a', 'included')] });
+    const second = compilePacket({
+      ...base,
+      packetId: 'another-id',
+      now: '2030-01-01T00:00:00.000Z',
+      staging: [ctx('a', 'included')],
+    });
+    expect(renderAgentInput(first)).toBe(renderAgentInput(second));
   });
 });
