@@ -75,3 +75,5 @@ textarea { width: 100%; background: #1e2128; color: #d7dae0; border: 1px solid #
 .validity-stale { color: #e0af68; border-color: #e0af68; }
 .validity-invalid { color: #f7768e; border-color: #f7768e; }
 .binding-summary { background: #1a1d23; border: 1px solid #2c313c; border-radius: 8px; padding: 4px 14px 10px; }
+.coverage { display: flex; gap: 4px; }
+.coverage-tag { font-size: 11px; color: #8b909a; border: 1px solid #39404d; border-radius: 9px; padding: 1px 7px; }

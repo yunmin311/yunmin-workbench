@@ -131,9 +131,20 @@ export async function loadOverlay(overlayRoot: string): Promise<OverlaySnapshot>
   return snapshot;
 }
 
+/** Canonical overlay files worth watching: deliberately narrow, no scope creep. */
+export function watchTargets(overlayRoot: string): string[] {
+  return [
+    join(overlayRoot, 'INBOX.md'),
+    join(overlayRoot, 'memory/MEMORY.md'),
+    join(overlayRoot, 'profiles/machines/instances'),
+    join(overlayRoot, 'projects/instances'),
+    join(overlayRoot, 'harness/manifest.yaml'),
+  ];
+}
+
 /** Lazy memory body read (P4): available ≠ included; bodies load on demand only. */
 export async function readMemoryBody(overlayRoot: string, memoryId: string): Promise<string | null> {
-  if (memoryId.includes('..') || memoryId.includes('\\') || /[^a-zA-Z0-9_\-/\u4e00-\u9fff]/.test(memoryId)) {
+  if (memoryId.includes('..') || memoryId.includes('\\') || /[^a-zA-Z0-9_\-/一-鿿]/.test(memoryId)) {
     return null; // path traversal guard
   }
   try {

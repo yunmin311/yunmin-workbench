@@ -4,7 +4,7 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import { watch, type FSWatcher } from 'chokidar';
 import { freezePacket } from '../core/project/packet';
 import type { FrozenPacket, OverlaySnapshot, TaskPacket } from '../core/types';
-import { discoverOverlayRoot, loadOverlay, readMemoryBody } from './adapters/overlaySource';
+import { discoverOverlayRoot, loadOverlay, readMemoryBody, watchTargets } from './adapters/overlaySource';
 import { readGitFacts } from './adapters/gitFacts';
 
 // test hook: Playwright E2E redirects Workbench-owned state to a temp dir
@@ -113,16 +113,7 @@ function watchOverlay(getRoot: () => string | undefined, win: BrowserWindow): vo
     const root = getRoot();
     if (!root) return;
     watcher?.close();
-    watcher = watch(
-      [
-        join(root, 'INBOX.md'),
-        join(root, 'memory/MEMORY.md'),
-        join(root, 'profiles/machines/instances'),
-        join(root, 'projects/instances'),
-        join(root, 'harness/manifest.yaml'),
-      ],
-      { ignoreInitial: true, depth: 1 },
-    );
+    watcher = watch(watchTargets(root), { ignoreInitial: true, depth: 1 });
     watcher.on('all', () => {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {

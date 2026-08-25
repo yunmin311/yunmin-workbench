@@ -1,19 +1,21 @@
 import type { Conversation } from '../../../core/types';
+import { bindingCandidate } from '../../../core/project/binding';
 import { buildControlRoom } from '../../../core/project/controlRoom';
 import { useWorkbench } from '../store';
 
 function ConvoRow({ c, onSelect, selected }: { c: Conversation; onSelect: () => void; selected: boolean }) {
   return (
     <li>
-      <button className={`convo ${selected ? 'selected' : ''}`} onClick={onSelect}>
+      <button
+        className={`convo ${selected ? 'selected' : ''}`}
+        onClick={onSelect}
+        title={`${c.observed.sourceRef} · ${c.observed.observedAt} · ${c.observed.verification}`}
+      >
         <span className="role">{c.role}</span>
         <span className={`badge status-${c.status.toLowerCase()}`}>{c.status}</span>
         <span className={`badge ver-${c.verification.toLowerCase()}`}>{c.verification}</span>
         <span className="platform">{c.platform}</span>
         {c.gitAuthority && <span className="git-auth" title={c.gitAuthority}>git</span>}
-        <span className="source" title={`${c.observed.sourceRef} · ${c.observed.observedAt}`}>
-          {c.observed.verification}
-        </span>
       </button>
     </li>
   );
@@ -29,6 +31,10 @@ export function ControlRoomView() {
     selectConversation(c);
     setView('context');
   };
+
+  const gitFacts = git && 'branch' in git ? git : null;
+  const binding = conversation ? bindingCandidate(snapshot, conversation, gitFacts) : null;
+  const show = (v: string | undefined) => v ?? 'UNKNOWN';
 
   return (
     <div className="panel">
@@ -54,13 +60,20 @@ export function ControlRoomView() {
             ` · harness: ${snapshot.harness.map((h) => `${h.harness}${h.model ? `(${h.model})` : ''}`).join(', ')}`}
         </p>
         {git && 'error' in git && <p className="hint">git: {git.error}</p>}
-        {git && 'branch' in git && (
-          <p className="hint" title={`${git.observed.sourceRef} · ${git.observed.observedAt}`}>
-            git: {git.branch ?? '(detached)'} @ {git.head?.slice(0, 8) ?? '?'}
-            {git.dirty ? ` · dirty(${git.modified})` : ' · clean'}
-            {git.ahead ? ` · ↑${git.ahead}` : ''}
-            {git.behind ? ` · ↓${git.behind}` : ''}
-            {' '}· remote: {git.remotes.origin ?? 'none'}
+        {gitFacts && (
+          <p className="hint" title={`${gitFacts.observed.sourceRef} · ${gitFacts.observed.observedAt}`}>
+            git: {gitFacts.branch ?? '(detached)'} @ {gitFacts.head?.slice(0, 8) ?? '?'}
+            {gitFacts.dirty ? ` · dirty(${gitFacts.modified})` : ' · clean'}
+            {gitFacts.ahead ? ` · ↑${gitFacts.ahead}` : ''}
+            {gitFacts.behind ? ` · ↓${gitFacts.behind}` : ''}
+            {' '}· remote: {gitFacts.remotes.origin ?? 'none'}
+          </p>
+        )}
+        {binding && (
+          <p className="hint" title="Execution Binding 候选：只投影可确认字段，无法确认保持 UNKNOWN">
+            binding[{conversation!.role.slice(0, 12)}…]: harness={binding.binding.harness} · machine={show(binding.binding.machine)} ·
+            cwd={show(binding.binding.cwd)} · branch={show(binding.binding.branch)} · head={show(binding.binding.head?.slice(0, 8))} ·
+            session={show(binding.binding.externalSessionRef)} · {binding.observed.verification}
           </p>
         )}
       </section>

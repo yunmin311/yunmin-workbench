@@ -5,7 +5,8 @@ import { parseDialogueRegistry } from '../../src/core/parse/dialogueRegistry';
 import { parseInbox } from '../../src/core/parse/inbox';
 import { parseMemoryIndex } from '../../src/core/parse/memoryIndex';
 import { parseProjectAdapter } from '../../src/core/parse/projectAdapter';
-import { buildControlRoom, listProjects } from '../../src/core/project/controlRoom';
+import { buildControlRoom } from '../../src/core/project/controlRoom';
+import { discoverProjects } from '../../src/core/project/discovery';
 import { buildCanvasGraph } from '../../src/core/project/canvas';
 import { buildStaging } from '../../src/core/project/staging';
 import type { OverlaySnapshot } from '../../src/core/types';
@@ -45,14 +46,14 @@ describe('buildControlRoom', () => {
   });
 });
 
-describe('listProjects', () => {
+describe('discoverProjects', () => {
   it('unions adapter projects and conversation-claimed projects', () => {
-    const list = listProjects(snapshot());
+    const list = discoverProjects(snapshot());
     const ids = list.map((p) => p.projectId);
     expect(ids).toContain('creative-os');
     expect(ids).toContain('governance');
     expect(ids).toContain('personal-site');
-    expect(list.find((p) => p.projectId === 'governance')!.trust).toBe('DISCOVERED');
+    expect(list.find((p) => p.projectId === 'governance')!.trust).toBe('UNKNOWN'); // conversation-only
   });
 });
 

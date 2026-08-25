@@ -1,7 +1,8 @@
 import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { discoverOverlayRoot, loadOverlay } from '../../src/main/adapters/overlaySource';
-import { buildControlRoom, listProjects } from '../../src/core/project/controlRoom';
+import { buildControlRoom } from '../../src/core/project/controlRoom';
+import { discoverProjects } from '../../src/core/project/discovery';
 import { buildCanvasGraph } from '../../src/core/project/canvas';
 import { buildStaging } from '../../src/core/project/staging';
 
@@ -26,7 +27,7 @@ describe.runIf(hasReal)('real overlay smoke (read-only)', () => {
 
   it('full slice: control room -> canvas -> staging over real data', async () => {
     const snap = await loadOverlay(REAL_ROOT);
-    const projects = listProjects(snap);
+    const projects = discoverProjects(snap);
     expect(projects.length).toBeGreaterThan(2);
 
     const room = buildControlRoom(snap, 'creative-os')!;
