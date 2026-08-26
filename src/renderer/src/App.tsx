@@ -6,12 +6,21 @@ import { CanvasView } from './views/CanvasView';
 import { ContextStagingView } from './views/ContextStagingView';
 import { PacketPanel } from './components/PacketPanel';
 import { CommandPalette } from './components/CommandPalette';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 export default function App() {
-  const {
-    snapshot, loading, view, projectId, conversation, draftSaveState, packetValidity,
-    handoffStatus, runtimeSessions, initialize, reloadAndRecheck, setView,
-  } = useWorkbench();
+  const snapshot = useWorkbench((s) => s.snapshot);
+  const loading = useWorkbench((s) => s.loading);
+  const view = useWorkbench((s) => s.view);
+  const projectId = useWorkbench((s) => s.projectId);
+  const conversation = useWorkbench((s) => s.conversation);
+  const draftSaveState = useWorkbench((s) => s.draftSaveState);
+  const packetValidity = useWorkbench((s) => s.packetValidity);
+  const handoffStatus = useWorkbench((s) => s.handoffStatus);
+  const runtimeSessions = useWorkbench((s) => s.runtimeSessions);
+  const initialize = useWorkbench((s) => s.initialize);
+  const reloadAndRecheck = useWorkbench((s) => s.reloadAndRecheck);
+  const setView = useWorkbench((s) => s.setView);
 
   useEffect(() => {
     void initialize();
@@ -92,11 +101,13 @@ export default function App() {
         </div>
       )}
       <main>
-        {view === 'projects' && <ProjectsView />}
-        {view === 'control' && <ControlRoomView />}
-        {view === 'canvas' && <CanvasView />}
-        {view === 'context' && <ContextStagingView />}
-        {view === 'packet' && <PacketPanel />}
+        <ErrorBoundary key={`${view}:${projectId ?? ''}:${conversation?.key ?? ''}`}>
+          {view === 'projects' && <ProjectsView />}
+          {view === 'control' && <ControlRoomView />}
+          {view === 'canvas' && <CanvasView />}
+          {view === 'context' && <ContextStagingView />}
+          {view === 'packet' && <PacketPanel />}
+        </ErrorBoundary>
       </main>
       <CommandPalette />
     </div>

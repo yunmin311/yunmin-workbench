@@ -1,11 +1,15 @@
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { join, relative } from 'node:path';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, screen, type OpenDialogOptions } from 'electron';
 import { watch, type FSWatcher } from 'chokidar';
 import { z } from 'zod';
-import { freezePacket } from '../core/project/packet';
-import type { ActivityEvent, FrozenPacket, HandoffReceipt, HarnessCapabilities, OverlaySnapshot, SourceFingerprint, TaskPacket } from '../core/types';
+import type { ActivityEvent, HandoffReceipt, HarnessCapabilities, OverlaySnapshot, SourceFingerprint, TaskPacket } from '../core/types';
+import {
+  listFrozenPackets,
+  readFrozenPacketDetail,
+  TaskPacketSchema,
+  writeFrozenPacket,
+} from './frozenPacketStore';
 import {
   defaultOverlaySearchRoot,
   discoverOverlayRoot,
@@ -43,59 +47,7 @@ function stateDir(): string {
   return join(app.getPath('userData'), 'state');
 }
 
-async function frozenPacketDir(projectId: string, conversationId: string): Promise<string> {
-  const dir = join(
-    stateDir(),
-    'frozen-packets',
-    encodeStateKey(projectId),
-    encodeStateKey(conversationId),
-  );
-  await mkdir(dir, { recursive: true });
-  return dir;
-}
-
 const KeySchema = z.string().min(1).max(1024);
-const ContextItemSchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  source: z.string(),
-  body: z.string(),
-  state: z.enum(['available', 'included', 'excluded']),
-  pinned: z.boolean(),
-  isReference: z.boolean(),
-  sourceRef: z.string().optional(),
-  provenance: z.enum(['EXTERNAL', 'USER PROVIDED']).optional(),
-  relativePath: z.string().optional(),
-});
-const TaskPacketSchema = z.object({
-  schemaVersion: z.literal(1),
-  packetId: z.string(),
-  createdAt: z.string(),
-  projectId: KeySchema,
-  conversationKey: KeySchema,
-  conversationId: z.string().optional(),
-  taskSummary: z.string(),
-  governanceRefs: z.array(z.string()),
-  included: z.array(ContextItemSchema),
-  references: z.array(ContextItemSchema),
-  sourceFingerprints: z.array(z.object({ sourceRef: z.string(), sha256: z.string() })),
-  unresolvedDependencies: z.array(z.string()),
-  roughTokens: z.number().int().nonnegative(),
-});
-
-async function listFrozen(projectId: string, conversationId: string): Promise<FrozenPacket[]> {
-  try {
-    const dir = await frozenPacketDir(projectId, conversationId);
-    const out: FrozenPacket[] = [];
-    for (const name of await readdir(dir)) {
-      if (!name.endsWith('.json')) continue;
-      out.push(JSON.parse(await readFile(join(dir, name), 'utf8')) as FrozenPacket);
-    }
-    return out.sort((a, b) => a.version - b.version);
-  } catch {
-    return [];
-  }
-}
 
 function emptySnapshot(message: string): OverlaySnapshot {
   return {
@@ -301,7 +253,9 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     const projectRoot = snap.machine?.projectRoots[request.projectId];
     const fingerprints: SourceFingerprint[] = [];
     const errors: { sourceRef: string; message: string }[] = [];
-    for (const sourceRef of [...new Set(request.sourceRefs)]) {
+    const uniqueRefs = [...new Set(request.sourceRefs)];
+
+    const recheckOne = async (sourceRef: string): Promise<void> => {
       try {
         const projectPrefix = `project-file:${request.projectId}:`;
         if (sourceRef.startsWith(projectPrefix)) {
@@ -324,7 +278,18 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       } catch (error) {
         errors.push({ sourceRef, message: String(error) });
       }
-    }
+    };
+
+    const CONCURRENCY = 8;
+    let cursor = 0;
+    const workers = Array.from({ length: Math.min(CONCURRENCY, uniqueRefs.length) }, async () => {
+      while (cursor < uniqueRefs.length) {
+        const index = cursor;
+        cursor += 1;
+        await recheckOne(uniqueRefs[index]);
+      }
+    });
+    await Promise.all(workers);
     return { checkedSourceRefs: [...new Set(request.sourceRefs)], fingerprints, errors };
   });
 
@@ -444,18 +409,24 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
 
   ipcMain.handle('packet:freeze', async (_e, rawPacket: unknown) => {
     const packet: TaskPacket = TaskPacketSchema.parse(rawPacket);
-    const existing = await listFrozen(packet.projectId, packet.conversationKey);
-    const frozen = freezePacket(packet, existing);
-    const dir = await frozenPacketDir(packet.projectId, packet.conversationKey);
-    const file = join(dir, `v${frozen.version}-${frozen.hash.slice(0, 8)}.json`);
-    await writeFile(file, JSON.stringify(frozen, null, 2), 'utf8');
-    return { frozen, path: file };
+    return writeFrozenPacket(stateDir(), packet);
   });
 
-  ipcMain.handle('packet:list', (_e, rawProjectId: unknown, rawConversationId: unknown) => {
+  ipcMain.handle('packet:list', async (_e, rawProjectId: unknown, rawConversationId: unknown) => {
     const projectId = KeySchema.parse(rawProjectId);
     const conversationId = KeySchema.parse(rawConversationId);
-    return listFrozen(projectId, conversationId);
+    return listFrozenPackets(stateDir(), projectId, conversationId);
+  });
+
+  const FrozenDetailSchema = z.union([
+    z.object({ version: z.number().int().positive() }),
+    z.object({ hash: z.string().regex(/^[0-9a-f]{64}$/) }),
+  ]);
+  ipcMain.handle('packet:detail', async (_e, rawProjectId: unknown, rawConversationId: unknown, rawQuery: unknown) => {
+    const projectId = KeySchema.parse(rawProjectId);
+    const conversationId = KeySchema.parse(rawConversationId);
+    const query = FrozenDetailSchema.parse(rawQuery);
+    return readFrozenPacketDetail(stateDir(), projectId, conversationId, query);
   });
 
   ipcMain.handle('clipboard:writeText', (_event, rawText: unknown) => {
@@ -463,26 +434,45 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     clipboard.writeText(text);
   });
 
+  ipcMain.handle('overlay:watch', () => {
+    for (const entry of overlayWatchers) armOverlayWatcher(entry);
+  });
+
   return { refresh };
 }
 
+interface OverlayWatchEntry {
+  win: BrowserWindow;
+  getRoot: () => string | undefined;
+  watcher: FSWatcher | null;
+  timer: NodeJS.Timeout | null;
+}
+
+const overlayWatchers = new Set<OverlayWatchEntry>();
+
+function armOverlayWatcher(entry: OverlayWatchEntry): void {
+  const root = entry.getRoot();
+  if (!root) return;
+  entry.watcher?.close();
+  entry.watcher = watch(watchTargets(root), { ignoreInitial: true, depth: 1 });
+  entry.watcher.on('all', () => {
+    if (entry.timer) clearTimeout(entry.timer);
+    entry.timer = setTimeout(() => {
+      entry.timer = null;
+      if (!entry.win.isDestroyed()) entry.win.webContents.send('overlay:changed');
+    }, 600);
+  });
+}
+
 /** P4: watch the overlay's canonical files; push a cheap invalidation, never contents. */
-function watchOverlay(getRoot: () => string | undefined, win: BrowserWindow): void {
-  let watcher: FSWatcher | null = null;
-  let timer: NodeJS.Timeout | null = null;
-  const arm = () => {
-    const root = getRoot();
-    if (!root) return;
-    watcher?.close();
-    watcher = watch(watchTargets(root), { ignoreInitial: true, depth: 1 });
-    watcher.on('all', () => {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => {
-        if (!win.isDestroyed()) win.webContents.send('overlay:changed');
-      }, 600);
-    });
-  };
-  ipcMain.handle('overlay:watch', () => arm());
+function attachOverlayWatch(getRoot: () => string | undefined, win: BrowserWindow): void {
+  const entry: OverlayWatchEntry = { win, getRoot, watcher: null, timer: null };
+  overlayWatchers.add(entry);
+  win.on('closed', () => {
+    entry.watcher?.close();
+    if (entry.timer) clearTimeout(entry.timer);
+    overlayWatchers.delete(entry);
+  });
 }
 
 async function createWindow(refresh: () => Promise<OverlaySnapshot>): Promise<void> {
@@ -509,7 +499,7 @@ async function createWindow(refresh: () => Promise<OverlaySnapshot>): Promise<vo
   void refresh().then((s) => {
     root = s.overlayRoot || undefined;
   });
-  watchOverlay(() => root, win);
+  attachOverlayWatch(() => root, win);
   win.on('focus', () => {
     if (!win.isDestroyed()) win.webContents.send('app:focus');
   });
@@ -538,16 +528,29 @@ async function createWindow(refresh: () => Promise<OverlaySnapshot>): Promise<vo
   }
 }
 
-app.whenReady().then(() => {
-  const { refresh } = registerIpc();
-  void createWindow(refresh);
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) void createWindow(refresh);
-  });
-});
-
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
 app.on('before-quit', () => codexAdapter.close());
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    const win = BrowserWindow.getAllWindows()[0];
+    if (!win) return;
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  });
+
+  app.whenReady().then(() => {
+    const { refresh } = registerIpc();
+    void createWindow(refresh);
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) void createWindow(refresh);
+    });
+  });
+}

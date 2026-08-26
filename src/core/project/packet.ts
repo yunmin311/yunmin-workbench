@@ -140,7 +140,7 @@ export function compilePacket(input: CompileInput): TaskPacket {
  * Never calls a model; never auto-rebuilds the packet.
  */
 export function checkPacketValidity(
-  packet: TaskPacket,
+  packet: Pick<TaskPacket, 'sourceFingerprints' | 'unresolvedDependencies'>,
   current: SourceFingerprint[],
 ): PacketValidity {
   // Legacy packets did not record unresolved declarations. They cannot prove
@@ -175,7 +175,11 @@ export function canonicalPacketJson(packet: TaskPacket): string {
   return JSON.stringify(sortKeys(packet));
 }
 
-export function freezePacket(packet: TaskPacket, existing: FrozenPacket[], now?: string): FrozenPacket {
+export function freezePacket(
+  packet: TaskPacket,
+  existing: Pick<FrozenPacket, 'projectId' | 'conversationKey' | 'version'>[],
+  now?: string,
+): FrozenPacket {
   const prior = existing.filter(
     (p) => p.projectId === packet.projectId && p.conversationKey === packet.conversationKey,
   );

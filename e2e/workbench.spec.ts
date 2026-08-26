@@ -2,11 +2,13 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { _electron as electron, expect, test } from '@playwright/test';
 
 const OVERLAY = 'D:\\ai-governance-system';
 const PROJECT_CANONICAL = 'D:\\project\\CLAUDE.md';
 const hasOverlay = existsSync(join(OVERLAY, 'overlay.yaml'));
+const hasCodex = spawnSync('codex', ['--version'], { windowsHide: true }).status === 0;
 
 const hash = (p: string) => createHash('sha256').update(readFileSync(p)).digest('hex');
 
@@ -76,7 +78,11 @@ test.describe('Yunmin Workbench vertical slice (real overlay, read-only)', () =>
     await expect(win.locator('h2', { hasText: 'Task Packet' })).toBeVisible();
     await win.locator('textarea').fill('E2E 冒烟：验证 Freeze 链路');
     await expect(win.locator('.validity-current')).toBeVisible();
-    await expect(win.locator('button', { hasText: 'Send to Codex' })).toBeEnabled();
+    if (hasCodex) {
+      await expect(win.locator('button', { hasText: 'Send to Codex' })).toBeEnabled();
+    } else {
+      await expect(win.locator('button', { hasText: 'Send to Codex' })).toBeDisabled();
+    }
     await win.screenshot({ path: join(screenshotDir, '05-packet-preview.png') });
     const previewText = await win.locator('.agent-input-text').textContent();
     await win.locator('button', { hasText: 'Copy Agent Input' }).click();

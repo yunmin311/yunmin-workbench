@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
-import type { ActivityEvent, ContextItem, FrozenPacket, GitFacts, HandoffReceipt, HarnessCapabilities, OverlaySnapshot, SourceFingerprint, TaskPacket } from '../core/types';
+import type { ActivityEvent, ContextItem, FrozenPacket, FrozenPacketSummary, GitFacts, HandoffReceipt, HarnessCapabilities, OverlaySnapshot, SourceFingerprint, TaskPacket } from '../core/types';
 import type { WorkbenchDraftV1 } from '../core/project/draft';
 import type { WorkspaceSessionV1 } from '../core/project/workspaceSession';
 
@@ -8,8 +8,16 @@ const api = {
     ipcRenderer.invoke('overlay:load', opts),
   freezePacket: (packet: TaskPacket): Promise<{ frozen: FrozenPacket; path: string }> =>
     ipcRenderer.invoke('packet:freeze', packet),
-  listFrozen: (projectId: string, conversationId: string): Promise<FrozenPacket[]> =>
-    ipcRenderer.invoke('packet:list', projectId, conversationId),
+  listFrozen: (projectId: string, conversationId: string): Promise<{
+    packets: FrozenPacketSummary[];
+    problems: { file: string; message: string }[];
+  }> => ipcRenderer.invoke('packet:list', projectId, conversationId),
+  readFrozenDetail: (
+    projectId: string,
+    conversationId: string,
+    query: { version: number } | { hash: string },
+  ): Promise<FrozenPacket | null> =>
+    ipcRenderer.invoke('packet:detail', projectId, conversationId, query),
   readMemory: (memoryId: string): Promise<string | null> =>
     ipcRenderer.invoke('memory:read', memoryId),
   loadGit: (projectId: string): Promise<{ facts?: GitFacts; error?: string }> =>

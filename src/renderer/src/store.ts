@@ -18,6 +18,7 @@ import type {
   ActivityEvent,
   Conversation,
   FrozenPacket,
+  FrozenPacketSummary,
   GitFacts,
   OverlaySnapshot,
   SourceFingerprint,
@@ -35,7 +36,9 @@ interface WorkbenchState {
   conversation: Conversation | null;
   staging: ContextItem[];
   taskSummary: string;
-  frozen: FrozenPacket[];
+  frozen: FrozenPacketSummary[];
+  frozenProblems: { file: string; message: string }[];
+  frozenDetails: Record<string, FrozenPacket>;
   git: GitFacts | { error: string } | null;
   memoryBodies: Record<string, string>;
   projectFingerprints: SourceFingerprint[];
@@ -63,6 +66,7 @@ interface WorkbenchState {
   togglePin: (id: string) => void;
   setTaskSummary: (s: string) => void;
   refreshFrozen: () => Promise<void>;
+  loadFrozenDetail: (summary: FrozenPacketSummary) => Promise<FrozenPacket | null>;
   loadGit: (projectId: string) => Promise<void>;
   loadMemoryBody: (memoryId: string) => Promise<void>;
   addProjectFile: (asReference: boolean) => Promise<void>;
@@ -158,6 +162,8 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   staging: [],
   taskSummary: '',
   frozen: [],
+  frozenProblems: [],
+  frozenDetails: {},
   git: null,
   memoryBodies: {},
   projectFingerprints: [],
@@ -264,6 +270,8 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       staging: snapshot ? buildStaging(snapshot, projectId) : [],
       taskSummary: '',
       frozen: [],
+      frozenProblems: [],
+      frozenDetails: {},
       git: null,
       projectFingerprints: [],
       recheckedSourceRefs: [],
@@ -378,8 +386,24 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   refreshFrozen: async () => {
     const { projectId, conversation } = get();
     if (!projectId || !conversation) return;
-    const frozen = await window.wb.listFrozen(projectId, conversation.key);
-    if (get().projectId === projectId && get().conversation?.key === conversation.key) set({ frozen });
+    const result = await window.wb.listFrozen(projectId, conversation.key);
+    if (get().projectId === projectId && get().conversation?.key === conversation.key) {
+      set({ frozen: result.packets, frozenProblems: result.problems, frozenDetails: {} });
+    }
+  },
+
+  loadFrozenDetail: async (summary) => {
+    const { projectId, conversation, frozenDetails } = get();
+    if (!projectId || !conversation) return null;
+    const cached = frozenDetails[summary.hash];
+    if (cached) return cached;
+    const detail = await window.wb.readFrozenDetail(projectId, conversation.key, {
+      version: summary.version,
+    });
+    if (detail && get().projectId === projectId && get().conversation?.key === conversation.key) {
+      set((state) => ({ frozenDetails: { ...state.frozenDetails, [summary.hash]: detail } }));
+    }
+    return detail;
   },
 
   loadGit: async (projectId) => {

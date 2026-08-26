@@ -2,33 +2,98 @@ import { useEffect, useMemo, useState } from 'react';
 import { checkPacketValidity, compilePacket, renderAgentInput } from '../../../core/project/packet';
 import { applyHandoffReceipt, createHandoffIntent, markHandoffDispatched } from '../../../core/project/handoff';
 import { overlayFileSourceRef, projectFileSourceRef } from '../../../core/project/sourceIdentity';
-import type { HandoffReceipt, HarnessCapabilities, UserIntent } from '../../../core/types';
+import type { FrozenPacketSummary, HandoffReceipt, HarnessCapabilities, SourceFingerprint, UserIntent } from '../../../core/types';
 import { useWorkbench } from '../store';
 
+const COPY_CHAR_LIMIT = 5_000_000;
+
+function FrozenRow({
+  summary,
+  currentFingerprints,
+}: {
+  summary: FrozenPacketSummary;
+  currentFingerprints: SourceFingerprint[];
+}) {
+  const detail = useWorkbench((s) => s.frozenDetails[summary.hash]);
+  const loadFrozenDetail = useWorkbench((s) => s.loadFrozenDetail);
+  const [open, setOpen] = useState(false);
+  const [problem, setProblem] = useState('');
+  const [message, setMessage] = useState('');
+  const validity = checkPacketValidity(summary, currentFingerprints);
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next && !detail) {
+      void loadFrozenDetail(summary).then((loaded) => {
+        if (!loaded) setProblem('Frozen body could not be loaded (file missing or corrupt). Other versions are unaffected.');
+      });
+    }
+  };
+
+  const copyFrozen = async () => {
+    if (!detail) return;
+    try {
+      await window.wb.copyText(renderAgentInput(detail));
+      setMessage('Copied frozen input.');
+    } catch (error) {
+      setMessage(`Copy failed: ${String(error)}`);
+    }
+  };
+
+  return (
+    <li className="frozen-row">
+      <button className="frozen-toggle" aria-expanded={open} onClick={toggle}>
+        v{summary.version} · {summary.frozenAt} · {summary.hash.slice(0, 12)} · ≈{summary.roughTokens} tok ·{' '}
+        <span className={`validity validity-${validity.toLowerCase()}`}>{validity}</span>
+      </button>
+      {open && (
+        <div className="frozen-detail">
+          {problem && <p className="packet-alert">{problem}</p>}
+          {!problem && !detail && <p className="hint">Loading frozen body…</p>}
+          {detail && (
+            <>
+              <p className="source">{summary.taskSummary || '(no task summary)'}</p>
+              <div className="packet-copy-row">
+                <button onClick={() => void copyFrozen()}>Copy frozen input</button>
+                {message && <span className={message.startsWith('Copied') ? 'ok' : 'packet-alert'}>{message}</span>}
+              </div>
+              <pre className="agent-input-text">{renderAgentInput(detail)}</pre>
+            </>
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
+
 export function PacketPanel() {
-  const {
-    snapshot,
-    projectId,
-    conversation,
-    staging,
-    taskSummary,
-    projectFingerprints,
-    recheckedSourceRefs,
-    recheckedFingerprints,
-    sourceChanges,
-    setTaskSummary,
-    frozen,
-    refreshFrozen,
-    recheckSources,
-    setPacketValidity,
-    setHandoffStatus,
-  } = useWorkbench();
-  const [lastFrozen, setLastFrozen] = useState<string>('');
+  const snapshot = useWorkbench((s) => s.snapshot);
+  const projectId = useWorkbench((s) => s.projectId);
+  const conversation = useWorkbench((s) => s.conversation);
+  const staging = useWorkbench((s) => s.staging);
+  const taskSummary = useWorkbench((s) => s.taskSummary);
+  const projectFingerprints = useWorkbench((s) => s.projectFingerprints);
+  const recheckedSourceRefs = useWorkbench((s) => s.recheckedSourceRefs);
+  const recheckedFingerprints = useWorkbench((s) => s.recheckedFingerprints);
+  const sourceChanges = useWorkbench((s) => s.sourceChanges);
+  const frozen = useWorkbench((s) => s.frozen);
+  const frozenProblems = useWorkbench((s) => s.frozenProblems);
+  const setTaskSummary = useWorkbench((s) => s.setTaskSummary);
+  const refreshFrozen = useWorkbench((s) => s.refreshFrozen);
+  const recheckSources = useWorkbench((s) => s.recheckSources);
+  const setPacketValidity = useWorkbench((s) => s.setPacketValidity);
+  const setHandoffStatus = useWorkbench((s) => s.setHandoffStatus);
+
+  const [lastFrozen, setLastFrozen] = useState('');
+  const [freezePending, setFreezePending] = useState(false);
+  const [freezeError, setFreezeError] = useState('');
   const [copyMessage, setCopyMessage] = useState('');
   const [capabilities, setCapabilities] = useState<HarnessCapabilities | null>(null);
   const [intent, setIntent] = useState<UserIntent | null>(null);
   const [receipt, setReceipt] = useState<HandoffReceipt | null>(null);
   const [handoffPending, setHandoffPending] = useState(false);
+  const [handoffError, setHandoffError] = useState('');
 
   useEffect(() => {
     void recheckSources();
@@ -62,23 +127,39 @@ export function PacketPanel() {
   }, [snapshot, projectId, conversation, staging, taskSummary, currentFingerprints]);
 
   const previewValidity = packet ? checkPacketValidity(packet, currentFingerprints) : 'INVALID';
-  const compiledText = packet ? renderAgentInput(packet) : '';
+  const compiledText = useMemo(() => (packet ? renderAgentInput(packet) : ''), [packet]);
 
   useEffect(() => {
     setPacketValidity(packet ? previewValidity : 'UNKNOWN');
   }, [packet, previewValidity, setPacketValidity]);
 
   const freeze = async () => {
-    if (!packet) return;
-    const { frozen: f, path } = await window.wb.freezePacket(packet);
-    setLastFrozen(`v${f.version} · ${f.hash.slice(0, 12)} → ${path}`);
-    await refreshFrozen();
+    if (!packet || freezePending) return;
+    setFreezePending(true);
+    setFreezeError('');
+    try {
+      const { frozen: f, path } = await window.wb.freezePacket(packet);
+      setLastFrozen(`v${f.version} · ${f.hash.slice(0, 12)} → ${path}`);
+      await refreshFrozen();
+    } catch (error) {
+      setFreezeError(`Freeze failed — nothing was written. ${String(error)}`);
+    } finally {
+      setFreezePending(false);
+    }
   };
 
   const copy = async () => {
     if (!compiledText) return;
-    await window.wb.copyText(compiledText);
-    setCopyMessage('Copied exact preview text.');
+    if (compiledText.length > COPY_CHAR_LIMIT) {
+      setCopyMessage(`Copy blocked: agent input is ${(compiledText.length / 1_000_000).toFixed(1)} MB, over the 5 MB clipboard guard.`);
+      return;
+    }
+    try {
+      await window.wb.copyText(compiledText);
+      setCopyMessage('Copied exact preview text.');
+    } catch (error) {
+      setCopyMessage(`Copy failed: ${String(error)}`);
+    }
   };
 
   const handoff = async () => {
@@ -92,6 +173,7 @@ export function PacketPanel() {
     const dispatched = markHandoffDispatched(draftIntent);
     setIntent(dispatched);
     setReceipt(null);
+    setHandoffError('');
     setHandoffPending(true);
     setHandoffStatus('DISPATCHED');
     try {
@@ -104,8 +186,12 @@ export function PacketPanel() {
       setReceipt(nextReceipt);
       setIntent(applyHandoffReceipt(dispatched, nextReceipt));
       setHandoffStatus(nextReceipt.status);
+      if (nextReceipt.status !== 'ACCEPTED') {
+        setHandoffError(`Dispatch did not reach Codex (${nextReceipt.status}).${nextReceipt.message ? ` ${nextReceipt.message}` : ''}`);
+      }
     } catch (error) {
       setHandoffStatus('FAILED');
+      setHandoffError(`Dispatch failed: ${String(error)}`);
       setIntent({ ...dispatched, state: 'failed', receipt: { at: new Date().toISOString(), message: String(error) } });
     } finally {
       setHandoffPending(false);
@@ -164,8 +250,9 @@ export function PacketPanel() {
           >
             {handoffPending ? 'Sending…' : 'Send to Codex'}
           </button>
-          {copyMessage && <span className="ok">{copyMessage}</span>}
+          {copyMessage && <span className={copyMessage.startsWith('Copied') ? 'ok' : 'packet-alert'}>{copyMessage}</span>}
         </div>
+        {handoffError && <p className="packet-alert">{handoffError}</p>}
         {intent && (
           <p className="hint handoff-status">
             Handoff intent: {intent.state.toUpperCase()}
@@ -184,21 +271,25 @@ export function PacketPanel() {
           </p>
         </details>
       </div>
-      <button className="primary" onClick={() => void freeze()}>Freeze Current Task Packet</button>
-      {lastFrozen && <p className="ok">frozen: {lastFrozen}</p>}
+      <button className="primary" disabled={freezePending} onClick={() => void freeze()}>
+        {freezePending ? 'Freezing…' : 'Freeze Current Task Packet'}
+      </button>
+      {freezeError && <p className="packet-alert">{freezeError}</p>}
+      {lastFrozen && !freezeError && <p className="ok">frozen: {lastFrozen}</p>}
+      {frozenProblems.length > 0 && (
+        <div className="problems">
+          {frozenProblems.map((p) => (
+            <span key={p.file}>[frozen-store] {p.file}: {p.message}</span>
+          ))}
+        </div>
+      )}
       {frozen.length > 0 && (
         <div>
           <h4>Frozen versions（不可变快照；变化只能产生新版本）</h4>
           <ul>
-            {frozen.map((f) => {
-              const validity = checkPacketValidity(f, currentFingerprints);
-              return (
-                <li key={f.hash}>
-                  v{f.version} · {f.frozenAt} · {f.hash.slice(0, 12)} · ≈{f.roughTokens} tok ·{' '}
-                  <span className={`validity validity-${validity.toLowerCase()}`}>{validity}</span>
-                </li>
-              );
-            })}
+            {frozen.map((f) => (
+              <FrozenRow key={f.hash} summary={f} currentFingerprints={currentFingerprints} />
+            ))}
           </ul>
           <p className="hint">CURRENT=依赖未变 · STALE=依赖文件已改 · INVALID=依赖已不存在（本地确定性比较，不重建 Packet）</p>
         </div>

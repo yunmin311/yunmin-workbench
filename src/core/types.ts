@@ -331,3 +331,23 @@ export interface FrozenPacket extends TaskPacket {
   /** frozen packets are immutable; later changes produce a new version. */
   version: number;
 }
+
+/**
+ * Listing projection of a FrozenPacket: identity + validity metadata only.
+ * Full bodies (included/references) load on demand via a detail read, so
+ * history growth never drags every body across IPC into the renderer.
+ */
+export interface FrozenPacketSummary {
+  schemaVersion: 1;
+  packetId: string;
+  projectId: string;
+  conversationKey: string;
+  conversationId?: string;
+  version: number;
+  hash: string;
+  frozenAt: string;
+  roughTokens: number;
+  taskSummary: string;
+  sourceFingerprints: SourceFingerprint[];
+  unresolvedDependencies: string[];
+}

@@ -159,3 +159,7 @@ input { width: 100%; background: #1e2128; color: #d7dae0; border: 1px solid #394
   .governance-verification { margin-left: 0; }
   table.staging .source { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
+.frozen-row { margin-bottom: 6px; }
+.frozen-toggle { font-family: ui-monospace, monospace; font-size: 12px; }
+.frozen-detail { margin: 8px 0 14px 14px; }
+.frozen-detail .agent-input-text { max-height: 320px; overflow: auto; }
