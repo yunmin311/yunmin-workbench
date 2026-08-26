@@ -4,6 +4,7 @@ import { basename, join } from 'node:path';
 import { load } from 'js-yaml';
 import { _electron as electron, expect, test } from '@playwright/test';
 import { encodeStateKey } from '../src/main/stateKey';
+import { openSessionPacket } from './prototype-shell';
 
 const OVERLAY = 'D:\\ai-governance-system';
 const hasOverlay = existsSync(join(OVERLAY, 'overlay.yaml'));
@@ -100,12 +101,9 @@ test.describe('frozen corruption containment', () => {
       env: { ...process.env, WB_STATE_DIR: stateDir },
     });
     const win = await app.firstWindow();
-    await expect(win.locator('.titlebar-brand')).toContainText('Yunmin Workbench');
+    await expect(win.locator('.prototype-chrome')).toBeVisible();
 
-    await win.locator('.sidebar-projects button', { hasText: 'Creative OS' }).click();
-    await win.locator('.sidebar-conversations button').first().click();
-    await win.keyboard.press('Control+5');
-    await expect(win.locator('h2', { hasText: 'Task Packet' })).toBeVisible();
+    await openSessionPacket(win, 'Creative OS');
 
     const row = win.locator('.frozen-row').first();
     await expect(row).toBeVisible();
@@ -131,14 +129,12 @@ test.describe('frozen corruption containment', () => {
       env: { ...process.env, WB_STATE_DIR: stateDir },
     });
     const win = await app.firstWindow();
-    await expect(win.locator('.titlebar-brand')).toContainText('Yunmin Workbench');
+    await expect(win.locator('.prototype-chrome')).toBeVisible();
 
-    await win.locator('.sidebar-projects button', { hasText: 'Creative OS' }).click();
-    await win.locator('.sidebar-conversations button').first().click();
-    await win.keyboard.press('Control+5');
-    await expect(win.locator('h2', { hasText: 'Task Packet' })).toBeVisible();
+    await openSessionPacket(win, 'Creative OS');
+
     await win.locator('.inspector-pane textarea').fill('Corruption recovery freeze');
-    await expect(win.locator('.validity-current')).toBeVisible();
+    await expect(win.locator('.inspector-pane .validity-current')).toBeVisible();
     await win.locator('button.primary', { hasText: 'Freeze Current Task Packet' }).click();
     await expect(win.locator('p.ok')).toContainText('v1');
 

@@ -28,35 +28,37 @@ test.describe('Yunmin Workbench vertical slice (real overlay, read-only)', () =>
     });
     const win = await app.firstWindow();
     // Workspace shell
-    await expect(win.locator('.titlebar-brand')).toContainText('Yunmin Workbench');
+    await expect(win.locator('.prototype-chrome')).toBeVisible();
+    // Command palette still opens, lists the workspace, and selects it.
     await win.keyboard.press('Control+K');
     const commandInput = win.locator('[cmdk-input]');
     await expect(commandInput).toBeFocused();
     await commandInput.fill('Open Workspace Creative OS');
-    await expect(win.locator('[cmdk-item]', { hasText: 'Open Workspace · Creative OS' })).toBeVisible();
-    await win.keyboard.press('Escape');
-    const project = win.locator('.sidebar-projects button', { hasText: 'Creative OS' });
-    await expect(project).toBeVisible();
-    await project.click();
+    const paletteItem = win.locator('[cmdk-item]', { hasText: 'Open Workspace · Creative OS' });
+    await expect(paletteItem).toBeVisible();
+    await paletteItem.click();
+    await expect(win.locator('[cmdk-input]')).toHaveCount(0);
 
-    // Sidebar projects current registry conversations into the work surface.
+    // Session picker: choose the first conversation of the selected project.
+    await win.getByRole('button', { name: 'Open workspace and session switcher' }).click();
     const conversation = win.locator('.sidebar-conversations button').first();
     await expect(conversation).toBeVisible();
     await conversation.click();
     await expect(win.locator('.session-surface')).toBeVisible();
 
-    // Canvas: projection nodes render, then returning to Work preserves the selected Session.
-    await win.getByRole('button', { name: 'Canvas' }).click();
+    // Canvas: projection nodes render, then the Session tab preserves the selected Session.
+    await win.getByRole('button', { name: 'Canvas', exact: true }).click();
+    await expect(win.locator('.prototype-surface.is-canvas .react-flow')).toBeVisible();
     await expect(win.locator('.wb-project')).toBeVisible();
-    await expect(win.locator('.canvas-hint')).toHaveCount(0);
+    await expect(win.locator('.canvas-title')).toBeVisible();
     const convoNode = win.locator('.wb-conversation').first();
     await expect(convoNode).toBeVisible();
-    await win.locator('.harness-rail').getByRole('button', { name: 'Work', exact: true }).click();
+    await win.getByRole('button', { name: 'Session', exact: true }).click();
     await expect(win.locator('.session-surface')).toBeVisible();
 
     // Context Inspector: toggle one available item to included.
-    await win.getByRole('tab', { name: 'Context' }).click();
-    await expect(win.locator('h2', { hasText: 'Context Staging' })).toBeVisible();
+    await win.getByRole('button', { name: 'Context', exact: true }).click();
+    await expect(win.locator('.inspector-pane h2', { hasText: 'Context Staging' })).toBeVisible();
     const governanceContext = win.locator('details.governance-context');
     await expect(governanceContext).toBeVisible();
     await expect(governanceContext).not.toHaveAttribute('open', '');
@@ -66,13 +68,14 @@ test.describe('Yunmin Workbench vertical slice (real overlay, read-only)', () =>
     await win.locator('.manual-context-form button', { hasText: 'Add to Included' }).click();
     const availableBtn = win.locator('button.state-available').first();
     await availableBtn.click();
-    await expect(win.locator('.state-included').first()).toBeVisible();
+    const includedGroup = win.locator('section.context-group', { hasText: 'Included' }).first();
+    await expect(includedGroup.locator('button.state-included').first()).toBeVisible();
 
     // Packet: fill summary, freeze
-    await win.keyboard.press('Control+5');
+    await win.getByRole('button', { name: 'Packet', exact: true }).click();
     await expect(win.locator('h2', { hasText: 'Task Packet' })).toBeVisible();
     await win.locator('.inspector-pane textarea').fill('E2E 冒烟：验证 Freeze 链路');
-    await expect(win.locator('.validity-current')).toBeVisible();
+    await expect(win.locator('.inspector-pane .validity-current')).toBeVisible();
     if (hasCodex) {
       await expect(win.locator('button', { hasText: 'Send to Codex' })).toBeEnabled();
     } else {
@@ -98,7 +101,7 @@ test.describe('Yunmin Workbench vertical slice (real overlay, read-only)', () =>
 
     // Debounced Workbench-owned draft survives a full application restart.
     await win.waitForTimeout(700);
-    await expect(win.locator('.status-bar')).toContainText('Draft saved');
+    await expect(win.locator('.session-composer')).toContainText('Draft saved');
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setBounds({ width: 1100, height: 740 }));
     await win.waitForTimeout(500);
     await app.close();
@@ -107,15 +110,15 @@ test.describe('Yunmin Workbench vertical slice (real overlay, read-only)', () =>
       env: { ...process.env, WB_STATE_DIR: stateDir },
     });
     const resumed = await app.firstWindow();
-    await expect(resumed.locator('.titlebar-brand')).toContainText('Yunmin Workbench');
+    // Workspace continuity restores the exact project (and view) after fresh truth loads.
+    await expect(resumed.locator('.prototype-chrome')).toContainText('Creative OS');
     const resumedBounds = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds());
     expect(resumedBounds.width).toBe(1100);
     expect(resumedBounds.height).toBe(740);
-    // Workspace continuity restores the exact project/conversation/view after fresh truth loads.
     await expect(resumed.locator('.inspector-pane textarea')).toHaveValue('E2E 冒烟：验证 Freeze 链路');
     await expect(resumed.locator('.frozen-row', { hasText: 'v1' })).toBeVisible();
     await resumed.getByRole('button', { name: 'Reload external truth' }).click();
-    await expect(resumed.locator('.validity-current').first()).toBeVisible();
+    await expect(resumed.locator('.inspector-pane .validity-current').first()).toBeVisible();
     const resumedPreview = await resumed.locator('.agent-input-text').textContent();
     await resumed.locator('button', { hasText: 'Copy Agent Input' }).click();
     const resumedCopy = await app.evaluate(({ clipboard }) => clipboard.readText());
