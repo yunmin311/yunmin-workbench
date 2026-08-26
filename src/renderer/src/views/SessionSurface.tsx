@@ -116,11 +116,10 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
       <section className="session-activity" aria-label="Structured runtime activity">
         {activityProblem && <p className="surface-alert">{activityProblem}</p>}
         {events.length === 0 ? (
-          <div className="activity-empty">
+          <p className="activity-hint">
             <span className={`runtime-pulse runtime-${runtime?.state ?? 'unknown'}`} />
-            <strong>No observed activity yet</strong>
-            <p>Runtime boundaries appear here only when the adapter reports them. No transcript has been invented.</p>
-          </div>
+            No observed activity yet. Runtime boundaries appear here only when the adapter reports them; nothing is invented.
+          </p>
         ) : (
           <ol className="session-timeline">
             {events.map((event) => <ActivityCard key={event.id} event={event} />)}

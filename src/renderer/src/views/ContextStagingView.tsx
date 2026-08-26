@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { useState } from 'react';
 import { useWorkbench } from '../store';
 
 const CYCLE: Record<string, 'available' | 'included' | 'excluded'> = {
@@ -59,58 +59,60 @@ export function ContextStagingView() {
   };
 
   const renderItems = (items: typeof staging) => (
-    <table className="staging">
-      <thead>
-        <tr><th>Item</th><th>Type</th><th>Source</th><th>State</th><th>Pin</th></tr>
-      </thead>
-      <tbody>
-        {items.map((c) => (
-          <Fragment key={c.id}>
-            <tr className={`row-${c.state}`}>
-              <td title={c.body}><button className="linklike" onClick={() => expand(c.id)}>{c.title}</button></td>
-              <td>
-                <span className="kind-label">
-                  {c.provenance === 'USER PROVIDED' ? 'USER PROVIDED · ' : ''}
-                  {c.isReference ? 'Reference' : 'Context'}
-                </span>
-              </td>
-              <td className="source">{c.source}</td>
-              <td>
-                <button className={`state state-${c.state}`} onClick={() => setStagingState(c.id, CYCLE[c.state])}>
-                  {c.state}
-                </button>
-              </td>
-              <td>
-                <button className={`pin ${c.pinned ? 'on' : ''}`} disabled={c.state !== 'included'} onClick={() => togglePin(c.id)}>
-                  {c.pinned ? '★' : '☆'}
-                </button>
-              </td>
-            </tr>
-            {expanded === c.id && (
-              <tr className="body-row">
-                <td colSpan={5}>
-                  <pre>{c.id.startsWith('memory:') ? memoryBodies[c.id.slice('memory:'.length)] ?? 'loading…' : c.body}</pre>
-                </td>
-              </tr>
-            )}
-          </Fragment>
-        ))}
-      </tbody>
-    </table>
+    <ul className="context-list">
+      {items.map((c) => (
+        <li key={c.id} className={`context-item is-${c.state}`}>
+          <div className="context-item-row">
+            <button
+              className={`state state-${c.state}`}
+              onClick={() => setStagingState(c.id, CYCLE[c.state])}
+              title="Cycle: available → included → excluded"
+            >
+              {c.state}
+            </button>
+            <button className="item-title linklike" onClick={() => expand(c.id)} title={c.body}>
+              {c.title}
+            </button>
+            <button
+              className={`pin ${c.pinned ? 'on' : ''}`}
+              disabled={c.state !== 'included'}
+              onClick={() => togglePin(c.id)}
+              title={c.state === 'included' ? 'Pin into packet head' : 'Pinning requires included'}
+            >
+              {c.pinned ? '★' : '☆'}
+            </button>
+          </div>
+          <p className="item-meta">
+            <span className="kind-label">
+              {c.provenance === 'USER PROVIDED' ? 'USER PROVIDED · ' : ''}
+              {c.isReference ? 'Reference' : 'Context'}
+            </span>
+            <span className="source">{c.source}</span>
+          </p>
+          {expanded === c.id && (
+            <pre className="item-body">
+              {c.id.startsWith('memory:') ? memoryBodies[c.id.slice('memory:'.length)] ?? 'loading…' : c.body}
+            </pre>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 
   return (
     <div className="panel">
       <h2>Context Staging</h2>
       <p className="hint">
-        Preparing input for project: {projectId}
-        {conversation ? ` · conversation: ${conversation.role}` : ' · （未选 Conversation，先回 Control Room 或 Canvas 点一个）'}
+        {projectId}
+        {conversation ? ` · ${conversation.role}` : ' · （未选 Conversation，先回 Control Room 或 Canvas 点一个）'}
       </p>
-      <div className="context-counts">
-        <span className="state-included">{counts.included} Included</span>
-        <span className="state-available">{counts.available} Available</span>
-        <span className="state-excluded">{counts.excluded} Excluded</span>
-      </div>
+      <p className="staging-counts">
+        <span className="state-included">{counts.included} included</span>
+        <span aria-hidden="true">·</span>
+        <span className="state-available">{counts.available} available</span>
+        <span aria-hidden="true">·</span>
+        <span className="state-excluded">{counts.excluded} excluded</span>
+      </p>
       <div className="context-actions">
         <button onClick={() => void addProjectFile(false)}>+ File Context</button>
         <button onClick={() => void addProjectFile(true)}>+ File Reference</button>

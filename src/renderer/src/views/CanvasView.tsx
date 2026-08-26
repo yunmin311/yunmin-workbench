@@ -46,11 +46,13 @@ export function CanvasView() {
         id: edge.id,
         source: edge.source,
         target: edge.target,
-        type: 'smoothstep',
+        // Structural availability (membership/mount) reads as a fan from its
+        // anchor; observed runtime edges keep routed arrows.
+        type: evidenced ? 'smoothstep' : 'default',
         className: `wb-edge-${edge.kind}`,
-        markerEnd: { type: evidenced ? MarkerType.ArrowClosed : MarkerType.Arrow, width: 14, height: 14 },
+        markerEnd: { type: evidenced ? MarkerType.ArrowClosed : MarkerType.Arrow, width: 10, height: 10 },
         style: {
-          strokeWidth: evidenced ? 1.7 : 1.15,
+          strokeWidth: evidenced ? 1.7 : 1.1,
           strokeDasharray: edge.kind === 'mount' ? '3 5' : undefined,
         },
       };
@@ -66,7 +68,7 @@ export function CanvasView() {
         nodes={nodes}
         edges={edges}
         fitView
-        fitViewOptions={{ padding: 0.24, minZoom: 0.55, maxZoom: 1.15 }}
+        fitViewOptions={{ padding: 0.16, minZoom: 0.55, maxZoom: 1.15 }}
         minZoom={0.35}
         maxZoom={1.8}
         nodesDraggable

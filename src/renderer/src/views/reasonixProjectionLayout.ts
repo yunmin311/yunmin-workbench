@@ -10,10 +10,10 @@
  */
 import type { WbEdge, WbNode } from '../../../core/types';
 
-const W = 216;
-const H = 64;
-const COL_GAP = 116;
-const ROW_GAP = 26;
+const W = 200;
+const H = 56;
+const COL_GAP = 104;
+const ROW_GAP = 20;
 const ROUNDS = 4;
 
 function ranksOf(nodes: WbNode[], edges: WbEdge[]): WbNode[][] {

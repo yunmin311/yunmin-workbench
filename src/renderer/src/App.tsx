@@ -100,18 +100,16 @@ export default function App() {
           <button disabled={!projectId} aria-current={canvasMode ? 'page' : undefined} onClick={() => setView('canvas')}>Canvas</button>
         </nav>
 
-        <div className="chrome-status" aria-label="Current session status">
-          {conversation && (
-            <span className={`runtime-inline runtime-${currentRuntime?.state ?? 'unknown'}`}>
-              <i />{currentRuntime?.state ?? 'runtime unknown'}
-            </span>
+        <div className="chrome-status" aria-label="Actionable session status">
+          {conversation && currentRuntime?.state === 'error' && (
+            <span className="runtime-inline runtime-error"><i />runtime error</span>
           )}
-          {conversation && packetValidity !== 'CURRENT' && (
+          {conversation && (packetValidity === 'STALE' || packetValidity === 'INVALID') && (
             <button className={`validity-inline validity-${packetValidity.toLowerCase()}`} onClick={() => openInspector('packet')}>
               Packet {packetValidity}
             </button>
           )}
-          {conversation && <span className="draft-inline">Draft {draftSaveState}</span>}
+          {conversation && draftSaveState === 'error' && <span className="draft-inline draft-error">Draft save failed</span>}
         </div>
 
         <div className="chrome-tools">
