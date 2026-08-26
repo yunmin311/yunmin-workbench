@@ -249,6 +249,29 @@ export interface ContextItem {
   relativePath?: string;
 }
 
+export interface HarnessCapabilities {
+  harness: 'codex' | 'claude' | 'deepseek';
+  canDispatch: boolean;
+  canCreateSession: boolean;
+  canResumeSession: boolean;
+  canObserveRuntime: boolean;
+  canReceiveReceipt: boolean;
+  protocol: string;
+  evidence: string;
+}
+
+export interface HandoffReceipt {
+  intentId: string;
+  harness: 'codex' | 'claude' | 'deepseek';
+  status: 'ACCEPTED' | 'REJECTED' | 'FAILED';
+  at: string;
+  runtimeRef?: string;
+  turnRef?: string;
+  source: 'protocol';
+  protocolEvidence: string;
+  message?: string;
+}
+
 // ===== 4. Frozen Packet Validity =====
 
 export interface TaskPacket {

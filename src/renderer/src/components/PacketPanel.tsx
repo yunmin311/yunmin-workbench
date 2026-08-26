@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { checkPacketValidity, compilePacket, renderAgentInput } from '../../../core/project/packet';
+import { applyHandoffReceipt, createHandoffIntent, markHandoffDispatched } from '../../../core/project/handoff';
 import { overlayFileSourceRef, projectFileSourceRef } from '../../../core/project/sourceIdentity';
+import type { HandoffReceipt, HarnessCapabilities, UserIntent } from '../../../core/types';
 import { useWorkbench } from '../store';
 
 export function PacketPanel() {
@@ -21,9 +23,14 @@ export function PacketPanel() {
   } = useWorkbench();
   const [lastFrozen, setLastFrozen] = useState<string>('');
   const [copyMessage, setCopyMessage] = useState('');
+  const [capabilities, setCapabilities] = useState<HarnessCapabilities | null>(null);
+  const [intent, setIntent] = useState<UserIntent | null>(null);
+  const [receipt, setReceipt] = useState<HandoffReceipt | null>(null);
+  const [handoffPending, setHandoffPending] = useState(false);
 
   useEffect(() => {
     void recheckSources();
+    void window.wb.loadHarnessCapabilities().then(setCapabilities);
   }, [projectId, conversation?.key, recheckSources]);
 
   const currentFingerprints = useMemo(() => {
@@ -70,6 +77,28 @@ export function PacketPanel() {
     setCopyMessage('Copied exact preview text.');
   };
 
+  const handoff = async () => {
+    if (handoffPending || previewValidity !== 'CURRENT' || !capabilities?.canDispatch) return;
+    const draftIntent = createHandoffIntent(globalThis.crypto.randomUUID(), {
+      projectId,
+      conversationKey: conversation.key,
+      packetText: compiledText,
+      harness: 'codex',
+    });
+    const dispatched = markHandoffDispatched(draftIntent);
+    setIntent(dispatched);
+    setReceipt(null);
+    setHandoffPending(true);
+    const nextReceipt = await window.wb.dispatchToHarness({
+      intentId: draftIntent.id,
+      projectId,
+      packetText: compiledText,
+    });
+    setReceipt(nextReceipt);
+    setIntent(applyHandoffReceipt(dispatched, nextReceipt));
+    setHandoffPending(false);
+  };
+
   return (
     <div className="panel">
       <h2>Task Packet — {conversation.role}</h2>
@@ -99,13 +128,31 @@ export function PacketPanel() {
         <pre className="agent-input-text">{compiledText}</pre>
         <div className="packet-copy-row">
           <button onClick={() => void copy()}>Copy Agent Input</button>
+          <button
+            className="primary"
+            disabled={handoffPending || previewValidity !== 'CURRENT' || !capabilities?.canDispatch}
+            onClick={() => void handoff()}
+          >
+            {handoffPending ? 'Sending…' : 'Send to Codex'}
+          </button>
           {copyMessage && <span className="ok">{copyMessage}</span>}
         </div>
+        {intent && (
+          <p className="hint handoff-status">
+            Handoff intent: {intent.state.toUpperCase()}
+            {receipt?.runtimeRef ? ` · thread ${receipt.runtimeRef}` : ''}
+            {receipt?.turnRef ? ` · turn ${receipt.turnRef}` : ''}
+            {receipt?.message ? ` · ${receipt.message}` : ''}
+          </p>
+        )}
         <details className="source-details">
           <summary>Sources & validity details</summary>
           <p className="hint">Deterministic local assembly; no model summary.</p>
           <p className="source">Governance: {packet.governanceRefs.join(', ') || 'none'}</p>
           <p className="source">Dependencies: {packet.sourceFingerprints.length} resolved · {packet.unresolvedDependencies.length} unresolved</p>
+          <p className="source">
+            Handoff: {capabilities?.protocol ?? 'checking Codex app-server'} · {capabilities?.evidence ?? 'UNKNOWN'}
+          </p>
         </details>
       </div>
       <button className="primary" onClick={() => void freeze()}>Freeze Current Task Packet</button>

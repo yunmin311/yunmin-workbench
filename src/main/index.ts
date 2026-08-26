@@ -4,7 +4,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, type OpenDialogOptions 
 import { watch, type FSWatcher } from 'chokidar';
 import { z } from 'zod';
 import { freezePacket } from '../core/project/packet';
-import type { FrozenPacket, OverlaySnapshot, SourceFingerprint, TaskPacket } from '../core/types';
+import type { FrozenPacket, HandoffReceipt, HarnessCapabilities, OverlaySnapshot, SourceFingerprint, TaskPacket } from '../core/types';
 import {
   defaultOverlaySearchRoot,
   discoverOverlayRoot,
@@ -14,6 +14,8 @@ import {
 } from './adapters/overlaySource';
 import { readGitFacts } from './adapters/gitFacts';
 import { createProjectFileContext, fingerprintFileAtRoot, fingerprintProjectFile } from './adapters/projectFiles';
+import { CodexAppServerAdapter } from './adapters/codexAppServer';
+import { HandoffDispatchRegistry } from './handoffDispatch';
 import {
   clearWorkbenchDraft,
   readWorkbenchDraft,
@@ -29,6 +31,9 @@ import {
 
 // test hook: Playwright E2E redirects Workbench-owned state to a temp dir
 if (process.env.WB_STATE_DIR) app.setPath('userData', process.env.WB_STATE_DIR);
+
+const codexAdapter = new CodexAppServerAdapter();
+const handoffRequests = new HandoffDispatchRegistry<HandoffReceipt>();
 
 /** Workbench-owned state: frozen packets live here, never in the overlay. */
 function stateDir(): string {
@@ -267,6 +272,54 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     return { path: await writeWorkspaceSessionAtomic(stateDir(), session) };
   });
 
+  ipcMain.handle('harness:capabilities', async (): Promise<HarnessCapabilities> => {
+    try {
+      return await codexAdapter.capabilities();
+    } catch (error) {
+      return {
+        harness: 'codex',
+        canDispatch: false,
+        canCreateSession: false,
+        canResumeSession: false,
+        canObserveRuntime: false,
+        canReceiveReceipt: false,
+        protocol: 'Codex app-server JSONL v2',
+        evidence: `unavailable: ${String(error)}`,
+      };
+    }
+  });
+  const HandoffSchema = z.object({
+    intentId: z.string().uuid(),
+    projectId: KeySchema,
+    packetText: z.string().min(1).max(5_000_000),
+  });
+  ipcMain.handle('harness:dispatch', async (_event, rawRequest: unknown) => {
+    const request = HandoffSchema.parse(rawRequest);
+    return handoffRequests.run(request.intentId, async () => {
+      const snap = cache?.snapshot ?? (await refresh());
+      const cwd = snap.machine?.projectRoots[request.projectId];
+      if (!cwd) {
+        return {
+          intentId: request.intentId,
+          harness: 'codex',
+          status: 'REJECTED',
+          at: new Date().toISOString(),
+          source: 'protocol',
+          protocolEvidence: 'Workbench machine projectRoots lookup',
+          message: `No project root binding for ${request.projectId}`,
+        } satisfies HandoffReceipt;
+      }
+      return codexAdapter.dispatch(request.intentId, cwd, request.packetText);
+    });
+  });
+  ipcMain.handle('harness:smoke', async (_event, rawProjectId: unknown) => {
+    const projectId = KeySchema.parse(rawProjectId);
+    const snap = cache?.snapshot ?? (await refresh());
+    const cwd = snap.machine?.projectRoots[projectId];
+    if (!cwd) throw new Error(`No project root binding for ${projectId}`);
+    return codexAdapter.smoke(cwd);
+  });
+
   ipcMain.handle('packet:freeze', async (_e, rawPacket: unknown) => {
     const packet: TaskPacket = TaskPacketSchema.parse(rawPacket);
     const existing = await listFrozen(packet.projectId, packet.conversationKey);
@@ -347,3 +400,5 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
+
+app.on('before-quit', () => codexAdapter.close());

@@ -63,6 +63,7 @@ test.describe('Yunmin Workbench vertical slice (real overlay, read-only)', () =>
     await win.locator('button.primary', { hasText: 'Packet Preview' }).click();
     await win.locator('textarea').fill('E2E 冒烟：验证 Freeze 链路');
     await expect(win.locator('.validity-current')).toBeVisible();
+    await expect(win.locator('button', { hasText: 'Send to Codex' })).toBeEnabled();
     const previewText = await win.locator('.agent-input-text').textContent();
     await win.locator('button', { hasText: 'Copy Agent Input' }).click();
     const copiedText = await app.evaluate(({ clipboard }) => clipboard.readText());
