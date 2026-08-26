@@ -1,11 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { CommandPalette } from './components/CommandPalette';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { HarnessRail } from './components/HarnessRail';
-import { InspectorPane } from './components/InspectorPane';
+import { InspectorPane, type InspectorTab } from './components/InspectorPane';
 import { WorkspaceSidebar } from './components/WorkspaceSidebar';
 import { CanvasView } from './views/CanvasView';
-import { HomeOverview } from './views/HomeOverview';
 import { SessionSurface } from './views/SessionSurface';
 import { useWorkbench } from './store';
 
@@ -17,10 +15,12 @@ export default function App() {
   const conversation = useWorkbench((state) => state.conversation);
   const draftSaveState = useWorkbench((state) => state.draftSaveState);
   const packetValidity = useWorkbench((state) => state.packetValidity);
-  const handoffStatus = useWorkbench((state) => state.handoffStatus);
   const runtimeSessions = useWorkbench((state) => state.runtimeSessions);
   const initialize = useWorkbench((state) => state.initialize);
   const reloadAndRecheck = useWorkbench((state) => state.reloadAndRecheck);
+  const setView = useWorkbench((state) => state.setView);
+  const [sessionPickerOpen, setSessionPickerOpen] = useState(false);
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab | null>(null);
 
   useEffect(() => {
     void initialize();
@@ -41,71 +41,115 @@ export default function App() {
     };
   }, [initialize]);
 
+  useEffect(() => {
+    if (view === 'context' || view === 'packet') setInspectorTab(view);
+    if (view === 'canvas') setInspectorTab(null);
+  }, [view]);
+
+  useEffect(() => {
+    const open = (event: Event) => {
+      const tab = (event as CustomEvent<InspectorTab>).detail;
+      if (tab) setInspectorTab(tab);
+    };
+    window.addEventListener('workbench:open-inspector', open);
+    return () => window.removeEventListener('workbench:open-inspector', open);
+  }, []);
+
+  useEffect(() => {
+    const open = () => setSessionPickerOpen(true);
+    window.addEventListener('workbench:open-session-picker', open);
+    return () => window.removeEventListener('workbench:open-session-picker', open);
+  }, []);
+
   if (loading && !snapshot) return <div className="center">Loading workspace truth…</div>;
   if (!snapshot) return <div className="center">No overlay snapshot.</div>;
 
-  const shellMode = view === 'canvas' ? 'canvas' : view === 'projects' ? 'home' : 'work';
+  const canvasMode = view === 'canvas';
+  const project = snapshot.projects.find((item) => item.projectId === projectId);
   const currentRuntime = conversation
     ? runtimeSessions.filter((session) => session.conversationKey === conversation.key).at(-1)
     : undefined;
+  const openInspector = (tab: InspectorTab) => {
+    setInspectorTab(tab);
+    if (tab === 'context' || tab === 'packet') setView(tab);
+  };
+  const closeInspector = () => {
+    setInspectorTab(null);
+    if (view === 'context' || view === 'packet') setView('control');
+  };
 
   return (
-    <div className="harness-app">
-      <header className="harness-titlebar">
-        <div className="titlebar-brand">
+    <div className="prototype-app">
+      <header className="prototype-chrome">
+        <button
+          className="workspace-trigger"
+          aria-label="Open workspace and session switcher"
+          aria-expanded={sessionPickerOpen}
+          onClick={() => setSessionPickerOpen((open) => !open)}
+        >
           <span className="brand-mark">YW</span>
-          <span>Yunmin Workbench</span>
+          <span className="workspace-trigger-copy">
+            <strong>{project?.displayName ?? 'Open workspace'}</strong>
+            <small>{conversation?.role ?? 'Choose a session'}</small>
+          </span>
+          <span aria-hidden="true">⌄</span>
+        </button>
+
+        <nav className="surface-tabs" aria-label="Session surface mode">
+          <button aria-current={!canvasMode ? 'page' : undefined} onClick={() => setView('control')}>Session</button>
+          <button disabled={!projectId} aria-current={canvasMode ? 'page' : undefined} onClick={() => setView('canvas')}>Canvas</button>
+        </nav>
+
+        <div className="chrome-status" aria-label="Current session status">
+          {conversation && (
+            <span className={`runtime-inline runtime-${currentRuntime?.state ?? 'unknown'}`}>
+              <i />{currentRuntime?.state ?? 'runtime unknown'}
+            </span>
+          )}
+          {conversation && packetValidity !== 'CURRENT' && (
+            <button className={`validity-inline validity-${packetValidity.toLowerCase()}`} onClick={() => openInspector('packet')}>
+              Packet {packetValidity}
+            </button>
+          )}
+          {conversation && <span className="draft-inline">Draft {draftSaveState}</span>}
         </div>
-        <div className="titlebar-workspace">
-          <span>{projectId ?? 'No workspace'}</span>
-          {conversation && <><i>/</i><strong>{conversation.role}</strong></>}
-        </div>
-        <div className="titlebar-actions">
+
+        <div className="chrome-tools">
+          <button disabled={!projectId} aria-pressed={inspectorTab === 'context'} onClick={() => openInspector('context')}>Context</button>
+          <button disabled={!conversation} aria-pressed={inspectorTab === 'packet'} onClick={() => openInspector('packet')}>Packet</button>
           <button
-            className="command-trigger"
+            className="icon-action"
             aria-label="Open command palette"
             onClick={() => window.dispatchEvent(new CustomEvent('workbench:open-command-palette'))}
-          >
-            Commands <kbd>Ctrl K</kbd>
-          </button>
+          >⌘</button>
           <button className="icon-action" aria-label="Reload external truth" onClick={() => void reloadAndRecheck()}>↻</button>
         </div>
       </header>
 
       {snapshot.problems.length > 0 && (
-        <div className="problems">
-          {snapshot.problems.map((problem, index) => (
-            <span key={index}>[{problem.source}] {problem.message}</span>
-          ))}
+        <details className="prototype-problems">
+          <summary>{snapshot.problems.length} source problem{snapshot.problems.length === 1 ? '' : 's'}</summary>
+          {snapshot.problems.map((problem, index) => <p key={index}>[{problem.source}] {problem.message}</p>)}
+        </details>
+      )}
+
+      <main className={`prototype-surface ${canvasMode ? 'is-canvas' : 'is-session'}`}>
+        <ErrorBoundary key={`surface:${canvasMode}:${projectId ?? ''}:${conversation?.key ?? ''}`}>
+          {canvasMode ? <CanvasView /> : <SessionSurface onOpenSessions={() => setSessionPickerOpen(true)} />}
+        </ErrorBoundary>
+      </main>
+
+      {sessionPickerOpen && (
+        <div className="session-picker-layer" role="presentation" onMouseDown={() => setSessionPickerOpen(false)}>
+          <div className="session-picker" role="dialog" aria-label="Switch workspace or session" onMouseDown={(event) => event.stopPropagation()}>
+            <WorkspaceSidebar onNavigate={() => setSessionPickerOpen(false)} />
+          </div>
         </div>
       )}
 
-      <div className="harness-body">
-        <HarnessRail mode={shellMode} />
-        <WorkspaceSidebar />
-        <main className={`active-surface active-surface-${shellMode}`}>
-          <ErrorBoundary key={`surface:${shellMode}:${projectId ?? ''}:${conversation?.key ?? ''}`}>
-            {shellMode === 'home' && <HomeOverview />}
-            {shellMode === 'work' && <SessionSurface />}
-            {shellMode === 'canvas' && <CanvasView />}
-          </ErrorBoundary>
-        </main>
-        <ErrorBoundary key={`inspector:${view}:${projectId ?? ''}:${conversation?.key ?? ''}`}>
-          <InspectorPane />
-        </ErrorBoundary>
-      </div>
-
-      <footer className="status-bar" aria-label="Current workspace status">
-        <span>{projectId ?? 'NO PROJECT'}</span>
-        <span>{conversation?.role ?? 'NO SESSION'}</span>
-        <span>Harness {currentRuntime?.binding.harness ?? conversation?.platform ?? 'UNKNOWN'}</span>
-        <span>Runtime {currentRuntime?.state ?? 'UNKNOWN'}</span>
-        <span>Packet {packetValidity}</span>
-        <span>Draft {draftSaveState}</span>
-        <span>Handoff {handoffStatus}</span>
-        <span className="status-spacer" />
-        <span title={snapshot.overlayRoot}>Truth {snapshot.overlayRoot ? 'LOADED' : 'UNKNOWN'}</span>
-      </footer>
+      <ErrorBoundary key={`inspector:${inspectorTab ?? 'closed'}:${projectId ?? ''}:${conversation?.key ?? ''}`}>
+        <InspectorPane tab={inspectorTab} onSelect={openInspector} onClose={closeInspector} />
+      </ErrorBoundary>
       <CommandPalette />
     </div>
   );

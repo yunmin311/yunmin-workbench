@@ -1,35 +1,61 @@
 import { useMemo } from 'react';
-import { Background, Controls, Panel, ReactFlow, type Edge, type Node } from '@xyflow/react';
+import { Background, Controls, MarkerType, Panel, ReactFlow, type Edge, type Node } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { buildCanvasGraph } from '../../../core/project/canvas';
+import type { WbEdgeKind } from '../../../core/types';
 import { useWorkbench } from '../store';
+import { layoutProjection } from './reasonixProjectionLayout';
+
+const EDGE_LABEL: Record<WbEdgeKind, string> = {
+  membership: 'membership',
+  mount: 'mount',
+  execution: 'observed execution',
+  handoff: 'observed handoff',
+  'data-context': 'observed context',
+};
 
 export function CanvasView() {
-  const { snapshot, projectId, runtimeSessions, selectConversation, setView } = useWorkbench();
+  const snapshot = useWorkbench((state) => state.snapshot);
+  const projectId = useWorkbench((state) => state.projectId);
+  const runtimeSessions = useWorkbench((state) => state.runtimeSessions);
+  const selectConversation = useWorkbench((state) => state.selectConversation);
+  const setView = useWorkbench((state) => state.setView);
 
-  const { nodes, edges } = useMemo(() => {
-    if (!snapshot || !projectId) return { nodes: [] as Node[], edges: [] as Edge[] };
-    const g = buildCanvasGraph(snapshot, projectId, runtimeSessions);
-    const nodes: Node[] = g.nodes.map((n) => ({
-      id: n.id,
-      position: { x: n.x, y: n.y },
-      data: { label: `${n.label}${n.status ? `\n${n.status} · ${n.trust}` : ''}`, kind: n.kind, status: n.status },
-      className: `wb-node wb-${n.kind} status-${(n.status ?? '').toLowerCase()}`,
+  const { nodes, edges, kinds } = useMemo(() => {
+    if (!snapshot || !projectId) return { nodes: [] as Node[], edges: [] as Edge[], kinds: [] as WbEdgeKind[] };
+    const graph = buildCanvasGraph(snapshot, projectId, runtimeSessions);
+    const positioned = layoutProjection(graph.nodes, graph.edges);
+    const nodes: Node[] = positioned.map((node) => ({
+      id: node.id,
+      position: { x: node.x, y: node.y },
+      data: {
+        label: (
+          <span className="canvas-node-copy">
+            <strong>{node.label}</strong>
+            <small>{node.kind}{node.status ? ` · ${node.status}` : ''}</small>
+          </span>
+        ),
+        kind: node.kind,
+        status: node.status,
+      },
+      className: `wb-node wb-${node.kind} status-${(node.status ?? '').toLowerCase()}`,
     }));
-    const edges: Edge[] = g.edges.map((e) => ({
-      id: e.id,
-      source: e.source,
-      target: e.target,
-      animated: e.kind === 'execution' || e.kind === 'handoff',
-      className: `wb-edge-${e.kind}`,
-      style:
-        e.kind === 'data-context'
-          ? { strokeDasharray: '6 4' }
-          : e.kind === 'mount'
-            ? { strokeDasharray: '2 5' }
-            : undefined,
-    }));
-    return { nodes, edges };
+    const edges: Edge[] = graph.edges.map((edge) => {
+      const evidenced = edge.kind === 'execution' || edge.kind === 'handoff' || edge.kind === 'data-context';
+      return {
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        type: 'smoothstep',
+        className: `wb-edge-${edge.kind}`,
+        markerEnd: { type: evidenced ? MarkerType.ArrowClosed : MarkerType.Arrow, width: 14, height: 14 },
+        style: {
+          strokeWidth: evidenced ? 1.7 : 1.15,
+          strokeDasharray: edge.kind === 'mount' ? '3 5' : undefined,
+        },
+      };
+    });
+    return { nodes, edges, kinds: [...new Set(graph.edges.map((edge) => edge.kind))] };
   }, [snapshot, projectId, runtimeSessions]);
 
   if (!projectId) return null;
@@ -40,24 +66,29 @@ export function CanvasView() {
         nodes={nodes}
         edges={edges}
         fitView
+        fitViewOptions={{ padding: 0.24, minZoom: 0.55, maxZoom: 1.15 }}
+        minZoom={0.35}
+        maxZoom={1.8}
         nodesDraggable
         nodesConnectable={false}
-        onNodeClick={(_e, node) => {
+        onNodeClick={(_event, node) => {
           if (!snapshot || !node.id.startsWith('conversation:')) return;
-          const convoId = node.id.slice('conversation:'.length);
-          const convo = snapshot.conversations.find((c) => c.key === convoId);
-          if (convo) {
-            selectConversation(convo);
+          const conversationKey = node.id.slice('conversation:'.length);
+          const next = snapshot.conversations.find((conversation) => conversation.key === conversationKey);
+          if (next) {
+            selectConversation(next);
             setView('control');
           }
         }}
       >
-        <Background />
-        <Controls />
-        <Panel position="top-left" className="canvas-legend">
-          <span><i className="legend-line" /> membership</span>
-          <span><i className="legend-line legend-mount" /> mount</span>
-          <span className="legend-note">Flow edges appear only with evidence</span>
+        <Background color="var(--prototype-grid)" gap={22} size={1} />
+        <Controls showInteractive={false} />
+        <Panel position="top-left" className="canvas-title">
+          <p>Projection graph</p>
+          <span>Structure first. Runtime edges only when observed.</span>
+        </Panel>
+        <Panel position="top-right" className="canvas-legend">
+          {kinds.map((kind) => <span key={kind}><i className={`legend-line legend-${kind}`} />{EDGE_LABEL[kind]}</span>)}
         </Panel>
       </ReactFlow>
     </div>

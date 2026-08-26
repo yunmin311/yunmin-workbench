@@ -2,21 +2,24 @@ import { discoverProjects } from '../../../core/project/discovery';
 import { resolveWorkspaceTarget } from '../../../core/project/workspaceSession';
 import { useWorkbench } from '../store';
 
-export function WorkspaceSidebar() {
-  const {
-    snapshot, projectId, conversation, workspaceSession, runtimeSessions,
-    selectProject, selectConversation, resumeWorkspace, setView,
-  } = useWorkbench();
+export function WorkspaceSidebar({ onNavigate }: { onNavigate?: () => void }) {
+  const snapshot = useWorkbench((state) => state.snapshot);
+  const projectId = useWorkbench((state) => state.projectId);
+  const conversation = useWorkbench((state) => state.conversation);
+  const workspaceSession = useWorkbench((state) => state.workspaceSession);
+  const runtimeSessions = useWorkbench((state) => state.runtimeSessions);
+  const selectProject = useWorkbench((state) => state.selectProject);
+  const selectConversation = useWorkbench((state) => state.selectConversation);
+  const resumeWorkspace = useWorkbench((state) => state.resumeWorkspace);
+  const setView = useWorkbench((state) => state.setView);
   if (!snapshot) return null;
+
   const projects = discoverProjects(snapshot);
   const conversations = projectId ? snapshot.conversations.filter((item) => item.project === projectId) : [];
   const recent = workspaceSession.recent
     .filter((target) => resolveWorkspaceTarget(snapshot, target).target)
-    .slice(0, 5);
+    .slice(0, 4);
   const running = runtimeSessions.filter((session) => session.state === 'working');
-  const attention = snapshot.inbox.filter((item) => item.attention && (
-    item.scope === 'global' || (item.scope === 'project' && item.projectId === projectId)
-  ));
 
   const openConversation = (key: string) => {
     const next = snapshot.conversations.find((item) => item.key === key);
@@ -24,32 +27,33 @@ export function WorkspaceSidebar() {
     if (projectId !== next.project) selectProject(next.project);
     selectConversation(next);
     setView('control');
+    onNavigate?.();
   };
 
   return (
     <aside className="workspace-sidebar" aria-label="Workspace browser">
-      <div className="sidebar-heading">
-        <span>Workspace</span>
-        <button aria-label="Open quick switcher" onClick={() => window.dispatchEvent(new CustomEvent('workbench:open-command-palette'))}>⌕</button>
-      </div>
+      <header className="session-picker-heading">
+        <div>
+          <p>Workspaces</p>
+          <span>Switch project or continue a session</span>
+        </div>
+        <button aria-label="Open command palette" onClick={() => window.dispatchEvent(new CustomEvent('workbench:open-command-palette'))}>⌕</button>
+      </header>
 
-      <section className="sidebar-section sidebar-projects">
-        <h2>Projects <span>{projects.length}</span></h2>
-        <ul>
+      <label className="project-switcher">
+        <span>Project</span>
+        <select value={projectId ?? ''} onChange={(event) => event.target.value && selectProject(event.target.value)}>
+          <option value="" disabled>Choose a project</option>
           {projects.map((project) => (
-            <li key={project.projectId}>
-              <button className={project.projectId === projectId ? 'selected' : ''} onClick={() => selectProject(project.projectId)}>
-                <i className={`health-dot health-${project.trust.toLowerCase()}`} />
-                <span>{project.displayName}</span>
-                <small>{project.conversationCount}</small>
-              </button>
-            </li>
+            <option key={project.projectId} value={project.projectId}>
+              {project.displayName} · {project.conversationCount}
+            </option>
           ))}
-        </ul>
-      </section>
+        </select>
+      </label>
 
       <section className="sidebar-section sidebar-conversations">
-        <h2>Conversations <span>{conversations.length}</span></h2>
+        <h2>Sessions <span>{conversations.length}</span></h2>
         {projectId ? (
           conversations.length > 0 ? (
             <ul>
@@ -59,62 +63,56 @@ export function WorkspaceSidebar() {
                   <li key={item.key}>
                     <button className={conversation?.key === item.key ? 'selected' : ''} onClick={() => openConversation(item.key)}>
                       <i className={`runtime-dot runtime-${runtime?.state ?? 'unknown'}`} />
-                      <span>{item.role}</span>
-                      <small>{runtime?.state === 'working' ? 'RUN' : item.status}</small>
+                      <span><strong>{item.role}</strong><small>{item.platform}</small></span>
+                      <em>{runtime?.state === 'working' ? 'RUNNING' : item.status}</em>
                     </button>
                   </li>
                 );
               })}
             </ul>
           ) : <p className="sidebar-empty">No projected conversations</p>
-        ) : <p className="sidebar-empty">Select a project</p>}
+        ) : <p className="sidebar-empty">Choose a project to see its sessions.</p>}
       </section>
 
-      {recent.length > 0 && (
-        <section className="sidebar-section sidebar-recent">
-          <h2>Recent</h2>
-          <ul>
-            {recent.map((target) => {
-              const targetConversation = target.conversationScope
-                ? snapshot.conversations.find((item) => item.key === target.conversationScope!.conversationKey)
-                : undefined;
-              return (
-                <li key={`${target.projectId}:${target.conversationScope?.conversationKey ?? ''}`}>
-                  <button onClick={() => resumeWorkspace(target)}>
-                    <span>{targetConversation?.role ?? target.projectId}</span>
-                    <small>{targetConversation ? target.projectId : 'PROJECT'}</small>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
-
-      {running.length > 0 && (
-        <section className="sidebar-section sidebar-running">
-          <h2>Running <span>{running.length}</span></h2>
-          <ul>
-            {running.map((session) => (
-              <li key={session.id}>
-                <button onClick={() => session.conversationKey && openConversation(session.conversationKey)}>
-                  <i className="runtime-dot runtime-working" />
-                  <span>{snapshot.conversations.find((item) => item.key === session.conversationKey)?.role ?? session.id}</span>
-                  <small>{session.binding.harness}</small>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {attention.length > 0 && (
-        <section className="sidebar-section sidebar-attention">
-          <h2>Attention <span>{attention.length}</span></h2>
-          <ul>
-            {attention.slice(0, 4).map((item) => <li key={item.id} title={item.sourceRef}>{item.raw}</li>)}
-          </ul>
-        </section>
+      {(running.length > 0 || recent.length > 0) && (
+        <div className="session-picker-secondary">
+          {running.length > 0 && (
+            <section className="sidebar-section sidebar-running">
+              <h2>Running <span>{running.length}</span></h2>
+              <ul>
+                {running.map((session) => (
+                  <li key={session.id}>
+                    <button onClick={() => session.conversationKey && openConversation(session.conversationKey)}>
+                      <i className="runtime-dot runtime-working" />
+                      <span>{snapshot.conversations.find((item) => item.key === session.conversationKey)?.role ?? session.id}</span>
+                      <small>{session.binding.harness}</small>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+          {recent.length > 0 && (
+            <section className="sidebar-section sidebar-recent">
+              <h2>Recent</h2>
+              <ul>
+                {recent.map((target) => {
+                  const targetConversation = target.conversationScope
+                    ? snapshot.conversations.find((item) => item.key === target.conversationScope!.conversationKey)
+                    : undefined;
+                  return (
+                    <li key={`${target.projectId}:${target.conversationScope?.conversationKey ?? ''}`}>
+                      <button onClick={() => { resumeWorkspace(target); onNavigate?.(); }}>
+                        <span>{targetConversation?.role ?? target.projectId}</span>
+                        <small>{targetConversation ? target.projectId : 'PROJECT'}</small>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
+        </div>
       )}
     </aside>
   );

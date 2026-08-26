@@ -1,25 +1,26 @@
-import { useEffect, useState } from 'react';
 import { ContextStagingView } from '../views/ContextStagingView';
 import { PacketPanel } from './PacketPanel';
 import { useWorkbench } from '../store';
 
-type InspectorTab = 'context' | 'packet' | 'changes' | 'evidence';
+export type InspectorTab = 'context' | 'packet' | 'changes' | 'evidence';
 
-export function InspectorPane() {
-  const {
-    view, snapshot, projectId, conversation, sourceChanges, activity, runtimeSessions, git, setView,
-  } = useWorkbench();
-  const requested = view === 'packet' ? 'packet' : view === 'context' ? 'context' : null;
-  const [tab, setTab] = useState<InspectorTab>(requested ?? 'context');
-  useEffect(() => {
-    if (requested) setTab(requested);
-  }, [requested]);
-
-  const selectTab = (next: InspectorTab) => {
-    setTab(next);
-    if (next === 'context' || next === 'packet') setView(next);
-    else if (view === 'context' || view === 'packet') setView('control');
-  };
+export function InspectorPane({
+  tab,
+  onSelect,
+  onClose,
+}: {
+  tab: InspectorTab | null;
+  onSelect: (tab: InspectorTab) => void;
+  onClose: () => void;
+}) {
+  const snapshot = useWorkbench((state) => state.snapshot);
+  const projectId = useWorkbench((state) => state.projectId);
+  const conversation = useWorkbench((state) => state.conversation);
+  const sourceChanges = useWorkbench((state) => state.sourceChanges);
+  const activity = useWorkbench((state) => state.activity);
+  const runtimeSessions = useWorkbench((state) => state.runtimeSessions);
+  const git = useWorkbench((state) => state.git);
+  if (!tab) return null;
   const sessionActivity = activity.filter((event) =>
     (!projectId || event.projectId === projectId)
     && (!conversation || event.conversationKey === conversation.key),
@@ -30,19 +31,23 @@ export function InspectorPane() {
     : undefined;
 
   return (
-    <aside className="inspector-pane" aria-label="Workspace inspector">
-      <div className="inspector-tabs" role="tablist" aria-label="Inspector views">
+    <div className="inspector-layer" role="presentation" onMouseDown={onClose}>
+    <aside className="inspector-pane" aria-label="Workspace inspector" onMouseDown={(event) => event.stopPropagation()}>
+      <div className="inspector-chrome">
+        <div className="inspector-tabs" role="tablist" aria-label="Inspector views">
         {(['context', 'packet', 'changes', 'evidence'] as const).map((item) => (
           <button
             key={item}
             role="tab"
             aria-selected={tab === item}
             className={tab === item ? 'active' : ''}
-            onClick={() => selectTab(item)}
+            onClick={() => onSelect(item)}
           >
             {item[0].toUpperCase() + item.slice(1)}
           </button>
         ))}
+        </div>
+        <button className="inspector-close" aria-label="Close inspector" onClick={onClose}>×</button>
       </div>
       <div className="inspector-content" role="tabpanel">
         {!projectId && (
@@ -77,5 +82,6 @@ export function InspectorPane() {
         )}
       </div>
     </aside>
+    </div>
   );
 }

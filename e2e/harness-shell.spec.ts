@@ -9,15 +9,15 @@ const PROJECT_CANONICAL = 'D:\\project\\CLAUDE.md';
 const hasOverlay = existsSync(join(OVERLAY, 'overlay.yaml'));
 const hash = (path: string) => createHash('sha256').update(readFileSync(path)).digest('hex');
 
-test.describe('Harness desktop shell (real overlay, isolated Workbench state)', () => {
+test.describe('Reasonix harness renderer prototype (real overlay, isolated Workbench state)', () => {
   test.skip(!hasOverlay, 'real overlay not present on this machine');
 
-  test('session-first shell and embedded inspectors', async () => {
+  test('session surface, on-demand context, and projection graph', async () => {
     const inboxBefore = hash(join(OVERLAY, 'INBOX.md'));
     const memoryBefore = hash(join(OVERLAY, 'memory', 'MEMORY.md'));
     const canonicalBefore = hash(PROJECT_CANONICAL);
-    const stateDir = mkdtempSync(join(tmpdir(), 'wb-shell-e2e-'));
-    const screenshotDir = join(process.cwd(), 'screenshots', 'harness-shell-rebuild');
+    const stateDir = mkdtempSync(join(tmpdir(), 'wb-reasonix-prototype-'));
+    const screenshotDir = join(process.cwd(), 'screenshots', 'reasonix-harness-prototype');
     mkdirSync(screenshotDir, { recursive: true });
 
     const app = await electron.launch({
@@ -26,40 +26,34 @@ test.describe('Harness desktop shell (real overlay, isolated Workbench state)', 
     });
     const win = await app.firstWindow();
 
-    await expect(win.locator('.titlebar-brand')).toContainText('Yunmin Workbench');
-    await expect(win.locator('.harness-rail')).toBeVisible();
-    await expect(win.locator('.workspace-sidebar')).toBeVisible();
-    await expect(win.locator('.inspector-pane')).toBeVisible();
-    await expect(win.locator('.status-bar')).toContainText('NO PROJECT');
-    await win.screenshot({ path: join(screenshotDir, '01-no-workspace.png') });
+    await expect(win.locator('.prototype-chrome')).toBeVisible();
+    await expect(win.locator('.session-welcome h1')).toContainText('Start from a session');
+    await expect(win.locator('.inspector-pane')).toHaveCount(0);
 
-    await win.locator('.sidebar-projects button', { hasText: 'Creative OS' }).click();
+    await win.getByRole('button', { name: 'Open workspace and session switcher' }).click();
+    const projectOption = win.locator('.project-switcher option').filter({ hasText: 'Creative OS' });
+    const projectValue = await projectOption.getAttribute('value');
+    expect(projectValue).toBeTruthy();
+    await win.locator('.project-switcher select').selectOption(projectValue!);
     await expect(win.locator('.sidebar-conversations button').first()).toBeVisible();
-    await expect(win.locator('.surface-empty h1')).toContainText('Creative OS');
-    await win.screenshot({ path: join(screenshotDir, '02-project-session-selected.png') });
-
     await win.locator('.sidebar-conversations button').first().click();
+
     await expect(win.locator('.session-header h1')).toBeVisible();
-    await expect(win.locator('.activity-empty')).toContainText('No structured runtime activity');
     await expect(win.locator('.session-composer textarea')).toBeEnabled();
-    await expect(win.locator('.composer-actions button', { hasText: 'Follow up / Steer unavailable' })).toBeDisabled();
+    await expect(win.getByRole('button', { name: 'Follow up unavailable' })).toBeDisabled();
     await win.locator('.session-composer textarea').fill('Review the current packet before a structured handoff.');
-    await expect(win.locator('.status-bar')).toContainText('Draft dirty');
-    await win.screenshot({ path: join(screenshotDir, '03-active-session.png') });
+    await win.screenshot({ path: join(screenshotDir, '01-active-session.png') });
 
-    await win.getByRole('tab', { name: 'Context' }).click();
+    await win.getByRole('button', { name: 'Context', exact: true }).click();
+    await expect(win.locator('.inspector-pane')).toBeVisible();
     await expect(win.locator('.inspector-pane h2', { hasText: 'Context Staging' })).toBeVisible();
-    await win.screenshot({ path: join(screenshotDir, '04-context-inspector.png') });
+    await win.screenshot({ path: join(screenshotDir, '02-context-on-demand.png') });
+    await win.getByRole('button', { name: 'Close inspector' }).click();
 
-    await win.getByRole('tab', { name: 'Packet' }).click();
-    await expect(win.locator('.inspector-pane h2', { hasText: 'Task Packet' })).toBeVisible();
-    await expect(win.locator('.inspector-pane .validity-current')).toBeVisible();
-    await win.screenshot({ path: join(screenshotDir, '05-packet-inspector.png') });
-
-    await win.getByRole('button', { name: 'Canvas' }).click();
-    await expect(win.locator('.active-surface-canvas .react-flow')).toBeVisible();
+    await win.getByRole('button', { name: 'Canvas', exact: true }).click();
+    await expect(win.locator('.prototype-surface.is-canvas .react-flow')).toBeVisible();
     await expect(win.locator('.wb-project')).toBeVisible();
-    await win.screenshot({ path: join(screenshotDir, '06-canvas-mode.png') });
+    await win.screenshot({ path: join(screenshotDir, '03-canvas-agent-graph.png') });
 
     await app.close();
     expect(hash(join(OVERLAY, 'INBOX.md'))).toBe(inboxBefore);

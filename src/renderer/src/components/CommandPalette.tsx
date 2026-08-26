@@ -5,10 +5,16 @@ import { useWorkbench } from '../store';
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
-  const {
-    snapshot, projectId, conversation, workspaceSession, setView, selectProject, selectConversation,
-    resumeWorkspace, reloadAndRecheck, clearDraft,
-  } = useWorkbench();
+  const snapshot = useWorkbench((state) => state.snapshot);
+  const projectId = useWorkbench((state) => state.projectId);
+  const conversation = useWorkbench((state) => state.conversation);
+  const workspaceSession = useWorkbench((state) => state.workspaceSession);
+  const setView = useWorkbench((state) => state.setView);
+  const selectProject = useWorkbench((state) => state.selectProject);
+  const selectConversation = useWorkbench((state) => state.selectConversation);
+  const resumeWorkspace = useWorkbench((state) => state.resumeWorkspace);
+  const reloadAndRecheck = useWorkbench((state) => state.reloadAndRecheck);
+  const clearDraft = useWorkbench((state) => state.clearDraft);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -17,14 +23,13 @@ export function CommandPalette() {
         setOpen((value) => !value);
         return;
       }
-      if ((event.ctrlKey || event.metaKey) && /^[1-5]$/.test(event.key)) {
+      if ((event.ctrlKey || event.metaKey) && /^[1-4]$/.test(event.key)) {
         event.preventDefault();
         const actions = [
-          () => setView('projects'),
-          () => projectId && setView('control'),
+          () => window.dispatchEvent(new CustomEvent('workbench:open-session-picker')),
           () => projectId && setView('canvas'),
-          () => projectId && setView('context'),
-          () => projectId && setView('packet'),
+          () => projectId && window.dispatchEvent(new CustomEvent('workbench:open-inspector', { detail: 'context' })),
+          () => conversation && window.dispatchEvent(new CustomEvent('workbench:open-inspector', { detail: 'packet' })),
         ];
         actions[Number(event.key) - 1]?.();
         return;
@@ -41,7 +46,7 @@ export function CommandPalette() {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('workbench:open-command-palette', onOpen);
     };
-  }, [projectId, reloadAndRecheck, setView]);
+  }, [conversation, projectId, reloadAndRecheck, setView]);
 
   if (!open || !snapshot) return null;
   const run = (action: () => void) => {
@@ -50,7 +55,7 @@ export function CommandPalette() {
   };
   const packetAction = (name: 'copy' | 'handoff') => run(() => {
     if (!projectId || !conversation) return;
-    setView('packet');
+    window.dispatchEvent(new CustomEvent('workbench:open-inspector', { detail: 'packet' }));
     setTimeout(() => window.dispatchEvent(new CustomEvent(`workbench:${name}-agent-input`)), 0);
   });
   const switchSession = (key: string) => {
@@ -73,11 +78,10 @@ export function CommandPalette() {
       <Command.List>
         <Command.Empty>No matching workspace, session, or command.</Command.Empty>
         <Command.Group heading="Navigate">
-          <Command.Item onSelect={() => run(() => setView('projects'))}><span>Home / Overview</span><kbd>Ctrl 1</kbd></Command.Item>
-          <Command.Item disabled={!projectId} onSelect={() => run(() => setView('control'))}><span>Active Work Surface</span><kbd>Ctrl 2</kbd></Command.Item>
-          <Command.Item disabled={!projectId} onSelect={() => run(() => setView('canvas'))}><span>Canvas</span><kbd>Ctrl 3</kbd></Command.Item>
-          <Command.Item disabled={!projectId} onSelect={() => run(() => setView('context'))}><span>Context Inspector</span><kbd>Ctrl 4</kbd></Command.Item>
-          <Command.Item disabled={!projectId} onSelect={() => run(() => setView('packet'))}><span>Packet Inspector</span><kbd>Ctrl 5</kbd></Command.Item>
+          <Command.Item onSelect={() => run(() => window.dispatchEvent(new CustomEvent('workbench:open-session-picker')))}><span>Open Workspace / Switch Session</span><kbd>Ctrl 1</kbd></Command.Item>
+          <Command.Item disabled={!projectId} onSelect={() => run(() => setView('canvas'))}><span>Canvas</span><kbd>Ctrl 2</kbd></Command.Item>
+          <Command.Item disabled={!projectId} onSelect={() => run(() => window.dispatchEvent(new CustomEvent('workbench:open-inspector', { detail: 'context' })))}><span>Context Inspector</span><kbd>Ctrl 3</kbd></Command.Item>
+          <Command.Item disabled={!conversation} onSelect={() => run(() => window.dispatchEvent(new CustomEvent('workbench:open-inspector', { detail: 'packet' })))}><span>Packet</span><kbd>Ctrl 4</kbd></Command.Item>
         </Command.Group>
         <Command.Group heading="Open Workspace">
           {workspaceSession.last && (
