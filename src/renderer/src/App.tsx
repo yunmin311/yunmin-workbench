@@ -5,9 +5,13 @@ import { ControlRoomView } from './views/ControlRoomView';
 import { CanvasView } from './views/CanvasView';
 import { ContextStagingView } from './views/ContextStagingView';
 import { PacketPanel } from './components/PacketPanel';
+import { CommandPalette } from './components/CommandPalette';
 
 export default function App() {
-  const { snapshot, loading, view, projectId, initialize, reloadAndRecheck, setView } = useWorkbench();
+  const {
+    snapshot, loading, view, projectId, conversation, draftSaveState, packetValidity,
+    handoffStatus, runtimeSessions, initialize, reloadAndRecheck, setView,
+  } = useWorkbench();
 
   useEffect(() => {
     void initialize();
@@ -39,6 +43,9 @@ export default function App() {
     { id: 'context' as const, label: 'Context', needsProject: true },
     { id: 'packet' as const, label: 'Packet', needsProject: true },
   ];
+  const currentRuntime = conversation
+    ? runtimeSessions.filter((session) => session.conversationKey === conversation.key).at(-1)
+    : undefined;
 
   return (
     <div className="app">
@@ -60,8 +67,23 @@ export default function App() {
             </button>
           ))}
         </nav>
+        <button
+          className="command-trigger"
+          aria-label="Open command palette"
+          onClick={() => window.dispatchEvent(new CustomEvent('workbench:open-command-palette'))}
+        >
+          Commands <kbd>Ctrl K</kbd>
+        </button>
         <button className="refresh" onClick={() => void reloadAndRecheck()}>↻ reload</button>
       </header>
+      <div className="workspace-status" aria-label="Current workspace status">
+        <span>{projectId ?? 'No project'}</span>
+        <span>{conversation?.role ?? 'No conversation'}</span>
+        <span>Draft {draftSaveState}</span>
+        <span>Packet {packetValidity}</span>
+        <span>Handoff {handoffStatus}</span>
+        <span>Runtime {currentRuntime?.state ?? 'UNKNOWN'}</span>
+      </div>
       {snapshot.problems.length > 0 && (
         <div className="problems">
           {snapshot.problems.map((p, i) => (
@@ -76,6 +98,7 @@ export default function App() {
         {view === 'context' && <ContextStagingView />}
         {view === 'packet' && <PacketPanel />}
       </main>
+      <CommandPalette />
     </div>
   );
 }

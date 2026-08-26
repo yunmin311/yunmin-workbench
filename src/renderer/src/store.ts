@@ -25,6 +25,7 @@ import type {
 } from '../../core/types';
 
 export type View = 'projects' | 'control' | 'canvas' | 'context' | 'packet';
+export type DraftSaveState = 'clean' | 'dirty' | 'saving' | 'saved' | 'error';
 
 interface WorkbenchState {
   snapshot: OverlaySnapshot | null;
@@ -48,6 +49,9 @@ interface WorkbenchState {
   activity: ActivityEvent[];
   runtimeSessions: RuntimeSession[];
   activityProblem: string | null;
+  draftSaveState: DraftSaveState;
+  packetValidity: 'CURRENT' | 'STALE' | 'INVALID' | 'UNKNOWN';
+  handoffStatus: string;
   initialize: () => Promise<void>;
   resumeWorkspace: (target?: WorkspaceTargetV1) => void;
   load: (refresh?: boolean) => Promise<void>;
@@ -69,6 +73,8 @@ interface WorkbenchState {
   loadActivity: () => Promise<void>;
   ingestActivity: (event: ActivityEvent) => void;
   clearActivity: () => Promise<void>;
+  setPacketValidity: (validity: WorkbenchState['packetValidity']) => void;
+  setHandoffStatus: (status: string) => void;
 }
 
 const draftTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -123,10 +129,17 @@ function scheduleDraftSave(state: WorkbenchState): void {
   const key = `${draft.scope.projectId}\0${draft.scope.conversationKey}`;
   const prior = draftTimers.get(key);
   if (prior) clearTimeout(prior);
+  useWorkbench.setState({ draftSaveState: 'dirty' });
   draftTimers.set(key, setTimeout(() => {
     draftTimers.delete(key);
-    void window.wb.saveDraft(draft).catch((error) => {
-      useWorkbench.setState({ contextMessage: `Draft save failed: ${String(error)}` });
+    useWorkbench.setState({ draftSaveState: 'saving' });
+    void window.wb.saveDraft(draft).then(() => {
+      useWorkbench.setState({ draftSaveState: 'saved' });
+    }).catch((error) => {
+      useWorkbench.setState({
+        draftSaveState: 'error',
+        contextMessage: `Draft save failed: ${String(error)}`,
+      });
     });
   }, 350));
 }
@@ -158,6 +171,9 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   activity: [],
   runtimeSessions: [],
   activityProblem: null,
+  draftSaveState: 'clean',
+  packetValidity: 'UNKNOWN',
+  handoffStatus: 'IDLE',
 
   initialize: async () => {
     await get().load(true);
@@ -255,6 +271,9 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       orphanedDraftDecisionIds: [],
       sourceChanges: [],
       contextMessage: null,
+      draftSaveState: 'clean',
+      packetValidity: 'UNKNOWN',
+      handoffStatus: 'IDLE',
     });
     void get().loadGit(projectId);
     scheduleWorkspaceSave(get());
@@ -273,6 +292,9 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       orphanedDraftDecisionIds: [],
       sourceChanges: [],
       contextMessage: null,
+      draftSaveState: 'clean',
+      packetValidity: 'UNKNOWN',
+      handoffStatus: 'IDLE',
     });
     void (async () => {
       const loaded = await window.wb.loadDraft(projectId, conversation.key);
@@ -317,6 +339,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
           sourceChanges.length > 0 ? `Source changed since draft save: ${sourceChanges.join(', ')}` : null,
           fileResult.errors.length > 0 ? fileResult.errors.join('\n') : null,
         ]),
+        draftSaveState: 'saved',
       });
       await get().refreshFrozen();
       await get().recheckSources();
@@ -504,6 +527,9 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       orphanedDraftDecisionIds: [],
       sourceChanges: [],
       contextMessage: 'Draft cleared.',
+      draftSaveState: 'clean',
+      packetValidity: 'UNKNOWN',
+      handoffStatus: 'IDLE',
     });
   },
 
@@ -528,4 +554,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     await window.wb.clearActivity();
     set({ activity: [], runtimeSessions: [], activityProblem: null });
   },
+
+  setPacketValidity: (packetValidity) => set({ packetValidity }),
+  setHandoffStatus: (handoffStatus) => set({ handoffStatus }),
 }));

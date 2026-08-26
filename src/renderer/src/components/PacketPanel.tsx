@@ -20,6 +20,8 @@ export function PacketPanel() {
     frozen,
     refreshFrozen,
     recheckSources,
+    setPacketValidity,
+    setHandoffStatus,
   } = useWorkbench();
   const [lastFrozen, setLastFrozen] = useState<string>('');
   const [copyMessage, setCopyMessage] = useState('');
@@ -59,26 +61,28 @@ export function PacketPanel() {
     });
   }, [snapshot, projectId, conversation, staging, taskSummary, currentFingerprints]);
 
-  if (!projectId) return null;
-  if (!conversation || !packet || !snapshot) {
-    return <div className="panel"><h2>Task Packet</h2><p className="hint">先在 Control Room / Canvas 选择一个 Conversation。</p></div>;
-  }
-  const previewValidity = checkPacketValidity(packet, currentFingerprints);
-  const compiledText = renderAgentInput(packet);
+  const previewValidity = packet ? checkPacketValidity(packet, currentFingerprints) : 'INVALID';
+  const compiledText = packet ? renderAgentInput(packet) : '';
+
+  useEffect(() => {
+    setPacketValidity(packet ? previewValidity : 'UNKNOWN');
+  }, [packet, previewValidity, setPacketValidity]);
 
   const freeze = async () => {
+    if (!packet) return;
     const { frozen: f, path } = await window.wb.freezePacket(packet);
     setLastFrozen(`v${f.version} · ${f.hash.slice(0, 12)} → ${path}`);
     await refreshFrozen();
   };
 
   const copy = async () => {
+    if (!compiledText) return;
     await window.wb.copyText(compiledText);
     setCopyMessage('Copied exact preview text.');
   };
 
   const handoff = async () => {
-    if (handoffPending || previewValidity !== 'CURRENT' || !capabilities?.canDispatch) return;
+    if (!projectId || !conversation || !compiledText || handoffPending || previewValidity !== 'CURRENT' || !capabilities?.canDispatch) return;
     const draftIntent = createHandoffIntent(globalThis.crypto.randomUUID(), {
       projectId,
       conversationKey: conversation.key,
@@ -89,16 +93,40 @@ export function PacketPanel() {
     setIntent(dispatched);
     setReceipt(null);
     setHandoffPending(true);
-    const nextReceipt = await window.wb.dispatchToHarness({
-      intentId: draftIntent.id,
-      projectId,
-      conversationKey: conversation.key,
-      packetText: compiledText,
-    });
-    setReceipt(nextReceipt);
-    setIntent(applyHandoffReceipt(dispatched, nextReceipt));
-    setHandoffPending(false);
+    setHandoffStatus('DISPATCHED');
+    try {
+      const nextReceipt = await window.wb.dispatchToHarness({
+        intentId: draftIntent.id,
+        projectId,
+        conversationKey: conversation.key,
+        packetText: compiledText,
+      });
+      setReceipt(nextReceipt);
+      setIntent(applyHandoffReceipt(dispatched, nextReceipt));
+      setHandoffStatus(nextReceipt.status);
+    } catch (error) {
+      setHandoffStatus('FAILED');
+      setIntent({ ...dispatched, state: 'failed', receipt: { at: new Date().toISOString(), message: String(error) } });
+    } finally {
+      setHandoffPending(false);
+    }
   };
+
+  useEffect(() => {
+    const onCopy = () => void copy();
+    const onHandoff = () => void handoff();
+    window.addEventListener('workbench:copy-agent-input', onCopy);
+    window.addEventListener('workbench:handoff-agent-input', onHandoff);
+    return () => {
+      window.removeEventListener('workbench:copy-agent-input', onCopy);
+      window.removeEventListener('workbench:handoff-agent-input', onHandoff);
+    };
+  });
+
+  if (!projectId) return null;
+  if (!conversation || !packet || !snapshot) {
+    return <div className="panel"><h2>Task Packet</h2><p className="hint">先在 Control Room / Canvas 选择一个 Conversation。</p></div>;
+  }
 
   return (
     <div className="panel">

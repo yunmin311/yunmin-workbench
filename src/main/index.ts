@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { join, relative } from 'node:path';
-import { app, BrowserWindow, clipboard, dialog, ipcMain, type OpenDialogOptions } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, screen, type OpenDialogOptions } from 'electron';
 import { watch, type FSWatcher } from 'chokidar';
 import { z } from 'zod';
 import { freezePacket } from '../core/project/packet';
@@ -30,6 +30,7 @@ import {
   WorkspaceSessionSchema,
   writeWorkspaceSessionAtomic,
 } from './workspacePersistence';
+import { normalizeWindowState, readWindowState, writeWindowStateAtomic } from './windowStatePersistence';
 
 // test hook: Playwright E2E redirects Workbench-owned state to a temp dir
 if (process.env.WB_STATE_DIR) app.setPath('userData', process.env.WB_STATE_DIR);
@@ -484,10 +485,19 @@ function watchOverlay(getRoot: () => string | undefined, win: BrowserWindow): vo
   ipcMain.handle('overlay:watch', () => arm());
 }
 
-function createWindow(refresh: () => Promise<OverlaySnapshot>): void {
+async function createWindow(refresh: () => Promise<OverlaySnapshot>): Promise<void> {
+  const savedWindow = await readWindowState(stateDir());
+  const display = savedWindow?.x !== undefined && savedWindow.y !== undefined
+    ? screen.getDisplayNearestPoint({ x: savedWindow.x, y: savedWindow.y })
+    : screen.getPrimaryDisplay();
+  const windowState = normalizeWindowState(savedWindow, display.workArea);
   const win = new BrowserWindow({
-    width: 1440,
-    height: 900,
+    x: windowState.x,
+    y: windowState.y,
+    width: windowState.width,
+    height: windowState.height,
+    minWidth: 900,
+    minHeight: 640,
     title: 'Yunmin Workbench',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -503,6 +513,24 @@ function createWindow(refresh: () => Promise<OverlaySnapshot>): void {
   win.on('focus', () => {
     if (!win.isDestroyed()) win.webContents.send('app:focus');
   });
+  if (windowState.maximized) win.maximize();
+  let saveWindowTimer: NodeJS.Timeout | null = null;
+  const saveWindow = () => {
+    if (saveWindowTimer) clearTimeout(saveWindowTimer);
+    saveWindowTimer = setTimeout(() => {
+      saveWindowTimer = null;
+      const bounds = win.getNormalBounds();
+      void writeWindowStateAtomic(stateDir(), {
+        schemaVersion: 1,
+        ...bounds,
+        maximized: win.isMaximized(),
+      });
+    }, 250);
+  };
+  win.on('resize', saveWindow);
+  win.on('move', saveWindow);
+  win.on('maximize', saveWindow);
+  win.on('unmaximize', saveWindow);
   if (process.env.ELECTRON_RENDERER_URL) {
     void win.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {
@@ -512,9 +540,9 @@ function createWindow(refresh: () => Promise<OverlaySnapshot>): void {
 
 app.whenReady().then(() => {
   const { refresh } = registerIpc();
-  createWindow(refresh);
+  void createWindow(refresh);
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow(refresh);
+    if (BrowserWindow.getAllWindows().length === 0) void createWindow(refresh);
   });
 });
 

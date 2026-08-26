@@ -12,6 +12,20 @@ button:disabled { opacity: 0.45; cursor: default; }
 .topbar nav button.active { color: #fff; border-color: #7aa2f7; background: #202a3c; }
 button.primary { background: #2f5fd0; border-color: #2f5fd0; color: #fff; margin-top: 14px; }
 .refresh { margin-left: 8px; }
+.command-trigger { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+kbd { padding: 1px 5px; border: 1px solid #39404d; border-radius: 4px; color: #8b909a; font: 10px/1.5 ui-monospace, monospace; }
+.workspace-status { display: flex; gap: 0; min-height: 28px; padding: 0 20px; align-items: center; overflow-x: auto; border-bottom: 1px solid #23262e; background: #1a1d23; color: #747c89; font-size: 11px; white-space: nowrap; }
+.workspace-status span { padding: 0 10px; border-right: 1px solid #2c313c; }
+.workspace-status span:first-child { padding-left: 0; color: #b7bdc8; }
+.command-backdrop { position: fixed; inset: 0; z-index: 100; background: rgba(8, 10, 14, 0.58); }
+.command-dialog { position: fixed; top: min(16vh, 140px); left: 50%; z-index: 101; width: min(640px, calc(100vw - 32px)); transform: translateX(-50%); overflow: hidden; border: 1px solid #39404d; border-radius: 9px; background: #1e2128; box-shadow: 0 18px 60px rgba(0, 0, 0, 0.36); }
+.command-dialog [cmdk-input] { width: 100%; padding: 14px 16px; border: 0; border-bottom: 1px solid #2c313c; border-radius: 0; outline: none; }
+.command-dialog [cmdk-list] { max-height: min(60vh, 520px); overflow: auto; padding: 8px; }
+.command-dialog [cmdk-group-heading] { padding: 8px 8px 5px; color: #747c89; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+.command-dialog [cmdk-item] { display: flex; align-items: center; justify-content: space-between; min-height: 34px; padding: 7px 9px; border-radius: 5px; color: #b7bdc8; font-size: 13px; cursor: pointer; }
+.command-dialog [cmdk-item][data-selected='true'] { background: #2c313c; color: #fff; }
+.command-dialog [cmdk-item][data-disabled='true'] { opacity: .35; cursor: default; }
+.command-dialog [cmdk-empty] { padding: 24px 12px; color: #8b909a; text-align: center; font-size: 13px; }
 .problems { padding: 6px 16px; background: #3a2a1a; color: #e8b06a; font-size: 12px; display: flex; flex-direction: column; gap: 2px; }
 main { flex: 1; overflow: auto; }
 .panel { padding: 28px 36px 48px; max-width: 1280px; }
