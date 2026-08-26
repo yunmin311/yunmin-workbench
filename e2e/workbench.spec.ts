@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -15,7 +15,7 @@ const hash = (p: string) => createHash('sha256').update(readFileSync(p)).digest(
 test.describe('Yunmin Workbench vertical slice (real overlay, read-only)', () => {
   test.skip(!hasOverlay, 'real overlay not present on this machine');
 
-  test('Projects -> Control Room -> Canvas -> Context Staging -> Packet Freeze', async () => {
+  test('Workspace -> Session -> Canvas -> Context Inspector -> Packet Freeze', async () => {
     // evidence for "UI never writes back into the overlay"
     const inboxBefore = hash(join(OVERLAY, 'INBOX.md'));
     const memoryBefore = hash(join(OVERLAY, 'memory', 'MEMORY.md'));
@@ -27,44 +27,39 @@ test.describe('Yunmin Workbench vertical slice (real overlay, read-only)', () =>
       env: { ...process.env, WB_STATE_DIR: stateDir },
     });
     const win = await app.firstWindow();
-    const screenshotDir = join(process.cwd(), 'screenshots', 'harness-grade-productization-20260826');
-    mkdirSync(screenshotDir, { recursive: true });
-
-    // Projects
-    await expect(win.locator('.brand')).toHaveText('Yunmin Workbench');
-    await win.screenshot({ path: join(screenshotDir, '01-projects.png') });
+    // Workspace shell
+    await expect(win.locator('.titlebar-brand')).toContainText('Yunmin Workbench');
     await win.keyboard.press('Control+K');
     const commandInput = win.locator('[cmdk-input]');
     await expect(commandInput).toBeFocused();
-    await commandInput.fill('Open Project Creative OS');
-    await expect(win.locator('[cmdk-item]', { hasText: 'Open Project · Creative OS' })).toBeVisible();
+    await commandInput.fill('Open Workspace Creative OS');
+    await expect(win.locator('[cmdk-item]', { hasText: 'Open Workspace · Creative OS' })).toBeVisible();
     await win.keyboard.press('Escape');
-    const card = win.locator('.project-card', { hasText: 'Creative OS' });
-    await expect(card).toBeVisible();
-    await expect(card.locator('.source-summary')).toBeVisible();
-    await card.click();
+    const project = win.locator('.sidebar-projects button', { hasText: 'Creative OS' });
+    await expect(project).toBeVisible();
+    await project.click();
 
-    // Control Room shows real registry data
-    await expect(win.locator('h2', { hasText: 'Creative OS' })).toBeVisible();
-    await expect(win.locator('.convo').first()).toBeVisible();
-    await expect(win.locator('.binding-summary')).toBeVisible();
-    await win.screenshot({ path: join(screenshotDir, '02-control-room.png') });
+    // Sidebar projects current registry conversations into the work surface.
+    const conversation = win.locator('.sidebar-conversations button').first();
+    await expect(conversation).toBeVisible();
+    await conversation.click();
+    await expect(win.locator('.session-surface')).toBeVisible();
 
-    // Canvas: projection nodes, click a conversation -> Context
-    await win.locator('nav button', { hasText: 'Canvas' }).click();
+    // Canvas: projection nodes render, then returning to Work preserves the selected Session.
+    await win.getByRole('button', { name: 'Canvas' }).click();
     await expect(win.locator('.wb-project')).toBeVisible();
     await expect(win.locator('.canvas-hint')).toHaveCount(0);
     const convoNode = win.locator('.wb-conversation').first();
     await expect(convoNode).toBeVisible();
-    await win.screenshot({ path: join(screenshotDir, '03-canvas.png') });
-    await convoNode.click();
+    await win.locator('.harness-rail').getByRole('button', { name: 'Work', exact: true }).click();
+    await expect(win.locator('.session-surface')).toBeVisible();
 
-    // Context Staging: toggle one available item to included
+    // Context Inspector: toggle one available item to included.
+    await win.getByRole('tab', { name: 'Context' }).click();
     await expect(win.locator('h2', { hasText: 'Context Staging' })).toBeVisible();
     const governanceContext = win.locator('details.governance-context');
     await expect(governanceContext).toBeVisible();
     await expect(governanceContext).not.toHaveAttribute('open', '');
-    await win.screenshot({ path: join(screenshotDir, '04-context-staging.png') });
     await win.locator('button', { hasText: '+ Manual Context' }).click();
     await win.locator('.manual-context-form input').fill('E2E user context');
     await win.locator('.manual-context-form textarea').fill('User supplied text that must reach the Harness.');
@@ -76,14 +71,13 @@ test.describe('Yunmin Workbench vertical slice (real overlay, read-only)', () =>
     // Packet: fill summary, freeze
     await win.keyboard.press('Control+5');
     await expect(win.locator('h2', { hasText: 'Task Packet' })).toBeVisible();
-    await win.locator('textarea').fill('E2E 冒烟：验证 Freeze 链路');
+    await win.locator('.inspector-pane textarea').fill('E2E 冒烟：验证 Freeze 链路');
     await expect(win.locator('.validity-current')).toBeVisible();
     if (hasCodex) {
       await expect(win.locator('button', { hasText: 'Send to Codex' })).toBeEnabled();
     } else {
       await expect(win.locator('button', { hasText: 'Send to Codex' })).toBeDisabled();
     }
-    await win.screenshot({ path: join(screenshotDir, '05-packet-preview.png') });
     const previewText = await win.locator('.agent-input-text').textContent();
     await win.locator('button', { hasText: 'Copy Agent Input' }).click();
     const copiedText = await app.evaluate(({ clipboard }) => clipboard.readText());
@@ -104,7 +98,7 @@ test.describe('Yunmin Workbench vertical slice (real overlay, read-only)', () =>
 
     // Debounced Workbench-owned draft survives a full application restart.
     await win.waitForTimeout(700);
-    await expect(win.locator('.workspace-status')).toContainText('Draft saved');
+    await expect(win.locator('.status-bar')).toContainText('Draft saved');
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setBounds({ width: 1100, height: 740 }));
     await win.waitForTimeout(500);
     await app.close();
@@ -113,14 +107,14 @@ test.describe('Yunmin Workbench vertical slice (real overlay, read-only)', () =>
       env: { ...process.env, WB_STATE_DIR: stateDir },
     });
     const resumed = await app.firstWindow();
-    await expect(resumed.locator('.brand')).toHaveText('Yunmin Workbench');
+    await expect(resumed.locator('.titlebar-brand')).toContainText('Yunmin Workbench');
     const resumedBounds = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds());
     expect(resumedBounds.width).toBe(1100);
     expect(resumedBounds.height).toBe(740);
     // Workspace continuity restores the exact project/conversation/view after fresh truth loads.
-    await expect(resumed.locator('textarea')).toHaveValue('E2E 冒烟：验证 Freeze 链路');
-    await expect(resumed.locator('li', { hasText: 'v1' })).toBeVisible();
-    await resumed.locator('button.refresh').click();
+    await expect(resumed.locator('.inspector-pane textarea')).toHaveValue('E2E 冒烟：验证 Freeze 链路');
+    await expect(resumed.locator('.frozen-row', { hasText: 'v1' })).toBeVisible();
+    await resumed.getByRole('button', { name: 'Reload external truth' }).click();
     await expect(resumed.locator('.validity-current').first()).toBeVisible();
     const resumedPreview = await resumed.locator('.agent-input-text').textContent();
     await resumed.locator('button', { hasText: 'Copy Agent Input' }).click();

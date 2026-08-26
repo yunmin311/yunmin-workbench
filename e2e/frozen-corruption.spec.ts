@@ -100,10 +100,10 @@ test.describe('frozen corruption containment', () => {
       env: { ...process.env, WB_STATE_DIR: stateDir },
     });
     const win = await app.firstWindow();
-    await expect(win.locator('.brand')).toHaveText('Yunmin Workbench');
+    await expect(win.locator('.titlebar-brand')).toContainText('Yunmin Workbench');
 
-    await win.locator('.project-card', { hasText: 'Creative OS' }).click();
-    await win.locator('.convo').first().click();
+    await win.locator('.sidebar-projects button', { hasText: 'Creative OS' }).click();
+    await win.locator('.sidebar-conversations button').first().click();
     await win.keyboard.press('Control+5');
     await expect(win.locator('h2', { hasText: 'Task Packet' })).toBeVisible();
 
@@ -131,13 +131,13 @@ test.describe('frozen corruption containment', () => {
       env: { ...process.env, WB_STATE_DIR: stateDir },
     });
     const win = await app.firstWindow();
-    await expect(win.locator('.brand')).toHaveText('Yunmin Workbench');
+    await expect(win.locator('.titlebar-brand')).toContainText('Yunmin Workbench');
 
-    await win.locator('.project-card', { hasText: 'Creative OS' }).click();
-    await win.locator('.convo').first().click();
+    await win.locator('.sidebar-projects button', { hasText: 'Creative OS' }).click();
+    await win.locator('.sidebar-conversations button').first().click();
     await win.keyboard.press('Control+5');
     await expect(win.locator('h2', { hasText: 'Task Packet' })).toBeVisible();
-    await win.locator('textarea').fill('Corruption recovery freeze');
+    await win.locator('.inspector-pane textarea').fill('Corruption recovery freeze');
     await expect(win.locator('.validity-current')).toBeVisible();
     await win.locator('button.primary', { hasText: 'Freeze Current Task Packet' }).click();
     await expect(win.locator('p.ok')).toContainText('v1');
