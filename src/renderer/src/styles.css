@@ -126,6 +126,15 @@ input { width: 100%; background: #1e2128; color: #d7dae0; border: 1px solid #394
 .validity-stale { color: #e0af68; border-color: #e0af68; }
 .validity-invalid { color: #f7768e; border-color: #f7768e; }
 .binding-summary { margin-top: 28px; }
+.section-heading { display: flex; align-items: center; justify-content: space-between; margin-top: 22px; }
+.section-heading h3 { margin: 0; }
+.section-heading button { padding: 3px 8px; color: #8b909a; font-size: 11px; }
+.runtime-session { display: grid; grid-template-columns: auto auto 1fr; gap: 8px; margin: 10px 0; font-size: 12px; color: #b7bdc8; }
+.runtime-session span { color: #747c89; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-timeline { list-style: none; margin: 8px 0; padding: 0; border-top: 1px solid #2c313c; }
+.activity-timeline li { display: grid; grid-template-columns: 84px minmax(0, 1fr) auto; gap: 10px; padding: 7px 8px; border-bottom: 1px solid #23262e; font-size: 12px; }
+.activity-timeline time, .activity-timeline small { color: #747c89; }
+.wb-edge-execution path { stroke: #7aa2f7; stroke-width: 2; }
 @media (max-width: 900px) {
   .overlay { display: none; }
   .topbar { gap: 8px; }

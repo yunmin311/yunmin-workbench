@@ -18,9 +18,13 @@ export default function App() {
       if (focusTimer) clearTimeout(focusTimer);
       focusTimer = setTimeout(() => void useWorkbench.getState().recheckSources(), 300);
     });
+    const offActivity = window.wb.onActivityChanged((event) => useWorkbench.getState().ingestActivity(event));
+    const offActivityCleared = window.wb.onActivityCleared(() => void useWorkbench.getState().loadActivity());
     return () => {
       offOverlay();
       offFocus();
+      offActivity();
+      offActivityCleared();
       if (focusTimer) clearTimeout(focusTimer);
     };
   }, [initialize]);

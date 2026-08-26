@@ -10,6 +10,11 @@ interface RpcResponse {
   params?: unknown;
 }
 
+export interface CodexProtocolEvent {
+  method: string;
+  params?: unknown;
+}
+
 interface PendingRequest {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
@@ -23,6 +28,7 @@ export class CodexAppServerAdapter {
   private pending = new Map<number | string, PendingRequest>();
   private initialized: Promise<string> | null = null;
   private stderr = '';
+  private listeners = new Set<(event: CodexProtocolEvent) => void>();
 
   private ensureProcess(): ChildProcessWithoutNullStreams {
     if (this.child && !this.child.killed) return this.child;
@@ -56,6 +62,9 @@ export class CodexAppServerAdapter {
     } catch {
       return;
     }
+    if (message.method && message.id === undefined) {
+      for (const listener of this.listeners) listener({ method: message.method, params: message.params });
+    }
     if (message.id === undefined) return;
     const pending = this.pending.get(message.id);
     if (!pending) return;
@@ -66,6 +75,11 @@ export class CodexAppServerAdapter {
     } else {
       pending.resolve(message.result);
     }
+  }
+
+  onEvent(listener: (event: CodexProtocolEvent) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
   }
 
   private notify(method: string): void {
@@ -110,10 +124,10 @@ export class CodexAppServerAdapter {
       canDispatch: true,
       canCreateSession: true,
       canResumeSession: false,
-      canObserveRuntime: false,
+      canObserveRuntime: true,
       canReceiveReceipt: true,
       protocol: 'Codex app-server JSONL v2',
-      evidence: `initialize.userAgent=${userAgent}; official methods thread/start + turn/start`,
+      evidence: `initialize.userAgent=${userAgent}; official thread/start + turn/start and lifecycle notifications`,
     };
   }
 
@@ -131,9 +145,15 @@ export class CodexAppServerAdapter {
     return { threadId };
   }
 
-  async dispatch(intentId: string, cwd: string, text: string): Promise<HandoffReceipt> {
+  async dispatch(
+    intentId: string,
+    cwd: string,
+    text: string,
+    onThreadStarted?: (threadId: string) => void,
+  ): Promise<HandoffReceipt> {
     try {
       const { threadId } = await this.startThread(cwd, false);
+      onThreadStarted?.(threadId);
       const response = await this.request('turn/start', {
         threadId,
         clientUserMessageId: intentId,

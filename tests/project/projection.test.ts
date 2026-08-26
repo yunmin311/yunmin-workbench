@@ -77,6 +77,25 @@ describe('buildCanvasGraph', () => {
     expect(g.nodes.every((n) => Number.isFinite(n.x) && Number.isFinite(n.y))).toBe(true);
     expect(new Set(g.nodes.map((n) => `${n.x},${n.y}`)).size).toBeGreaterThan(1);
   });
+
+  it('adds execution only when a protocol-observed runtime session is supplied', () => {
+    const snap = snapshot();
+    const conversation = snap.conversations.find((item) => item.project === 'creative-os')!;
+    const runtime = {
+      id: 'thread-1',
+      conversationKey: conversation.key,
+      binding: { harness: 'codex', machine: 'machine-1', externalSessionRef: 'thread-1' },
+      state: 'working' as const,
+      observed: {
+        source: 'protocol' as const,
+        sourceRef: 'codex-app-server:turn/started',
+        observedAt: '2026-08-26T01:00:00.000Z',
+        verification: 'VERIFIED' as const,
+      },
+      startedAt: '2026-08-26T01:00:00.000Z',
+    };
+    expect(buildCanvasGraph(snap, 'creative-os', [runtime]).edges.filter((edge) => edge.kind === 'execution')).toHaveLength(1);
+  });
 });
 
 describe('buildStaging', () => {

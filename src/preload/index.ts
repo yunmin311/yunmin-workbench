@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
-import type { ContextItem, FrozenPacket, GitFacts, HandoffReceipt, HarnessCapabilities, OverlaySnapshot, SourceFingerprint, TaskPacket } from '../core/types';
+import type { ActivityEvent, ContextItem, FrozenPacket, GitFacts, HandoffReceipt, HarnessCapabilities, OverlaySnapshot, SourceFingerprint, TaskPacket } from '../core/types';
 import type { WorkbenchDraftV1 } from '../core/project/draft';
 import type { WorkspaceSessionV1 } from '../core/project/workspaceSession';
 
@@ -52,10 +52,24 @@ const api = {
   dispatchToHarness: (request: {
     intentId: string;
     projectId: string;
+    conversationKey: string;
     packetText: string;
   }): Promise<HandoffReceipt> => ipcRenderer.invoke('harness:dispatch', request),
   smokeHarness: (projectId: string): Promise<{ userAgent: string; ephemeralThreadId: string }> =>
     ipcRenderer.invoke('harness:smoke', projectId),
+  loadActivity: (): Promise<{ events: ActivityEvent[]; problem?: string }> =>
+    ipcRenderer.invoke('activity:load'),
+  clearActivity: (): Promise<void> => ipcRenderer.invoke('activity:clear'),
+  onActivityChanged: (cb: (event: ActivityEvent) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, event: ActivityEvent) => cb(event);
+    ipcRenderer.on('activity:changed', listener);
+    return () => ipcRenderer.removeListener('activity:changed', listener);
+  },
+  onActivityCleared: (cb: () => void): (() => void) => {
+    const listener = () => cb();
+    ipcRenderer.on('activity:cleared', listener);
+    return () => ipcRenderer.removeListener('activity:cleared', listener);
+  },
   copyText: (text: string): Promise<void> => ipcRenderer.invoke('clipboard:writeText', text),
   onOverlayChanged: (cb: () => void): (() => void) => {
     const listener = (_e: IpcRendererEvent) => cb();

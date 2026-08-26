@@ -5,11 +5,11 @@ import { buildCanvasGraph } from '../../../core/project/canvas';
 import { useWorkbench } from '../store';
 
 export function CanvasView() {
-  const { snapshot, projectId, selectConversation, setView } = useWorkbench();
+  const { snapshot, projectId, runtimeSessions, selectConversation, setView } = useWorkbench();
 
   const { nodes, edges } = useMemo(() => {
     if (!snapshot || !projectId) return { nodes: [] as Node[], edges: [] as Edge[] };
-    const g = buildCanvasGraph(snapshot, projectId);
+    const g = buildCanvasGraph(snapshot, projectId, runtimeSessions);
     const nodes: Node[] = g.nodes.map((n) => ({
       id: n.id,
       position: { x: n.x, y: n.y },
@@ -30,7 +30,7 @@ export function CanvasView() {
             : undefined,
     }));
     return { nodes, edges };
-  }, [snapshot, projectId]);
+  }, [snapshot, projectId, runtimeSessions]);
 
   if (!projectId) return null;
 

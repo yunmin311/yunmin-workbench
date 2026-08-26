@@ -1,5 +1,5 @@
 import dagre from 'dagre';
-import type { Conversation, OverlaySnapshot, WbEdge, WbNode } from '../types';
+import type { Conversation, OverlaySnapshot, RuntimeSession, WbEdge, WbNode } from '../types';
 
 const NODE_W = 220;
 const NODE_H = 64;
@@ -14,6 +14,7 @@ const NODE_H = 64;
 export function buildCanvasGraph(
   snapshot: OverlaySnapshot,
   projectId: string,
+  runtimeSessions: RuntimeSession[] = [],
 ): { nodes: WbNode[]; edges: WbEdge[] } {
   const nodes: WbNode[] = [];
   const edges: WbEdge[] = [];
@@ -45,6 +46,14 @@ export function buildCanvasGraph(
       target: `conversation:${c.key}`,
       kind: 'membership',
     });
+    for (const session of runtimeSessions.filter((item) => item.conversationKey === c.key)) {
+      edges.push({
+        id: `execution:${session.id}->${c.key}`,
+        source: `project:${projectId}`,
+        target: `conversation:${c.key}`,
+        kind: 'execution',
+      });
+    }
   }
 
   if (snapshot.memoryIndex.length > 0) {

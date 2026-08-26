@@ -5,6 +5,7 @@ import {
   type WorkbenchDraftV1,
 } from '../../core/project/draft';
 import { buildStaging, createManualContext } from '../../core/project/staging';
+import { orderActivity, projectRuntimeSessions } from '../../core/project/activity';
 import { overlayFileSourceRef, projectFileSourceRef } from '../../core/project/sourceIdentity';
 import {
   resolveWorkspaceTarget,
@@ -14,11 +15,13 @@ import {
 } from '../../core/project/workspaceSession';
 import type {
   ContextItem,
+  ActivityEvent,
   Conversation,
   FrozenPacket,
   GitFacts,
   OverlaySnapshot,
   SourceFingerprint,
+  RuntimeSession,
 } from '../../core/types';
 
 export type View = 'projects' | 'control' | 'canvas' | 'context' | 'packet';
@@ -42,6 +45,9 @@ interface WorkbenchState {
   contextMessage: string | null;
   workspaceSession: WorkspaceSessionV1;
   resumeProblem: string | null;
+  activity: ActivityEvent[];
+  runtimeSessions: RuntimeSession[];
+  activityProblem: string | null;
   initialize: () => Promise<void>;
   resumeWorkspace: (target?: WorkspaceTargetV1) => void;
   load: (refresh?: boolean) => Promise<void>;
@@ -60,6 +66,9 @@ interface WorkbenchState {
   recheckSources: () => Promise<void>;
   addManualContext: (title: string, body: string) => void;
   clearDraft: () => Promise<void>;
+  loadActivity: () => Promise<void>;
+  ingestActivity: (event: ActivityEvent) => void;
+  clearActivity: () => Promise<void>;
 }
 
 const draftTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -146,9 +155,13 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   contextMessage: null,
   workspaceSession: EMPTY_WORKSPACE_SESSION,
   resumeProblem: null,
+  activity: [],
+  runtimeSessions: [],
+  activityProblem: null,
 
   initialize: async () => {
     await get().load(true);
+    await get().loadActivity();
     const loaded = await window.wb.loadWorkspaceSession();
     set({
       workspaceSession: loaded.session ?? EMPTY_WORKSPACE_SESSION,
@@ -492,5 +505,27 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       sourceChanges: [],
       contextMessage: 'Draft cleared.',
     });
+  },
+
+  loadActivity: async () => {
+    const loaded = await window.wb.loadActivity();
+    const activity = orderActivity(loaded.events);
+    set({
+      activity,
+      runtimeSessions: projectRuntimeSessions(activity),
+      activityProblem: loaded.problem ?? null,
+    });
+  },
+
+  ingestActivity: (event) => {
+    set((state) => {
+      const activity = orderActivity([...state.activity.filter((item) => item.id !== event.id), event]);
+      return { activity, runtimeSessions: projectRuntimeSessions(activity) };
+    });
+  },
+
+  clearActivity: async () => {
+    await window.wb.clearActivity();
+    set({ activity: [], runtimeSessions: [], activityProblem: null });
   },
 }));

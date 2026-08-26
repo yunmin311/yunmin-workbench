@@ -92,6 +92,7 @@ export function PacketPanel() {
     const nextReceipt = await window.wb.dispatchToHarness({
       intentId: draftIntent.id,
       projectId,
+      conversationKey: conversation.key,
       packetText: compiledText,
     });
     setReceipt(nextReceipt);

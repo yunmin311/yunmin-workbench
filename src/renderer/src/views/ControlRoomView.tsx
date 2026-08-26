@@ -22,7 +22,10 @@ function ConvoRow({ c, onSelect, selected }: { c: Conversation; onSelect: () => 
 }
 
 export function ControlRoomView() {
-  const { snapshot, projectId, conversation, git, selectConversation, setView } = useWorkbench();
+  const {
+    snapshot, projectId, conversation, git, activity, runtimeSessions, activityProblem,
+    selectConversation, setView, clearActivity,
+  } = useWorkbench();
   if (!snapshot || !projectId) return null;
   const room = buildControlRoom(snapshot, projectId);
   if (!room) return <div className="panel">No data for project {projectId}.</div>;
@@ -42,6 +45,10 @@ export function ControlRoomView() {
     ['STANDBY', room.conversationLifecycle.STANDBY],
     ['UNKNOWN', room.conversationLifecycle.UNKNOWN],
   ] as const;
+  const projectActivity = activity.filter((event) => event.projectId === projectId).slice(-30).reverse();
+  const projectSessions = runtimeSessions.filter((session) =>
+    snapshot.conversations.some((item) => item.project === projectId && item.key === session.conversationKey),
+  );
 
   return (
     <div className="panel">
@@ -67,6 +74,31 @@ export function ControlRoomView() {
               <li key={i.id} title={i.sourceRef}>{i.raw}</li>
             ))}
           </ul>
+        </section>
+      )}
+
+      {(projectActivity.length > 0 || activityProblem) && (
+        <section className="activity-section">
+          <div className="section-heading">
+            <h3>Runtime activity <span className="section-count">{projectActivity.length}</span></h3>
+            <button onClick={() => void clearActivity()}>Clear local history</button>
+          </div>
+          {activityProblem && <p className="packet-alert">{activityProblem}</p>}
+          {projectSessions.map((session) => (
+            <p className="runtime-session" key={session.id}>
+              <strong>{session.binding.harness}</strong> · {session.state} · {session.id}
+              <span>{session.binding.cwd ?? 'cwd UNKNOWN'}</span>
+            </p>
+          ))}
+          <ol className="activity-timeline">
+            {projectActivity.map((event) => (
+              <li key={event.id} title={`${event.observed.sourceRef} · ${event.observed.verification}`}>
+                <time>{new Date(event.observed.observedAt).toLocaleTimeString()}</time>
+                <span><strong>{event.kind}</strong> · {event.summary}</span>
+                <small>{event.observed.source} · {event.observed.verification}</small>
+              </li>
+            ))}
+          </ol>
         </section>
       )}
 

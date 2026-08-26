@@ -272,6 +272,33 @@ export interface HandoffReceipt {
   message?: string;
 }
 
+export type ActivityKind =
+  | 'handoff-dispatched'
+  | 'handoff-accepted'
+  | 'handoff-failed'
+  | 'session-started'
+  | 'turn-started'
+  | 'agent-response'
+  | 'tool-started'
+  | 'tool-completed'
+  | 'file-change'
+  | 'turn-completed'
+  | 'turn-error';
+
+/** Workbench-owned observation history. It projects protocol facts; it is not external runtime truth. */
+export interface ActivityEvent {
+  id: string;
+  projectId: string;
+  conversationKey: string;
+  kind: ActivityKind;
+  summary: string;
+  runtimeRef?: string;
+  turnRef?: string;
+  binding?: RuntimeBinding;
+  runtimeState?: RuntimeState;
+  observed: Observation;
+}
+
 // ===== 4. Frozen Packet Validity =====
 
 export interface TaskPacket {

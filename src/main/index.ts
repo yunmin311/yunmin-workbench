@@ -1,10 +1,11 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { join, relative } from 'node:path';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, type OpenDialogOptions } from 'electron';
 import { watch, type FSWatcher } from 'chokidar';
 import { z } from 'zod';
 import { freezePacket } from '../core/project/packet';
-import type { FrozenPacket, HandoffReceipt, HarnessCapabilities, OverlaySnapshot, SourceFingerprint, TaskPacket } from '../core/types';
+import type { ActivityEvent, FrozenPacket, HandoffReceipt, HarnessCapabilities, OverlaySnapshot, SourceFingerprint, TaskPacket } from '../core/types';
 import {
   defaultOverlaySearchRoot,
   discoverOverlayRoot,
@@ -15,6 +16,7 @@ import {
 import { readGitFacts } from './adapters/gitFacts';
 import { createProjectFileContext, fingerprintFileAtRoot, fingerprintProjectFile } from './adapters/projectFiles';
 import { CodexAppServerAdapter } from './adapters/codexAppServer';
+import { appendActivity, clearActivity, readActivity } from './activityPersistence';
 import { HandoffDispatchRegistry } from './handoffDispatch';
 import {
   clearWorkbenchDraft,
@@ -111,6 +113,79 @@ function emptySnapshot(message: string): OverlaySnapshot {
 function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
   let cache: { snapshot: OverlaySnapshot; at: number } | null = null;
   let refreshing: Promise<OverlaySnapshot> | null = null;
+  let activityWrite: Promise<void> = Promise.resolve();
+  const runtimeContexts = new Map<string, {
+    projectId: string;
+    conversationKey: string;
+    machine: string;
+    cwd: string;
+  }>();
+
+  const recordActivity = (event: ActivityEvent): Promise<void> => {
+    activityWrite = activityWrite.then(async () => {
+      await appendActivity(stateDir(), event);
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) win.webContents.send('activity:changed', event);
+      }
+    });
+    return activityWrite;
+  };
+
+  const observed = (sourceRef: string, verification: 'VERIFIED' | 'OBSERVED' = 'VERIFIED') => ({
+    source: 'protocol' as const,
+    sourceRef,
+    observedAt: new Date().toISOString(),
+    verification,
+  });
+
+  codexAdapter.onEvent((event) => {
+    const params = event.params as Record<string, unknown> | undefined;
+    const threadId = typeof params?.threadId === 'string' ? params.threadId : undefined;
+    if (!threadId) return;
+    const context = runtimeContexts.get(threadId);
+    if (!context) return;
+    const turn = params?.turn as Record<string, unknown> | undefined;
+    const item = params?.item as Record<string, unknown> | undefined;
+    const turnId = typeof turn?.id === 'string'
+      ? turn.id
+      : typeof params?.turnId === 'string' ? params.turnId : undefined;
+    const base = {
+      id: randomUUID(),
+      projectId: context.projectId,
+      conversationKey: context.conversationKey,
+      runtimeRef: threadId,
+      turnRef: turnId,
+      observed: observed(`codex-app-server:${event.method}`),
+    };
+    if (event.method === 'turn/started' && turnId) {
+      void recordActivity({ ...base, kind: 'turn-started', summary: 'Codex turn started', runtimeState: 'working' });
+      return;
+    }
+    if (event.method === 'turn/completed' && turnId) {
+      const failed = turn?.status === 'failed' || Boolean(turn?.error);
+      void recordActivity({
+        ...base,
+        kind: failed ? 'turn-error' : 'turn-completed',
+        summary: failed ? 'Codex turn failed' : `Codex turn ${String(turn?.status ?? 'completed')}`,
+        runtimeState: failed ? 'error' : 'idle',
+      });
+      return;
+    }
+    if ((event.method === 'item/started' || event.method === 'item/completed') && item) {
+      const itemType = typeof item.type === 'string' ? item.type : 'unknown';
+      if (itemType === 'agentMessage' && event.method === 'item/completed') {
+        void recordActivity({ ...base, kind: 'agent-response', summary: 'Agent response completed' });
+      } else if (itemType === 'fileChange') {
+        void recordActivity({ ...base, kind: 'file-change', summary: `File change ${event.method === 'item/started' ? 'started' : 'completed'}` });
+      } else if (['commandExecution', 'mcpToolCall', 'dynamicToolCall'].includes(itemType)) {
+        void recordActivity({
+          ...base,
+          kind: event.method === 'item/started' ? 'tool-started' : 'tool-completed',
+          summary: `${itemType} ${event.method === 'item/started' ? 'started' : 'completed'}`,
+        });
+      }
+    }
+  });
 
   const refresh = (): Promise<OverlaySnapshot> => {
     if (refreshing) return refreshing;
@@ -272,6 +347,18 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     return { path: await writeWorkspaceSessionAtomic(stateDir(), session) };
   });
 
+  ipcMain.handle('activity:load', async () => {
+    await activityWrite;
+    return readActivity(stateDir());
+  });
+  ipcMain.handle('activity:clear', async () => {
+    await activityWrite;
+    await clearActivity(stateDir());
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send('activity:cleared');
+    }
+  });
+
   ipcMain.handle('harness:capabilities', async (): Promise<HarnessCapabilities> => {
     try {
       return await codexAdapter.capabilities();
@@ -291,6 +378,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
   const HandoffSchema = z.object({
     intentId: z.string().uuid(),
     projectId: KeySchema,
+    conversationKey: KeySchema,
     packetText: z.string().min(1).max(5_000_000),
   });
   ipcMain.handle('harness:dispatch', async (_event, rawRequest: unknown) => {
@@ -309,7 +397,40 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
           message: `No project root binding for ${request.projectId}`,
         } satisfies HandoffReceipt;
       }
-      return codexAdapter.dispatch(request.intentId, cwd, request.packetText);
+      await recordActivity({
+        id: randomUUID(), projectId: request.projectId, conversationKey: request.conversationKey,
+        kind: 'handoff-dispatched', summary: 'Packet dispatched to Codex',
+        observed: {
+          source: 'process', sourceRef: `workbench-intent:${request.intentId}`,
+          observedAt: new Date().toISOString(), verification: 'OBSERVED',
+        },
+      });
+      const machine = snap.machine?.deviceId ?? 'UNKNOWN';
+      const receipt = await codexAdapter.dispatch(request.intentId, cwd, request.packetText, (threadId) => {
+        runtimeContexts.set(threadId, {
+          projectId: request.projectId,
+          conversationKey: request.conversationKey,
+          machine,
+          cwd,
+        });
+        void recordActivity({
+          id: randomUUID(), projectId: request.projectId, conversationKey: request.conversationKey,
+          kind: 'session-started', summary: 'Codex session created', runtimeRef: threadId,
+          runtimeState: 'unknown',
+          binding: {
+            harness: 'codex', machine, cwd, externalSessionRef: threadId,
+          },
+          observed: observed('codex-app-server:thread/start.result.thread.id'),
+        });
+      });
+      await recordActivity({
+        id: randomUUID(), projectId: request.projectId, conversationKey: request.conversationKey,
+        kind: receipt.status === 'ACCEPTED' ? 'handoff-accepted' : 'handoff-failed',
+        summary: receipt.status === 'ACCEPTED' ? 'Codex accepted the packet' : `Codex handoff ${receipt.status.toLowerCase()}`,
+        runtimeRef: receipt.runtimeRef, turnRef: receipt.turnRef,
+        observed: observed(`codex-app-server:${receipt.protocolEvidence}`),
+      });
+      return receipt;
     });
   });
   ipcMain.handle('harness:smoke', async (_event, rawProjectId: unknown) => {
