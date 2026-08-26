@@ -21,6 +21,11 @@ import {
   writeWorkbenchDraftAtomic,
 } from './draftPersistence';
 import { encodeStateKey } from './stateKey';
+import {
+  readWorkspaceSession,
+  WorkspaceSessionSchema,
+  writeWorkspaceSessionAtomic,
+} from './workspacePersistence';
 
 // test hook: Playwright E2E redirects Workbench-owned state to a temp dir
 if (process.env.WB_STATE_DIR) app.setPath('userData', process.env.WB_STATE_DIR);
@@ -254,6 +259,12 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
   ipcMain.handle('draft:clear', async (_event, rawScope: unknown) => {
     const scope = DraftScopeSchema.parse(rawScope);
     await clearWorkbenchDraft(stateDir(), scope.projectId, scope.conversationKey);
+  });
+
+  ipcMain.handle('workspace:load', () => readWorkspaceSession(stateDir()));
+  ipcMain.handle('workspace:save', async (_event, rawSession: unknown) => {
+    const session = WorkspaceSessionSchema.parse(rawSession);
+    return { path: await writeWorkspaceSessionAtomic(stateDir(), session) };
   });
 
   ipcMain.handle('packet:freeze', async (_e, rawPacket: unknown) => {

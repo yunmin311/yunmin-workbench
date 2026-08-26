@@ -7,10 +7,10 @@ import { ContextStagingView } from './views/ContextStagingView';
 import { PacketPanel } from './components/PacketPanel';
 
 export default function App() {
-  const { snapshot, loading, view, projectId, load, reloadAndRecheck, setView } = useWorkbench();
+  const { snapshot, loading, view, projectId, initialize, reloadAndRecheck, setView } = useWorkbench();
 
   useEffect(() => {
-    void load();
+    void initialize();
     // P4: overlay canonical files changed on disk -> cheap invalidation + reload
     const offOverlay = window.wb.onOverlayChanged(() => void useWorkbench.getState().reloadAndRecheck());
     let focusTimer: ReturnType<typeof setTimeout> | null = null;
@@ -23,7 +23,7 @@ export default function App() {
       offFocus();
       if (focusTimer) clearTimeout(focusTimer);
     };
-  }, [load]);
+  }, [initialize]);
 
   if (loading && !snapshot) return <div className="center">Loading overlay…</div>;
   if (!snapshot) return <div className="center">No overlay snapshot.</div>;

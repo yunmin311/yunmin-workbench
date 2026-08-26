@@ -1,4 +1,5 @@
 import { discoverProjects } from '../../../core/project/discovery';
+import { resolveWorkspaceTarget } from '../../../core/project/workspaceSession';
 import { useWorkbench } from '../store';
 
 const COVERAGE_LABEL: Record<string, string> = {
@@ -8,7 +9,7 @@ const COVERAGE_LABEL: Record<string, string> = {
 };
 
 export function ProjectsView() {
-  const { snapshot, selectProject } = useWorkbench();
+  const { snapshot, selectProject, workspaceSession, resumeProblem, resumeWorkspace } = useWorkbench();
   if (!snapshot) return null;
   const trustOrder = { VERIFIED: 0, REGISTERED: 1, DISCOVERED: 2, UNKNOWN: 3 } as const;
   const projects = [...discoverProjects(snapshot)].sort(
@@ -17,12 +18,36 @@ export function ProjectsView() {
       || a.displayName.localeCompare(b.displayName),
   );
   const globalAttention = snapshot.inbox.filter((i) => i.attention && i.scope === 'global');
+  const recent = workspaceSession.recent.filter((target) => resolveWorkspaceTarget(snapshot, target).target);
   return (
     <div className="panel">
       <h2>Projects</h2>
       <p className="hint">
         选择一个项目进入工作区。轻任务仍可直接在原 Harness 完成。
       </p>
+      {resumeProblem && <p className="packet-alert">{resumeProblem}</p>}
+      {workspaceSession.last && (
+        <section className="recent-workspaces">
+          <h3>Resume</h3>
+          <button onClick={() => resumeWorkspace()}>
+            Resume last workspace · {workspaceSession.last.projectId}
+          </button>
+          {recent.length > 1 && (
+            <div className="recent-links">
+              {recent.slice(1, 5).map((target) => {
+                const conversation = target.conversationScope
+                  ? snapshot.conversations.find((item) => item.key === target.conversationScope!.conversationKey)
+                  : undefined;
+                return (
+                  <button key={`${target.projectId}:${target.conversationScope?.conversationKey ?? ''}`} onClick={() => resumeWorkspace(target)}>
+                    {target.projectId}{conversation ? ` · ${conversation.role}` : ''}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
       <ul className="project-list">
         {projects.map((p) => {
           const coverageDetails = p.coverage.map((source) => COVERAGE_LABEL[source]).join(' · ');

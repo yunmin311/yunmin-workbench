@@ -21,6 +21,9 @@ main { flex: 1; overflow: auto; }
 .section-count { color: #747c89; font-size: 12px; font-weight: 500; margin-left: 4px; }
 ul { list-style: none; padding: 0; margin: 6px 0; }
 .project-list li { margin-bottom: 8px; }
+.recent-workspaces { margin: 14px 0 18px; }
+.recent-workspaces h3 { margin: 0 0 8px; }
+.recent-links { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-left: 6px; }
 .project-card { display: flex; align-items: center; gap: 18px; width: 100%; min-height: 62px; padding: 11px 18px; text-align: left; background: #1e2128; }
 .project-identity { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
 .project-card .name { font-size: 15px; font-weight: 600; }

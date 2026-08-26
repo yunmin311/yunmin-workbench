@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import type { ContextItem, FrozenPacket, GitFacts, OverlaySnapshot, SourceFingerprint, TaskPacket } from '../core/types';
 import type { WorkbenchDraftV1 } from '../core/project/draft';
+import type { WorkspaceSessionV1 } from '../core/project/workspaceSession';
 
 const api = {
   loadOverlay: (opts?: { refresh?: boolean }): Promise<OverlaySnapshot> =>
@@ -42,6 +43,10 @@ const api = {
     ipcRenderer.invoke('draft:save', draft),
   clearDraft: (projectId: string, conversationKey: string): Promise<void> =>
     ipcRenderer.invoke('draft:clear', { projectId, conversationKey }),
+  loadWorkspaceSession: (): Promise<{ session: WorkspaceSessionV1 | null; problem?: string }> =>
+    ipcRenderer.invoke('workspace:load'),
+  saveWorkspaceSession: (session: WorkspaceSessionV1): Promise<{ path: string }> =>
+    ipcRenderer.invoke('workspace:save', session),
   copyText: (text: string): Promise<void> => ipcRenderer.invoke('clipboard:writeText', text),
   onOverlayChanged: (cb: () => void): (() => void) => {
     const listener = (_e: IpcRendererEvent) => cb();

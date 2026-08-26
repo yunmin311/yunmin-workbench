@@ -6,6 +6,12 @@ import {
 } from '../../core/project/draft';
 import { buildStaging, createManualContext } from '../../core/project/staging';
 import { overlayFileSourceRef, projectFileSourceRef } from '../../core/project/sourceIdentity';
+import {
+  resolveWorkspaceTarget,
+  updateWorkspaceSession,
+  type WorkspaceSessionV1,
+  type WorkspaceTargetV1,
+} from '../../core/project/workspaceSession';
 import type {
   ContextItem,
   Conversation,
@@ -34,6 +40,10 @@ interface WorkbenchState {
   orphanedDraftDecisionIds: string[];
   sourceChanges: string[];
   contextMessage: string | null;
+  workspaceSession: WorkspaceSessionV1;
+  resumeProblem: string | null;
+  initialize: () => Promise<void>;
+  resumeWorkspace: (target?: WorkspaceTargetV1) => void;
   load: (refresh?: boolean) => Promise<void>;
   reloadAndRecheck: () => Promise<void>;
   selectProject: (projectId: string) => void;
@@ -53,6 +63,38 @@ interface WorkbenchState {
 }
 
 const draftTimers = new Map<string, ReturnType<typeof setTimeout>>();
+let workspaceTimer: ReturnType<typeof setTimeout> | null = null;
+
+const EMPTY_WORKSPACE_SESSION: WorkspaceSessionV1 = {
+  schemaVersion: 1,
+  last: null,
+  recent: [],
+};
+
+function scheduleWorkspaceSave(state: WorkbenchState): void {
+  if (!state.projectId) return;
+  const target: WorkspaceTargetV1 = {
+    projectId: state.projectId,
+    conversationScope: state.conversation
+      ? {
+          kind: 'migration-conversation-key',
+          conversationKey: state.conversation.key,
+          canonicalConversationId: state.conversation.conversationId,
+        }
+      : undefined,
+    view: state.view,
+    usedAt: new Date().toISOString(),
+  };
+  const session = updateWorkspaceSession(state.workspaceSession, target);
+  useWorkbench.setState({ workspaceSession: session });
+  if (workspaceTimer) clearTimeout(workspaceTimer);
+  workspaceTimer = setTimeout(() => {
+    workspaceTimer = null;
+    void window.wb.saveWorkspaceSession(session).catch((error) => {
+      useWorkbench.setState({ resumeProblem: `Workspace continuity save failed: ${String(error)}` });
+    });
+  }, 180);
+}
 
 function draftFromState(state: WorkbenchState): WorkbenchDraftV1 | null {
   if (!state.projectId || !state.conversation) return null;
@@ -102,6 +144,49 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   orphanedDraftDecisionIds: [],
   sourceChanges: [],
   contextMessage: null,
+  workspaceSession: EMPTY_WORKSPACE_SESSION,
+  resumeProblem: null,
+
+  initialize: async () => {
+    await get().load(true);
+    const loaded = await window.wb.loadWorkspaceSession();
+    set({
+      workspaceSession: loaded.session ?? EMPTY_WORKSPACE_SESSION,
+      resumeProblem: loaded.problem ?? null,
+    });
+    if (loaded.session?.last) get().resumeWorkspace(loaded.session.last);
+  },
+
+  resumeWorkspace: (requested) => {
+    const { snapshot, workspaceSession } = get();
+    if (!snapshot) return;
+    const resolved = resolveWorkspaceTarget(snapshot, requested ?? workspaceSession.last);
+    if (!resolved.target) {
+      set({
+        projectId: null,
+        conversation: null,
+        view: 'projects',
+        staging: [],
+        resumeProblem: resolved.problem ?? 'No recent workspace to resume.',
+      });
+      return;
+    }
+    const target = resolved.target;
+    get().selectProject(target.projectId);
+    if (target.conversationScope) {
+      const conversation = snapshot.conversations.find(
+        (item) => item.project === target.projectId
+          && item.key === target.conversationScope!.conversationKey,
+      );
+      if (!conversation) {
+        set({ projectId: null, conversation: null, view: 'projects', staging: [], resumeProblem: 'Conversation disappeared during resume.' });
+        return;
+      }
+      get().selectConversation(conversation);
+    }
+    set({ view: target.view, resumeProblem: null });
+    scheduleWorkspaceSave(get());
+  },
 
   load: async (refresh) => {
     set({ loading: true });
@@ -159,6 +244,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       contextMessage: null,
     });
     void get().loadGit(projectId);
+    scheduleWorkspaceSave(get());
   },
 
   selectConversation: (conversation) => {
@@ -222,9 +308,13 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       await get().refreshFrozen();
       await get().recheckSources();
     })();
+    scheduleWorkspaceSave(get());
   },
 
-  setView: (view) => set({ view }),
+  setView: (view) => {
+    set({ view });
+    scheduleWorkspaceSave(get());
+  },
 
   setStagingState: (id, state) => {
     set((current) => ({

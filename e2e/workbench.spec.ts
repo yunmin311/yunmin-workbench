@@ -90,11 +90,7 @@ test.describe('Yunmin Workbench vertical slice (real overlay, read-only)', () =>
     });
     const resumed = await app.firstWindow();
     await expect(resumed.locator('.brand')).toHaveText('Yunmin Workbench');
-    await resumed.locator('.project-card', { hasText: 'Creative OS' }).click();
-    await resumed.locator('nav button', { hasText: 'Canvas' }).click();
-    await resumed.locator('.wb-conversation').first().click();
-    await expect(resumed.locator('tr', { hasText: 'E2E user context' })).toBeVisible();
-    await resumed.locator('button.primary', { hasText: 'Packet Preview' }).click();
+    // Workspace continuity restores the exact project/conversation/view after fresh truth loads.
     await expect(resumed.locator('textarea')).toHaveValue('E2E 冒烟：验证 Freeze 链路');
     await expect(resumed.locator('li', { hasText: 'v1' })).toBeVisible();
     await resumed.locator('button.refresh').click();
