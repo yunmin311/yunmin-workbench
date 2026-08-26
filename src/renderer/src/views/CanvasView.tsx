@@ -48,7 +48,7 @@ export function CanvasView() {
           const convo = snapshot.conversations.find((c) => c.key === convoId);
           if (convo) {
             selectConversation(convo);
-            setView('context');
+            setView('control');
           }
         }}
       >

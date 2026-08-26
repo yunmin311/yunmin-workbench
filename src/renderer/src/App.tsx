@@ -1,30 +1,29 @@
 import { useEffect } from 'react';
-import { useWorkbench } from './store';
-import { ProjectsView } from './views/ProjectsView';
-import { ControlRoomView } from './views/ControlRoomView';
-import { CanvasView } from './views/CanvasView';
-import { ContextStagingView } from './views/ContextStagingView';
-import { PacketPanel } from './components/PacketPanel';
 import { CommandPalette } from './components/CommandPalette';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { HarnessRail } from './components/HarnessRail';
+import { InspectorPane } from './components/InspectorPane';
+import { WorkspaceSidebar } from './components/WorkspaceSidebar';
+import { CanvasView } from './views/CanvasView';
+import { HomeOverview } from './views/HomeOverview';
+import { SessionSurface } from './views/SessionSurface';
+import { useWorkbench } from './store';
 
 export default function App() {
-  const snapshot = useWorkbench((s) => s.snapshot);
-  const loading = useWorkbench((s) => s.loading);
-  const view = useWorkbench((s) => s.view);
-  const projectId = useWorkbench((s) => s.projectId);
-  const conversation = useWorkbench((s) => s.conversation);
-  const draftSaveState = useWorkbench((s) => s.draftSaveState);
-  const packetValidity = useWorkbench((s) => s.packetValidity);
-  const handoffStatus = useWorkbench((s) => s.handoffStatus);
-  const runtimeSessions = useWorkbench((s) => s.runtimeSessions);
-  const initialize = useWorkbench((s) => s.initialize);
-  const reloadAndRecheck = useWorkbench((s) => s.reloadAndRecheck);
-  const setView = useWorkbench((s) => s.setView);
+  const snapshot = useWorkbench((state) => state.snapshot);
+  const loading = useWorkbench((state) => state.loading);
+  const view = useWorkbench((state) => state.view);
+  const projectId = useWorkbench((state) => state.projectId);
+  const conversation = useWorkbench((state) => state.conversation);
+  const draftSaveState = useWorkbench((state) => state.draftSaveState);
+  const packetValidity = useWorkbench((state) => state.packetValidity);
+  const handoffStatus = useWorkbench((state) => state.handoffStatus);
+  const runtimeSessions = useWorkbench((state) => state.runtimeSessions);
+  const initialize = useWorkbench((state) => state.initialize);
+  const reloadAndRecheck = useWorkbench((state) => state.reloadAndRecheck);
 
   useEffect(() => {
     void initialize();
-    // P4: overlay canonical files changed on disk -> cheap invalidation + reload
     const offOverlay = window.wb.onOverlayChanged(() => void useWorkbench.getState().reloadAndRecheck());
     let focusTimer: ReturnType<typeof setTimeout> | null = null;
     const offFocus = window.wb.onAppFocus(() => {
@@ -42,73 +41,71 @@ export default function App() {
     };
   }, [initialize]);
 
-  if (loading && !snapshot) return <div className="center">Loading overlay…</div>;
+  if (loading && !snapshot) return <div className="center">Loading workspace truth…</div>;
   if (!snapshot) return <div className="center">No overlay snapshot.</div>;
 
-  const navItems = [
-    { id: 'projects' as const, label: 'Projects', needsProject: false },
-    { id: 'control' as const, label: 'Control Room', needsProject: true },
-    { id: 'canvas' as const, label: 'Canvas', needsProject: true },
-    { id: 'context' as const, label: 'Context', needsProject: true },
-    { id: 'packet' as const, label: 'Packet', needsProject: true },
-  ];
+  const shellMode = view === 'canvas' ? 'canvas' : view === 'projects' ? 'home' : 'work';
   const currentRuntime = conversation
     ? runtimeSessions.filter((session) => session.conversationKey === conversation.key).at(-1)
     : undefined;
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <span className="brand">Yunmin Workbench</span>
-        <span className="overlay" title={snapshot.overlayRoot}>
-          overlay: {snapshot.overlayRoot || 'UNKNOWN'}
-        </span>
-        <nav>
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              className={view === item.id ? 'active' : ''}
-              aria-current={view === item.id ? 'page' : undefined}
-              onClick={() => (!item.needsProject || projectId) && setView(item.id)}
-              disabled={item.needsProject && !projectId}
-            >
-              {item.label}
-            </button>
-          ))}
-        </nav>
-        <button
-          className="command-trigger"
-          aria-label="Open command palette"
-          onClick={() => window.dispatchEvent(new CustomEvent('workbench:open-command-palette'))}
-        >
-          Commands <kbd>Ctrl K</kbd>
-        </button>
-        <button className="refresh" onClick={() => void reloadAndRecheck()}>↻ reload</button>
+    <div className="harness-app">
+      <header className="harness-titlebar">
+        <div className="titlebar-brand">
+          <span className="brand-mark">YW</span>
+          <span>Yunmin Workbench</span>
+        </div>
+        <div className="titlebar-workspace">
+          <span>{projectId ?? 'No workspace'}</span>
+          {conversation && <><i>/</i><strong>{conversation.role}</strong></>}
+        </div>
+        <div className="titlebar-actions">
+          <button
+            className="command-trigger"
+            aria-label="Open command palette"
+            onClick={() => window.dispatchEvent(new CustomEvent('workbench:open-command-palette'))}
+          >
+            Commands <kbd>Ctrl K</kbd>
+          </button>
+          <button className="icon-action" aria-label="Reload external truth" onClick={() => void reloadAndRecheck()}>↻</button>
+        </div>
       </header>
-      <div className="workspace-status" aria-label="Current workspace status">
-        <span>{projectId ?? 'No project'}</span>
-        <span>{conversation?.role ?? 'No conversation'}</span>
-        <span>Draft {draftSaveState}</span>
-        <span>Packet {packetValidity}</span>
-        <span>Handoff {handoffStatus}</span>
-        <span>Runtime {currentRuntime?.state ?? 'UNKNOWN'}</span>
-      </div>
+
       {snapshot.problems.length > 0 && (
         <div className="problems">
-          {snapshot.problems.map((p, i) => (
-            <span key={i}>[{p.source}] {p.message}</span>
+          {snapshot.problems.map((problem, index) => (
+            <span key={index}>[{problem.source}] {problem.message}</span>
           ))}
         </div>
       )}
-      <main>
-        <ErrorBoundary key={`${view}:${projectId ?? ''}:${conversation?.key ?? ''}`}>
-          {view === 'projects' && <ProjectsView />}
-          {view === 'control' && <ControlRoomView />}
-          {view === 'canvas' && <CanvasView />}
-          {view === 'context' && <ContextStagingView />}
-          {view === 'packet' && <PacketPanel />}
+
+      <div className="harness-body">
+        <HarnessRail mode={shellMode} />
+        <WorkspaceSidebar />
+        <main className={`active-surface active-surface-${shellMode}`}>
+          <ErrorBoundary key={`surface:${shellMode}:${projectId ?? ''}:${conversation?.key ?? ''}`}>
+            {shellMode === 'home' && <HomeOverview />}
+            {shellMode === 'work' && <SessionSurface />}
+            {shellMode === 'canvas' && <CanvasView />}
+          </ErrorBoundary>
+        </main>
+        <ErrorBoundary key={`inspector:${view}:${projectId ?? ''}:${conversation?.key ?? ''}`}>
+          <InspectorPane />
         </ErrorBoundary>
-      </main>
+      </div>
+
+      <footer className="status-bar" aria-label="Current workspace status">
+        <span>{projectId ?? 'NO PROJECT'}</span>
+        <span>{conversation?.role ?? 'NO SESSION'}</span>
+        <span>Harness {currentRuntime?.binding.harness ?? conversation?.platform ?? 'UNKNOWN'}</span>
+        <span>Runtime {currentRuntime?.state ?? 'UNKNOWN'}</span>
+        <span>Packet {packetValidity}</span>
+        <span>Draft {draftSaveState}</span>
+        <span>Handoff {handoffStatus}</span>
+        <span className="status-spacer" />
+        <span title={snapshot.overlayRoot}>Truth {snapshot.overlayRoot ? 'LOADED' : 'UNKNOWN'}</span>
+      </footer>
       <CommandPalette />
     </div>
   );
