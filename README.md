@@ -108,7 +108,8 @@ corepack pnpm install --frozen-lockfile
 - `pnpm dev` / `pnpm start` — 开发 / 预览
 - `pnpm typecheck` / `pnpm build`
 - `pnpm test` — Vitest（单测跑 fixture；Overlay 只读 slice 走 `GOV_OVERLAY` 或仓库自带的 portable fixture）
-- `pnpm e2e` — 先 build，再跑 Playwright Electron 关键路径（只读 + 断言 UI 不反写外部事实）
+- `pnpm e2e` — 先 build，再跑 Playwright Electron 关键路径（只读 + 断言 UI 不反写外部事实）。
+  GPU 进程起不来的机器（headless CI、远程/虚拟会话）需要同时给 `WB_ELECTRON_ARGS`，见下
 
 ## 外部事实 env seam
 
