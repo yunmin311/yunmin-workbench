@@ -98,7 +98,10 @@ test.describe('Yunmin Workbench vertical slice (GOV_OVERLAY fixture, read-only)'
     expect(frozen.included.some((item: { provenance?: string }) => item.provenance === 'USER PROVIDED')).toBe(true);
 
     // Debounced Workbench-owned draft survives a full application restart.
-    await win.waitForTimeout(700);
+    // No fixed sleep here: the composer reports `Draft <state>` and stays on
+    // 'saved' until the next edit, so the assertion itself polls for the
+    // debounced write (350ms) to land. A hard-coded delay only works until a
+    // slower machine needs longer than it allows.
     await expect(win.locator('.session-composer')).toContainText('Draft saved');
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setBounds({ width: 1100, height: 740 }));
     await win.waitForTimeout(500);
