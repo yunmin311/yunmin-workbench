@@ -97,11 +97,11 @@ corepack enable
 corepack pnpm install --frozen-lockfile
 ```
 
-`.npmrc` 固定 `node-linker=hoisted`。pnpm 11 默认的 isolated linker 需要为每个顶层
-依赖建 junction；在无法可靠创建 reparse point 的机器上，`pnpm install` 会报成功但把
-`node_modules/<pkg>` 留成空目录，electron/esbuild 的 install script 也就不会跑
-（没有 Electron 二进制，`pnpm build` 与 Playwright 都起不来）。hoisted linker 写真实
-目录，全新 clone 可以稳定装好。
+`pnpm-workspace.yaml` 固定 `nodeLinker: hoisted`（pnpm 11 从该文件读项目配置，根目录
+`.npmrc` 会被忽略）。默认的 isolated linker 需要为每个顶层依赖建 junction；在无法可靠
+创建 reparse point 的机器上，`pnpm install` 会报成功但把 `node_modules/<pkg>` 留成空
+目录，electron/esbuild 的 install script 也就不会跑（没有 Electron 二进制，`pnpm build`
+与 Playwright 都起不来）。hoisted linker 写真实目录，全新 clone 可以稳定装好。
 
 ## 命令
 

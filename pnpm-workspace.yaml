@@ -13,3 +13,17 @@ allowBuilds:
   electron: true
   esbuild: true
 verifyDepsBeforeRun: false
+
+# Linker. pnpm 11's default `isolated` linker materialises every top-level
+# dependency as a junction into `node_modules/.pnpm`. On this machine those
+# junctions are not created reliably from a fresh clone: `pnpm install` reports
+# success but leaves `node_modules/<pkg>` as an empty directory, so nothing is
+# importable and the electron/esbuild install scripts never run — no Electron
+# binary, and neither `pnpm build` nor Playwright can start the app.
+#
+# `hoisted` writes real directories instead of junctions, which installs
+# correctly from a clean clone.
+#
+# pnpm 11 reads project config from this file; a root `.npmrc` is ignored, so
+# the setting has to live here.
+nodeLinker: hoisted
