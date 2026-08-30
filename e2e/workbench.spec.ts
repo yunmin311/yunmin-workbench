@@ -1,20 +1,20 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { _electron as electron, expect, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { launchWorkbench, useOverlayFixture } from './prototype-shell';
+import { FIXTURE_PROJECT_DISPLAY_NAME } from '../tests/fixtures/overlayFixture';
 
-const OVERLAY = 'D:\\ai-governance-system';
-const PROJECT_CANONICAL = 'D:\\project\\CLAUDE.md';
-const hasOverlay = existsSync(join(OVERLAY, 'overlay.yaml'));
+const overlay = useOverlayFixture();
+const OVERLAY = overlay.overlayRoot;
+const PROJECT_CANONICAL = overlay.projectCanonicalPath;
 const hasCodex = spawnSync('codex', ['--version'], { windowsHide: true }).status === 0;
 
 const hash = (p: string) => createHash('sha256').update(readFileSync(p)).digest('hex');
 
-test.describe('Yunmin Workbench vertical slice (real overlay, read-only)', () => {
-  test.skip(!hasOverlay, 'real overlay not present on this machine');
-
+test.describe('Yunmin Workbench vertical slice (GOV_OVERLAY fixture, read-only)', () => {
   test('Workspace -> Session -> Canvas -> Context Inspector -> Packet Freeze', async () => {
     // evidence for "UI never writes back into the overlay"
     const inboxBefore = hash(join(OVERLAY, 'INBOX.md'));
@@ -22,19 +22,17 @@ test.describe('Yunmin Workbench vertical slice (real overlay, read-only)', () =>
     const projectCanonicalBefore = hash(PROJECT_CANONICAL);
 
     const stateDir = mkdtempSync(join(tmpdir(), 'wb-e2e-'));
-    let app = await electron.launch({
-      args: ['out/main/index.js'],
-      env: { ...process.env, WB_STATE_DIR: stateDir },
-    });
-    const win = await app.firstWindow();
+    const first = await launchWorkbench(stateDir, OVERLAY);
+    let app = first.app;
+    const win = first.win;
     // Workspace shell
     await expect(win.locator('.prototype-chrome')).toBeVisible();
     // Command palette still opens, lists the workspace, and selects it.
     await win.keyboard.press('Control+K');
     const commandInput = win.locator('[cmdk-input]');
     await expect(commandInput).toBeFocused();
-    await commandInput.fill('Open Workspace Creative OS');
-    const paletteItem = win.locator('[cmdk-item]', { hasText: 'Open Workspace · Creative OS' });
+    await commandInput.fill(`Open Workspace ${FIXTURE_PROJECT_DISPLAY_NAME}`);
+    const paletteItem = win.locator('[cmdk-item]', { hasText: `Open Workspace · ${FIXTURE_PROJECT_DISPLAY_NAME}` });
     await expect(paletteItem).toBeVisible();
     await paletteItem.click();
     await expect(win.locator('[cmdk-input]')).toHaveCount(0);
@@ -104,17 +102,28 @@ test.describe('Yunmin Workbench vertical slice (real overlay, read-only)', () =>
     await expect(win.locator('.session-composer')).toContainText('Draft saved');
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setBounds({ width: 1100, height: 740 }));
     await win.waitForTimeout(500);
+    // Window geometry is requested, not guaranteed: Windows adjusts the frame
+    // (740 -> 742 here) and re-rounds the outer rect at non-100% display
+    // scaling on recreate. So assert the persistence round trip — the state file
+    // must hold exactly what the OS accepted, and the restarted window must
+    // come back to it — instead of comparing against literal pixels.
+    const savedBounds = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getNormalBounds());
+    const savedWindow = JSON.parse(
+      readFileSync(join(stateDir, 'state', 'window-state-v1.json'), 'utf8'),
+    ) as { width: number; height: number };
+    expect(savedWindow.width).toBe(savedBounds.width);
+    expect(savedWindow.height).toBe(savedBounds.height);
+    expect(savedWindow.width).toBeGreaterThanOrEqual(1100);
+    expect(savedWindow.height).toBeGreaterThanOrEqual(740);
     await app.close();
-    app = await electron.launch({
-      args: ['out/main/index.js'],
-      env: { ...process.env, WB_STATE_DIR: stateDir },
-    });
-    const resumed = await app.firstWindow();
+    const relaunched = await launchWorkbench(stateDir, OVERLAY);
+    app = relaunched.app;
+    const resumed = relaunched.win;
     // Workspace continuity restores the exact project (and view) after fresh truth loads.
-    await expect(resumed.locator('.prototype-chrome')).toContainText('Creative OS');
+    await expect(resumed.locator('.prototype-chrome')).toContainText(FIXTURE_PROJECT_DISPLAY_NAME);
     const resumedBounds = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds());
-    expect(resumedBounds.width).toBe(1100);
-    expect(resumedBounds.height).toBe(740);
+    expect(Math.abs(resumedBounds.width - savedWindow.width)).toBeLessThanOrEqual(4);
+    expect(Math.abs(resumedBounds.height - savedWindow.height)).toBeLessThanOrEqual(4);
     await expect(resumed.locator('.inspector-pane textarea')).toHaveValue('E2E 冒烟：验证 Freeze 链路');
     await expect(resumed.locator('.frozen-row', { hasText: 'v1' })).toBeVisible();
     await resumed.getByRole('button', { name: 'Reload external truth' }).click();

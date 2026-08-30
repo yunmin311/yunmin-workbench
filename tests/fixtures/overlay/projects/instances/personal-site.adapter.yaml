@@ -1,0 +1,19 @@
+schema_version: 2
+adapter_type: project
+project_id: personal-site
+display_name: Personal Site
+status: CANDIDATE
+last_verified_at: '2026-07-31T19:45:00+08:00'
+canonical_source:
+  repository: yunmin311/yunmin311.github.io
+  remote: 'https://github.com/yunmin311/yunmin311.github.io.git'
+  default_branch: main
+  path: CLAUDE.md
+  commit: 9b7a573ac3a94b0a2313480181374464978e5ae9
+  verification: VERIFIED
+roles:
+  - name: 站点对话
+    primary_responsibility: 内容与站点结构,不碰其他仓 Git
+project_gates:
+  publish_decider: 用户
+  push_owner: 站点对话

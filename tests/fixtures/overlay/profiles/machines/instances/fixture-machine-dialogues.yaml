@@ -1,0 +1,56 @@
+schema_version: 1
+artifact: dialogue-registry
+device_id: fixture-machine
+status: CANDIDATE
+dialogues:
+  - role: 统领对话
+    level: L1
+    project: governance
+    platform: claude
+    session_id: 'aa110001'
+    status: ACTIVE
+    verification: VERIFIED
+    git_authority: 治理仓日常提交推送
+  - role: 治理归档对话
+    level: L4
+    project: governance
+    platform: deepseek
+    session_id: 'aa110006'
+    status: PAUSED
+    verification: VERIFIED
+  - role: CO 主对话
+    level: L2
+    project: creative-os
+    platform: claude
+    session_id: 'bb220002'
+    status: ACTIVE
+    verification: VERIFIED
+    git_authority: 项目根 Git 所有权
+  - role: CO 设计对话
+    level: L3
+    project: creative-os
+    platform: claude
+    session_id: 'bb220003'
+    status: PAUSED
+    verification: VERIFIED
+    note: 只写 design\；设计角色不碰项目 Git
+  - role: CO Codex 替补
+    level: L4
+    project: creative-os
+    platform: codex
+    session_id: UNVERIFIED
+    status: STANDBY
+    verification: UNVERIFIED
+  - role: 站点对话
+    level: L3
+    project: personal-site
+    platform: claude
+    session_id: 'cc330004'
+    status: FROZEN
+    verification: VERIFIED
+  - role: 无状态对话
+    level: L4
+    project: personal-site
+    platform: claude
+    status: NONSENSE
+    verification: VERIFIED

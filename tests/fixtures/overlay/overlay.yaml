@@ -1,0 +1,7 @@
+schema_version: 1
+artifact: personal-overlay
+overlay_id: yunmin-workbench-fixture
+note: >-
+  Repository-owned overlay fixture. It exists so discovery, parsing and the
+  read-only vertical slice can be exercised on any machine without depending on
+  a machine-specific Personal Overlay. Never a canonical source.

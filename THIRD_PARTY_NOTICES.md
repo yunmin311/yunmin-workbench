@@ -1,8 +1,10 @@
 # Third-Party Notices
 
-This prototype branch contains or adapts renderer ideas from the projects
-listed below. Yunmin Workbench's domain model, Projection Truth, IPC, runtime,
-and persistence contracts remain its own.
+This repository contains or adapts renderer and interaction ideas from the
+projects listed below. These were introduced with the Reasonix prototype shell,
+which has since been merged into `main`; there is no separate prototype branch.
+Yunmin Workbench's domain model, Projection Truth, IPC, runtime, and
+persistence contracts remain its own.
 
 ## DeepSeek-Reasonix
 
@@ -111,6 +113,6 @@ SOFTWARE.
   - `packages/web-core/src/shared/components/NormalizedConversation/EditDiffRenderer.tsx`
   - `packages/web-core/src/shared/components/NormalizedConversation/FileChangeRenderer.tsx`
   - `packages/web-core/src/shared/components/NormalizedConversation/PendingApprovalEntry.tsx`
-- Reference only: no cdesktop source code is incorporated in this prototype.
+- Reference only: no cdesktop source code is incorporated in this repository.
   Its permanent 300px sidebar, session-grid stores, right-panel persistence,
   diff dependency, and approval APIs were deliberately not imported.

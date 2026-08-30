@@ -27,7 +27,7 @@ describe('runtime observation history', () => {
       event('3', 'turn-completed', '2026-08-26T01:00:02.000Z', { runtimeRef: 'thread-1', runtimeState: 'idle' }),
       event('1', 'session-started', '2026-08-26T01:00:00.000Z', {
         runtimeRef: 'thread-1', runtimeState: 'unknown',
-        binding: { harness: 'codex', machine: 'machine-1', cwd: 'D:\\project', externalSessionRef: 'thread-1' },
+        binding: { harness: 'codex', machine: 'machine-1', cwd: '/workbench-fixtures/creative-os', externalSessionRef: 'thread-1' },
       }),
       event('2', 'turn-started', '2026-08-26T01:00:01.000Z', { runtimeRef: 'thread-1', runtimeState: 'working' }),
     ];

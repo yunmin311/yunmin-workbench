@@ -1,34 +1,22 @@
 import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { ElectronApplication, Page } from '@playwright/test';
-import { _electron as electron, expect, test } from '@playwright/test';
-import { openSessionPacket } from './prototype-shell';
+import { expect, test } from '@playwright/test';
+import { electronArgs, launchWorkbench, openSessionPacket, useOverlayFixture, workbenchEnv } from './prototype-shell';
+import { FIXTURE_PROJECT_DISPLAY_NAME } from '../tests/fixtures/overlayFixture';
 
-const OVERLAY = 'D:\\ai-governance-system';
-const hasOverlay = existsSync(join(OVERLAY, 'overlay.yaml'));
-
-async function launch(stateDir: string, env: NodeJS.ProcessEnv = process.env): Promise<{ app: ElectronApplication; win: Page }> {
-  const app = await electron.launch({
-    args: ['out/main/index.js'],
-    env: { ...env, WB_STATE_DIR: stateDir },
-  });
-  const win = await app.firstWindow();
-  await expect(win.locator('.prototype-chrome')).toBeVisible();
-  return { app, win };
-}
+const overlay = useOverlayFixture();
+const OVERLAY = overlay.overlayRoot;
 
 test.describe('reliability gate (P0 containment)', () => {
-  test.skip(!hasOverlay, 'real overlay not present on this machine');
-
   test('missing Codex executable keeps the app alive with structured unavailable capability', async () => {
     const stateDir = mkdtempSync(join(tmpdir(), 'wb-e2e-nocodex-'));
     const emptyPath = join(stateDir, 'empty-path');
     mkdirSync(emptyPath);
-    const { app, win } = await launch(stateDir, { ...process.env, PATH: emptyPath });
+    const { app, win } = await launchWorkbench(stateDir, OVERLAY, { PATH: emptyPath });
 
-    await openSessionPacket(win, 'Creative OS');
+    await openSessionPacket(win, FIXTURE_PROJECT_DISPLAY_NAME);
 
     await expect(win.locator('button', { hasText: 'Send to Codex' })).toBeDisabled();
     const evidence = await win.evaluate(() => window.wb.loadHarnessCapabilities());
@@ -41,10 +29,10 @@ test.describe('reliability gate (P0 containment)', () => {
 
   test('second app instance exits and never steals the Workbench state', async () => {
     const stateDir = mkdtempSync(join(tmpdir(), 'wb-e2e-single-'));
-    const { app, win } = await launch(stateDir);
+    const { app, win } = await launchWorkbench(stateDir, OVERLAY);
     const electronBinary = require('electron') as unknown as string;
-    const second = spawn(electronBinary, ['out/main/index.js'], {
-      env: { ...process.env, WB_STATE_DIR: stateDir },
+    const second = spawn(electronBinary, [...electronArgs(), 'out/main/index.js'], {
+      env: workbenchEnv({ GOV_OVERLAY: OVERLAY, WB_STATE_DIR: stateDir }),
       stdio: 'ignore',
     });
     const exited = await Promise.race([

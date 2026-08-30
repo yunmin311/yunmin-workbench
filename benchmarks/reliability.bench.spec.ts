@@ -1,12 +1,14 @@
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
-import { _electron as electron, expect, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { encodeStateKey } from '../src/main/stateKey';
+import { launchWorkbench, openSessionPacket, useOverlayFixture } from '../e2e/prototype-shell';
+import { FIXTURE_PROJECT_DISPLAY_NAME } from '../tests/fixtures/overlayFixture';
 
-const OVERLAY = 'D:\\ai-governance-system';
-const hasOverlay = existsSync(join(OVERLAY, 'overlay.yaml'));
+const overlay = useOverlayFixture();
+const OVERLAY = overlay.overlayRoot;
 
 const PROJECT_ID = 'bench-proj';
 const CONV_KEY = 'bench::codex::main';
@@ -62,13 +64,6 @@ function seedStore(count: number, bodyBytes: number): string {
   return stateDir;
 }
 
-async function launchWorkbench(stateDir: string) {
-  return electron.launch({
-    args: ['out/main/index.js'],
-    env: { ...process.env, WB_STATE_DIR: stateDir },
-  });
-}
-
 async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T | `TIMEOUT:${string}`> {
   let timer: ReturnType<typeof setTimeout>;
   const timeout = new Promise<`TIMEOUT:${string}`>((resolve) => {
@@ -107,9 +102,8 @@ test.describe('reliability gate benchmarks', () => {
     for (const count of [50, 300, 600]) {
       const stateDir = seedStore(count, 20_000);
       const launchStart = Date.now();
-      const app = await launchWorkbench(stateDir);
-      const win = await app.firstWindow();
-      const brand = await withTimeout(expect(win.locator('.brand')).toHaveText('Yunmin Workbench').then(() => 'ok'), 20_000, 'brand');
+      const { app, win } = await launchWorkbench(stateDir, OVERLAY);
+      const brand = await withTimeout(expect(win.locator('.prototype-chrome')).toBeVisible().then(() => 'ok'), 20_000, 'chrome');
       const coldStartMs = brand === 'ok' ? Date.now() - launchStart : String(brand);
       const { coldMs, warmMs, payloadChars } = await timeListFrozen(win);
       benchResults[`list_${count}`] = { coldStartMs, coldListIpcMs: coldMs, warmListIpcMs: warmMs, payloadChars, files: count };
@@ -117,16 +111,10 @@ test.describe('reliability gate benchmarks', () => {
       await app.close();
     }
 
-    if (hasOverlay) {
+    {
       const stateDir = seedStore(300, 20_000);
-      const app = await launchWorkbench(stateDir);
-      const win = await app.firstWindow();
-      await expect(win.locator('.brand')).toBeVisible();
-      await win.locator('.project-card', { hasText: 'Creative OS' }).click();
-      await expect(win.locator('h2', { hasText: 'Creative OS' })).toBeVisible();
-      await win.locator('.convo').first().click();
-      await win.keyboard.press('Control+5');
-      await expect(win.locator('h2', { hasText: 'Task Packet' })).toBeVisible();
+      const { app, win } = await launchWorkbench(stateDir, OVERLAY);
+      await openSessionPacket(win, FIXTURE_PROJECT_DISPLAY_NAME);
       await win.waitForTimeout(1500);
 
       const heapAfterListKb = await win.evaluate(() => {

@@ -12,7 +12,7 @@ import { encodeStateKey } from '../../src/main/stateKey';
 
 describe('watchTargets scope guard (P6: no watcher scope creep)', () => {
   it('watches only the five canonical targets', () => {
-    const t = watchTargets('D:\\ov');
+    const t = watchTargets('/workbench-fixtures/overlay');
     expect(t).toHaveLength(5);
     expect(t.some((p) => p.includes('node_modules'))).toBe(false);
     expect(t.join('|')).toContain('INBOX.md');
@@ -38,7 +38,7 @@ describe('readMemoryBody lazy + safe', () => {
 
 describe('projection boundary hygiene', () => {
   it('uses a configurable overlay discovery root instead of a business hardcode', () => {
-    expect(defaultOverlaySearchRoot({ WB_OVERLAY_SEARCH_ROOT: 'E:\\' } as NodeJS.ProcessEnv)).toBe('E:\\');
+    expect(defaultOverlaySearchRoot({ WB_OVERLAY_SEARCH_ROOT: '/workbench-fixtures' } as NodeJS.ProcessEnv)).toBe('/workbench-fixtures');
   });
 
   it('surfaces unsupported machine schema errors in snapshot.problems', async () => {

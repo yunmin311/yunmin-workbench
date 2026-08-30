@@ -1,0 +1,18 @@
+schema_version: 2
+harness:
+  claude:
+    hooks:
+      - id: claude-pre-tool-use
+        event: PreToolUse
+        enforcement: advisory
+      - id: claude-post-tool-use
+        event: PostToolUse
+        enforcement: advisory
+  codex:
+    hooks: []
+  deepseek: {}
+render:
+  claude:
+    model: fixture-claude
+  codex:
+    model: fixture-codex

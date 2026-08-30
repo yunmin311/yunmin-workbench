@@ -1,0 +1,19 @@
+schema_version: 2
+adapter_type: project
+project_id: governance
+display_name: Governance
+status: CANDIDATE
+last_verified_at: '2026-07-31T19:45:00+08:00'
+canonical_source:
+  repository: yunmin311/ai-governance-system
+  remote: 'https://github.com/yunmin311/ai-governance-system.git'
+  default_branch: main
+  path: CLAUDE.md
+  commit: 5d24c1f0f4a9d3e6b8a0c2f1e7d4b9a6c3f8e1d2
+  verification: VERIFIED
+roles:
+  - name: 统领对话
+    primary_responsibility: 治理仓日常提交与规则收敛
+project_gates:
+  rule_change_approver: 用户
+  push_owner: 统领对话

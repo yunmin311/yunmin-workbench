@@ -22,7 +22,7 @@ function raw(over: Partial<RawGitObservation['status']> = {}): RawGitObservation
 
 describe('normalizeGitFacts (read-only projection)', () => {
   it('normalizes clean repo facts', () => {
-    const f = normalizeGitFacts('yunmin-workbench', 'D:\\agent-workbench', raw());
+    const f = normalizeGitFacts('yunmin-workbench', '/workbench-fixtures/yunmin-workbench', raw());
     expect(f.branch).toBe('main');
     expect(f.head).toBe('78d2278abc'); // trimmed
     expect(f.remotes.origin).toContain('yunmin-workbench');

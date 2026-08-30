@@ -9,11 +9,13 @@ import type { MachineProfile, Observation, OverlaySnapshot } from '../../src/cor
 
 const fx = (n: string) => readFileSync(join(__dirname, '../fixtures/legacy', n), 'utf8');
 const obs: Observation = { source: 'canonical-file', sourceRef: 'fixture', observedAt: 't', verification: 'OBSERVED' };
+/** Machine profile project root binding: a fixture value, never a real machine path. */
+const PROJECT_ROOT = '/workbench-fixtures/creative-os';
 const machine: MachineProfile = {
   deviceId: 'claude-company-d',
   displayName: '公司电脑',
   availableTools: {},
-  projectRoots: { 'creative-os': 'D:\\project' },
+  projectRoots: { 'creative-os': PROJECT_ROOT },
   observed: obs,
 };
 const snap: OverlaySnapshot = {
@@ -28,7 +30,7 @@ const snap: OverlaySnapshot = {
   sourceFingerprints: [],
   problems: [],
 };
-const git = normalizeGitFacts('creative-os', 'D:\\project', {
+const git = normalizeGitFacts('creative-os', PROJECT_ROOT, {
   status: { current: '001-inspiration-capture', modified: [], not_added: [], created: [], deleted: [], ahead: 0, behind: 0, isClean: () => true },
   remotes: [{ name: 'origin', fetch: 'https://github.com/yunmin311/creative-os.git' }],
   head: 'aa0395f',
@@ -43,7 +45,7 @@ describe('bindingCandidate (Integrity §2: confirm what real data confirms)', ()
     const { binding } = bindingCandidate(snap, design, git);
     expect(binding.harness).toBe('claude');
     expect(binding.machine).toBe('claude-company-d');
-    expect(binding.cwd).toBe('D:\\project');
+    expect(binding.cwd).toBe(PROJECT_ROOT);
     expect(binding.branch).toBe('001-inspiration-capture');
     expect(binding.head).toBe('aa0395f');
     expect(binding.externalSessionRef).toBe('317e0807');

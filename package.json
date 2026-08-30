@@ -4,6 +4,10 @@
   "private": true,
   "description": "Yunmin Workbench (product category: Agent Workbench) - projection layer over Governance/Overlay/Git/Harness",
   "main": "out/main/index.js",
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": ">=22.13"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",

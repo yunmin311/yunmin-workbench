@@ -30,7 +30,8 @@ const machine: MachineProfile = {
   deviceId: 'claude-company-d',
   displayName: '公司电脑',
   availableTools: {},
-  projectRoots: { 'creative-os': 'D:\\project', 'design-library': 'D:\\design-library' },
+  // Fixture machine bindings, not real machine paths.
+  projectRoots: { 'creative-os': '/workbench-fixtures/creative-os', 'design-library': '/workbench-fixtures/design-library' },
   observed: obs,
 };
 

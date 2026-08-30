@@ -1,7 +1,15 @@
+# pnpm 11 build-script policy.
+#
+# A fresh clone must be able to run the install/lifecycle scripts that the
+# desktop toolchain actually needs:
+#   electron -> postinstall downloads the platform binary (without it, `pnpm
+#               build` / `playwright test` cannot launch the app)
+#   esbuild  -> postinstall links the platform-specific executable used by vite
+#
+# Values must be booleans: `true` allows the build, `false` explicitly denies
+# it. Anything else (including the previous placeholder strings) leaves the
+# package silently unbuilt on a clean machine.
 allowBuilds:
-  electron: set this to true or false
-  esbuild: set this to true or false
-onlyBuiltDependencies:
-  - electron
-  - esbuild
+  electron: true
+  esbuild: true
 verifyDepsBeforeRun: false

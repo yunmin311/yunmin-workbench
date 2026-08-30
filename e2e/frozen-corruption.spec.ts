@@ -2,12 +2,13 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFil
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { load } from 'js-yaml';
-import { _electron as electron, expect, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { encodeStateKey } from '../src/main/stateKey';
-import { openSessionPacket } from './prototype-shell';
+import { launchWorkbench, openSessionPacket, useOverlayFixture } from './prototype-shell';
+import { FIXTURE_PROJECT_DISPLAY_NAME, FIXTURE_PROJECT_ID } from '../tests/fixtures/overlayFixture';
 
-const OVERLAY = 'D:\\ai-governance-system';
-const hasOverlay = existsSync(join(OVERLAY, 'overlay.yaml'));
+const overlay = useOverlayFixture();
+const OVERLAY = overlay.overlayRoot;
 
 interface DialogueEntry {
   project?: string;
@@ -22,11 +23,11 @@ function creativeOsConversationKeys(): { projectId: string; conversationKeys: st
     if (!name.endsWith('-dialogues.yaml')) continue;
     const doc = load(readFileSync(join(instancesDir, name), 'utf8')) as { dialogues?: DialogueEntry[] } | null;
     const dialogues = (doc?.dialogues ?? []).filter(
-      (d) => d.project === 'creative-os' && d.platform && d.role,
+      (d) => d.project === FIXTURE_PROJECT_ID && d.platform && d.role,
     );
     if (dialogues.length > 0) {
       return {
-        projectId: 'creative-os',
+        projectId: FIXTURE_PROJECT_ID,
         conversationKeys: dialogues.map((d) => `${d.project}::${d.platform}::${d.role}`),
       };
     }
@@ -84,11 +85,9 @@ function listJsonFilesRecursive(root: string): string[] {
 }
 
 test.describe('frozen corruption containment', () => {
-  test.skip(!hasOverlay, 'real overlay not present on this machine');
-
   test('a corrupt frozen file never blanks the app and never hides valid history', async () => {
     const identity = creativeOsConversationKeys();
-    test.skip(!identity, 'no creative-os conversation in the real registry');
+    test.skip(!identity, `no ${FIXTURE_PROJECT_ID} conversation in the overlay dialogue registry`);
     const { projectId, conversationKeys } = identity!;
     const stateDir = seedEveryConversation(projectId, conversationKeys, (convDir, conversationKey) => {
       writeFileSync(join(convDir, 'v1-aaaaaaaa.json'), seedFrozen(projectId, conversationKey, 1, 'surviving version', 'a'), 'utf8');
@@ -96,14 +95,9 @@ test.describe('frozen corruption containment', () => {
       writeFileSync(join(convDir, 'v3-fake.json'), JSON.stringify({ version: 3, hash: 'zz', taskSummary: 'fake' }), 'utf8');
     });
 
-    const app = await electron.launch({
-      args: ['out/main/index.js'],
-      env: { ...process.env, WB_STATE_DIR: stateDir },
-    });
-    const win = await app.firstWindow();
-    await expect(win.locator('.prototype-chrome')).toBeVisible();
+    const { app, win } = await launchWorkbench(stateDir, OVERLAY);
 
-    await openSessionPacket(win, 'Creative OS');
+    await openSessionPacket(win, FIXTURE_PROJECT_DISPLAY_NAME);
 
     const row = win.locator('.frozen-row').first();
     await expect(row).toBeVisible();
@@ -118,20 +112,15 @@ test.describe('frozen corruption containment', () => {
 
   test('freezing still works after corruption and never overwrites the broken file', async () => {
     const identity = creativeOsConversationKeys();
-    test.skip(!identity, 'no creative-os conversation in the real registry');
+    test.skip(!identity, `no ${FIXTURE_PROJECT_ID} conversation in the overlay dialogue registry`);
     const { projectId, conversationKeys } = identity!;
     const stateDir = seedEveryConversation(projectId, conversationKeys, (convDir) => {
       writeFileSync(join(convDir, 'v9-corrupt.json'), '{not json', 'utf8');
     });
 
-    const app = await electron.launch({
-      args: ['out/main/index.js'],
-      env: { ...process.env, WB_STATE_DIR: stateDir },
-    });
-    const win = await app.firstWindow();
-    await expect(win.locator('.prototype-chrome')).toBeVisible();
+    const { app, win } = await launchWorkbench(stateDir, OVERLAY);
 
-    await openSessionPacket(win, 'Creative OS');
+    await openSessionPacket(win, FIXTURE_PROJECT_DISPLAY_NAME);
 
     await win.locator('.inspector-pane textarea').fill('Corruption recovery freeze');
     await expect(win.locator('.inspector-pane .validity-current')).toBeVisible();
