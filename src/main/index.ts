@@ -35,6 +35,7 @@ import {
   writeWorkspaceSessionAtomic,
 } from './workspacePersistence';
 import { normalizeWindowState, readWindowState, writeWindowStateAtomic } from './windowStatePersistence';
+import { defaultHistoryRoots, HistoryService } from './history/historyService';
 
 // test hook: Playwright E2E redirects Workbench-owned state to a temp dir
 if (process.env.WB_STATE_DIR) app.setPath('userData', process.env.WB_STATE_DIR);
@@ -73,6 +74,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     machine: string;
     cwd: string;
   }>();
+  const history = new HistoryService({ stateDir: stateDir(), roots: defaultHistoryRoots() });
 
   const recordActivity = (event: ActivityEvent): Promise<void> => {
     activityWrite = activityWrite.then(async () => {
@@ -324,6 +326,16 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       if (!win.isDestroyed()) win.webContents.send('activity:cleared');
     }
   });
+
+  const HistoryQuerySchema = z.object({
+    text: z.string().max(10_000),
+    harness: z.enum(['claude-code', 'codex']).optional(),
+    cwdContains: z.string().max(4_096).optional(),
+    limit: z.number().int().min(1).max(200).optional(),
+  });
+  ipcMain.handle('history:list', () => history.list());
+  ipcMain.handle('history:search', (_event, rawQuery: unknown) => history.search(HistoryQuerySchema.parse(rawQuery)));
+  ipcMain.handle('history:detail', (_event, rawSessionId: unknown) => history.detail(KeySchema.parse(rawSessionId)));
 
   ipcMain.handle('harness:capabilities', async (): Promise<HarnessCapabilities> => {
     try {

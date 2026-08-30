@@ -48,7 +48,7 @@ export function CommandPalette() {
     };
   }, [conversation, projectId, reloadAndRecheck, setView]);
 
-  if (!open || !snapshot) return null;
+  if (!open) return null;
   const run = (action: () => void) => {
     setOpen(false);
     action();
@@ -59,6 +59,7 @@ export function CommandPalette() {
     setTimeout(() => window.dispatchEvent(new CustomEvent(`workbench:${name}-agent-input`)), 0);
   });
   const switchSession = (key: string) => {
+    if (!snapshot) return;
     const next = snapshot.conversations.find((item) => item.key === key);
     if (!next) return;
     if (projectId !== next.project) selectProject(next.project);
@@ -78,6 +79,7 @@ export function CommandPalette() {
       <Command.List>
         <Command.Empty>No matching workspace, session, or command.</Command.Empty>
         <Command.Group heading="Navigate">
+          <Command.Item onSelect={() => run(() => window.dispatchEvent(new CustomEvent('workbench:open-history')))}>Search History</Command.Item>
           <Command.Item onSelect={() => run(() => window.dispatchEvent(new CustomEvent('workbench:open-session-picker')))}><span>Open Workspace / Switch Session</span><kbd>Ctrl 1</kbd></Command.Item>
           <Command.Item disabled={!projectId} onSelect={() => run(() => setView('canvas'))}><span>Canvas</span><kbd>Ctrl 2</kbd></Command.Item>
           <Command.Item disabled={!projectId} onSelect={() => run(() => window.dispatchEvent(new CustomEvent('workbench:open-inspector', { detail: 'context' })))}><span>Context Inspector</span><kbd>Ctrl 3</kbd></Command.Item>
@@ -87,7 +89,7 @@ export function CommandPalette() {
           {workspaceSession.last && (
             <Command.Item onSelect={() => run(() => resumeWorkspace())}>Resume Last Workspace</Command.Item>
           )}
-          {discoverProjects(snapshot).map((project) => (
+          {snapshot && discoverProjects(snapshot).map((project) => (
             <Command.Item
               key={`project:${project.projectId}`}
               value={`Open Workspace ${project.displayName} ${project.projectId}`}
@@ -98,7 +100,7 @@ export function CommandPalette() {
           ))}
         </Command.Group>
         <Command.Group heading="Switch Session">
-          {snapshot.conversations.map((item) => (
+          {snapshot?.conversations.map((item) => (
             <Command.Item
               key={`conversation:${item.key}`}
               value={`Switch Session ${item.role} ${item.project}`}

@@ -3,6 +3,7 @@ import { CommandPalette } from './components/CommandPalette';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { InspectorPane, type InspectorTab } from './components/InspectorPane';
 import { WorkspaceSidebar } from './components/WorkspaceSidebar';
+import { HistoryPanel } from './components/HistoryPanel';
 import { CanvasView } from './views/CanvasView';
 import { SessionSurface } from './views/SessionSurface';
 import { useWorkbench } from './store';
@@ -21,6 +22,7 @@ export default function App() {
   const setView = useWorkbench((state) => state.setView);
   const [sessionPickerOpen, setSessionPickerOpen] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => {
     void initialize();
@@ -53,6 +55,12 @@ export default function App() {
     };
     window.addEventListener('workbench:open-inspector', open);
     return () => window.removeEventListener('workbench:open-inspector', open);
+  }, []);
+
+  useEffect(() => {
+    const open = () => setHistoryOpen(true);
+    window.addEventListener('workbench:open-history', open);
+    return () => window.removeEventListener('workbench:open-history', open);
   }, []);
 
   useEffect(() => {
@@ -113,6 +121,7 @@ export default function App() {
         </div>
 
         <div className="chrome-tools">
+          <button onClick={() => setHistoryOpen(true)}>History</button>
           <button disabled={!projectId} aria-pressed={inspectorTab === 'context'} onClick={() => openInspector('context')}>Context</button>
           <button disabled={!conversation} aria-pressed={inspectorTab === 'packet'} onClick={() => openInspector('packet')}>Packet</button>
           <button
@@ -149,6 +158,7 @@ export default function App() {
         <InspectorPane tab={inspectorTab} onSelect={openInspector} onClose={closeInspector} />
       </ErrorBoundary>
       <CommandPalette />
+      {historyOpen && <HistoryPanel onClose={() => setHistoryOpen(false)} />}
     </div>
   );
 }

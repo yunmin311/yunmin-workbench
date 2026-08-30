@@ -108,6 +108,7 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
           <h1>{conversation.role}</h1>
         </div>
         <div className="session-header-actions">
+          <button onClick={() => window.dispatchEvent(new CustomEvent('workbench:open-history'))}>History</button>
           {events.length > 0 && <button onClick={() => void clearActivity()}>Clear local activity</button>}
           <button onClick={() => window.dispatchEvent(new CustomEvent('workbench:open-inspector', { detail: 'evidence' }))}>Evidence</button>
         </div>

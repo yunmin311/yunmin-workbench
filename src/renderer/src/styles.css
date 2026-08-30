@@ -630,8 +630,44 @@ html, body, #root { width: 100%; height: 100%; overflow: hidden; }
 .prototype-app .react-flow__controls { overflow: hidden; margin: 12px; border: 1px solid var(--prototype-border); border-radius: 6px; box-shadow: none; }
 .prototype-app .react-flow__controls button { border-color: var(--prototype-hair); border-radius: 0; background: var(--prototype-panel); fill: var(--prototype-muted); }
 
+.history-layer { position: fixed; inset: 47px 0 0; z-index: 70; display: grid; place-items: center; padding: 18px; background: rgba(6, 8, 11, .72); }
+.history-panel { display: grid; grid-template-rows: auto auto auto minmax(0, 1fr); width: min(1060px, 96vw); height: min(720px, calc(100vh - 80px)); overflow: hidden; border: 1px solid var(--prototype-border); border-radius: 9px; background: var(--prototype-panel); box-shadow: 0 24px 80px rgba(0,0,0,.5); }
+.history-panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 16px 18px 13px; border-bottom: 1px solid var(--prototype-hair); }
+.history-panel-header p { margin: 0 0 3px; color: var(--prototype-accent); font: 8px/1.2 ui-monospace, monospace; letter-spacing: .14em; }
+.history-panel-header h2 { margin: 0 0 4px; font-size: 17px; font-weight: 560; }
+.history-panel-header small, .history-detail small { color: var(--prototype-faint); font-size: 9px; }
+.history-panel-header > button { padding: 1px 7px; border: 0; background: transparent; color: var(--prototype-muted); font-size: 20px; }
+.history-search { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 10px 18px; border-bottom: 1px solid var(--prototype-hair); }
+.history-search input { min-width: 0; padding: 8px 10px; border: 1px solid var(--prototype-border); border-radius: 5px; outline: 0; background: var(--prototype-bg); color: var(--prototype-text); }
+.history-search input:focus { border-color: var(--prototype-accent); }
+.history-problems { padding: 7px 18px; border-bottom: 1px solid #493b2a; color: var(--prototype-warn); font-size: 9px; }
+.history-problems p { overflow-wrap: anywhere; margin: 5px 0 0; color: var(--prototype-muted); }
+.history-body { display: grid; grid-template-columns: minmax(300px, .8fr) minmax(360px, 1.2fr); min-height: 0; }
+.history-results, .history-detail { min-height: 0; overflow: auto; scrollbar-width: thin; }
+.history-results { border-right: 1px solid var(--prototype-hair); }
+.history-hint { margin: 18px; color: var(--prototype-faint); font-size: 10px; line-height: 1.5; }
+.history-hit { display: block; width: 100%; padding: 11px 14px; border: 0; border-bottom: 1px solid var(--prototype-hair); border-radius: 0; background: transparent; color: var(--prototype-text); text-align: left; }
+.history-hit:hover, .history-hit:focus { background: var(--prototype-hover); }
+.history-hit > span, .history-message > span { display: flex; justify-content: space-between; gap: 10px; color: var(--prototype-faint); font: 8px/1.4 ui-monospace, monospace; }
+.history-hit b { display: block; overflow: hidden; margin-top: 4px; font-size: 11px; font-weight: 550; text-overflow: ellipsis; white-space: nowrap; }
+.history-hit p { margin: 6px 0; color: var(--prototype-muted); font-size: 9.5px; line-height: 1.45; }
+.history-hit mark { background: #5d4c21; color: #fff2b1; }
+.history-hit small { display: block; overflow: hidden; color: var(--prototype-faint); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.history-detail { padding: 14px 18px 28px; }
+.history-detail header { padding-bottom: 12px; border-bottom: 1px solid var(--prototype-hair); }
+.history-detail header p { margin: 0 0 4px; color: var(--prototype-accent); font: 8px/1.3 ui-monospace, monospace; }
+.history-detail header h3 { margin: 0 0 5px; font-size: 14px; }
+.history-detail header small { display: block; overflow-wrap: anywhere; }
+.history-detail ol { margin: 0; padding: 0; list-style: none; }
+.history-message { padding: 12px 0; border-bottom: 1px solid var(--prototype-hair); }
+.history-message p { margin: 6px 0; color: var(--prototype-text); font-size: 10px; line-height: 1.55; white-space: pre-wrap; }
+.history-message small { display: block; overflow-wrap: anywhere; }
+.history-role-system p, .history-role-tool p { color: var(--prototype-muted); }
+
 @media (max-width: 920px) {
   .prototype-chrome { grid-template-columns: minmax(180px, 1fr) auto auto; }
   .chrome-status { display: none; }
   .prototype-app .session-surface { width: calc(100% - 28px); }
+  .history-body { grid-template-columns: 1fr; }
+  .history-results { max-height: 42%; border-right: 0; border-bottom: 1px solid var(--prototype-hair); }
 }
