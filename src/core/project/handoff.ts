@@ -4,7 +4,7 @@ export interface HandoffIntentPayload {
   projectId: string;
   conversationKey: string;
   packetText: string;
-  harness: 'codex';
+  harness: 'codex' | 'claude' | 'deepseek';
 }
 
 export function createHandoffIntent(id: string, payload: HandoffIntentPayload): UserIntent {
@@ -24,6 +24,7 @@ export function markHandoffDispatched(intent: UserIntent): UserIntent {
 
 export function applyHandoffReceipt(intent: UserIntent, receipt: HandoffReceipt): UserIntent {
   if (receipt.intentId !== intent.id) return intent;
+  if (intent.payload.harness !== receipt.harness) return intent;
   const state = receipt.status === 'ACCEPTED'
     ? 'accepted'
     : receipt.status === 'REJECTED'

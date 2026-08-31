@@ -31,6 +31,10 @@ export interface CodexAdapterOptions {
 function unavailableCapabilities(reason: string): HarnessCapabilities {
   return {
     harness: 'codex',
+    support: {
+      dispatch: 'NO', observe: 'NO', receipt: 'NO', approval: 'NO', needsInput: 'NO',
+      toolEvents: 'NO', fileEvents: 'NO', externalSessionRef: 'NO', resume: 'NO',
+    },
     canDispatch: false,
     canCreateSession: false,
     canResumeSession: false,
@@ -195,6 +199,10 @@ export class CodexAppServerAdapter {
       const userAgent = await this.initialize();
       return {
         harness: 'codex',
+        support: {
+          dispatch: 'YES', observe: 'YES', receipt: 'YES', approval: 'YES', needsInput: 'YES',
+          toolEvents: 'YES', fileEvents: 'YES', externalSessionRef: 'YES', resume: 'NO',
+        },
         canDispatch: true,
         canCreateSession: true,
         canResumeSession: false,

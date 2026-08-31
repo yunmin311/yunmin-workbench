@@ -55,11 +55,18 @@ import {
 } from './island';
 import { readMaterialPreference, writeMaterialPreferenceAtomic } from './materialPersistence';
 import { detectMaterialCapability } from './materialCapability';
+import { ClaudeCodeAdapter } from './adapters/claudeCodeAdapter';
+import { DeepSeekAdapter } from './adapters/deepseekAdapter';
+import { RuntimeContextRegistry } from './runtimeContextRegistry';
+import { HarnessDispatchSchema, HarnessSmokeSchema, workbenchRejectedReceipt } from './harnessRequest';
+import { canDispatchToHarness } from '../core/project/harnessSelection';
 
 // test hook: Playwright E2E redirects Workbench-owned state to a temp dir
 if (process.env.WB_STATE_DIR) app.setPath('userData', process.env.WB_STATE_DIR);
 
 const codexAdapter = new CodexAppServerAdapter();
+const claudeAdapter = new ClaudeCodeAdapter();
+const deepseekAdapter = new DeepSeekAdapter();
 const handoffRequests = new HandoffDispatchRegistry<HandoffReceipt>();
 const windowRoles = new WeakMap<BrowserWindow, { role: 'main' | 'island' }>();
 
@@ -88,7 +95,13 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
   let cache: { snapshot: OverlaySnapshot; at: number } | null = null;
   let refreshing: Promise<OverlaySnapshot> | null = null;
   let activityWrite: Promise<void> = Promise.resolve();
-  const runtimeContexts = new Map<string, {
+  const runtimeContexts = new RuntimeContextRegistry<{
+    projectId: string;
+    conversationKey: string;
+    machine: string;
+    cwd: string;
+  }>();
+  const pendingClaudeContexts = new Map<string, {
     projectId: string;
     conversationKey: string;
     machine: string;
@@ -152,7 +165,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     const params = event.params as Record<string, unknown> | undefined;
     const threadId = typeof params?.threadId === 'string' ? params.threadId : undefined;
     if (!threadId) return;
-    const context = runtimeContexts.get(threadId);
+    const context = runtimeContexts.get('codex', threadId);
     if (!context) return;
     const turn = params?.turn as Record<string, unknown> | undefined;
     const item = params?.item as Record<string, unknown> | undefined;
@@ -163,6 +176,9 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       id: randomUUID(),
       projectId: context.projectId,
       conversationKey: context.conversationKey,
+      harness: 'codex' as const,
+      adapter: 'codex-app-server',
+      capability: 'observe' as const,
       runtimeRef: threadId,
       turnRef: turnId,
       observed: observed(`codex-app-server:${event.method}`),
@@ -190,7 +206,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     if (requestId && approvalMethods.has(event.method)) {
       const reason = typeof params?.reason === 'string' ? `: ${params.reason}` : '';
       void recordActivity({
-        ...base, id: randomUUID(), kind: 'approval-required',
+        ...base, id: randomUUID(), kind: 'approval-required', capability: 'approval',
         summary: `Codex approval required${reason}`,
         attentionKey: `codex-request:${requestId}`, attentionStatus: 'active',
       });
@@ -198,7 +214,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     }
     if (requestId && (event.method === 'item/tool/requestUserInput' || event.method === 'mcpServer/elicitation/request')) {
       void recordActivity({
-        ...base, id: randomUUID(), kind: 'needs-user-input',
+        ...base, id: randomUUID(), kind: 'needs-user-input', capability: 'needsInput',
         summary: 'Codex requires user input',
         attentionKey: `codex-request:${requestId}`, attentionStatus: 'active',
       });
@@ -211,6 +227,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       if (resolvedRequestId) {
         void recordActivity({
           ...base, id: randomUUID(), kind: 'approval-required',
+          capability: 'approval',
           summary: 'Codex request resolved', attentionKey: `codex-request:${resolvedRequestId}`,
           attentionStatus: 'resolved',
         });
@@ -243,14 +260,73 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
         if (isReviewWorthyCodexFileChange(event.method, item) && turnId) {
           reviewWorthyTurns.add(`${threadId}:${turnId}`);
         }
-        void recordActivity({ ...base, kind: 'file-change', summary: `File change ${event.method === 'item/started' ? 'started' : 'completed'}` });
+        void recordActivity({ ...base, capability: 'fileEvents', kind: 'file-change', summary: `File change ${event.method === 'item/started' ? 'started' : 'completed'}` });
       } else if (['commandExecution', 'mcpToolCall', 'dynamicToolCall'].includes(itemType)) {
         void recordActivity({
           ...base,
+          capability: 'toolEvents',
           kind: event.method === 'item/started' ? 'tool-started' : 'tool-completed',
           summary: `${itemType} ${event.method === 'item/started' ? 'started' : 'completed'}`,
         });
       }
+    }
+  });
+
+  // Claude live adapter: normalize to same envelope but preserve harness-specific provenance
+  claudeAdapter.onEvent((event) => {
+    const params = event.params as Record<string, unknown> | undefined;
+    const threadId = event.runtimeSessionRef;
+    const context = (threadId ? runtimeContexts.get('claude', threadId) : undefined)
+      ?? pendingClaudeContexts.get(event.dispatchRef);
+    if (!context) return;
+    const base = {
+      id: randomUUID(),
+      projectId: context.projectId,
+      conversationKey: context.conversationKey,
+      harness: 'claude' as const,
+      adapter: 'claude-code-stream-json',
+      capability: 'observe' as const,
+      runtimeRef: threadId,
+      observed: {
+        source: 'protocol' as const,
+        sourceRef: event.sourceRef,
+        observedAt: event.observedAt,
+        verification: event.verification,
+      },
+    };
+    if (event.method === 'adapter/error') {
+      void recordActivity({
+        ...base, id: randomUUID(), kind: 'harness-error', runtimeState: 'error' as const,
+        summary: typeof params?.message === 'string' ? params.message as string : 'Claude harness error',
+        attentionKey: threadId ? `runtime:claude:${threadId}` : `dispatch:${event.dispatchRef}`,
+        observed: { ...base.observed, source: 'process' as const, verification: 'OBSERVED' as const },
+      });
+      return;
+    }
+    if (event.method === 'session/started' && threadId) {
+      void recordActivity({ ...base, capability: 'externalSessionRef', kind: 'session-started', summary: 'Claude session started', runtimeState: 'unknown' as const, binding: { harness: 'claude', machine: context.machine, cwd: context.cwd, externalSessionRef: threadId } });
+      return;
+    }
+    if (event.method === 'turn/started') {
+      void recordActivity({ ...base, kind: 'turn-started', summary: 'Claude turn started', runtimeState: 'working' as const });
+      return;
+    }
+    if (event.method === 'turn/completed') {
+      void recordActivity({ ...base, kind: 'turn-completed', summary: 'Claude turn completed', runtimeState: 'idle' as const });
+      return;
+    }
+    if (event.method === 'turn/error') {
+      void recordActivity({ ...base, kind: 'turn-error', summary: 'Claude turn failed', runtimeState: 'error' as const, attentionKey: threadId ? `runtime:claude:${threadId}` : `dispatch:${event.dispatchRef}` });
+      return;
+    }
+    if (event.method === 'tool-started' || event.method === 'tool-completed') {
+      void recordActivity({ ...base, capability: 'toolEvents', kind: event.method === 'tool-started' ? 'tool-started' as const : 'tool-completed' as const, summary: `Claude tool ${event.method === 'tool-started' ? 'started' : 'completed'}` });
+      return;
+    }
+    if (event.method === 'item/completed') {
+      const p = params as { type?: string } | undefined;
+      if (p?.type === 'assistant') void recordActivity({ ...base, kind: 'agent-response' as const, summary: 'Claude response completed' });
+      return;
     }
   });
 
@@ -599,6 +675,10 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     } catch (error) {
       return {
         harness: 'codex',
+        support: {
+          dispatch: 'NO', observe: 'NO', receipt: 'NO', approval: 'NO', needsInput: 'NO',
+          toolEvents: 'NO', fileEvents: 'NO', externalSessionRef: 'NO', resume: 'NO',
+        },
         canDispatch: false,
         canCreateSession: false,
         canResumeSession: false,
@@ -609,29 +689,49 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       };
     }
   });
-  const HandoffSchema = z.object({
-    intentId: z.string().uuid(),
-    projectId: KeySchema,
-    conversationKey: KeySchema,
-    packetText: z.string().min(1).max(5_000_000),
+  ipcMain.handle('harness:capabilitiesAll', async () => {
+    const [codex, claude, deepseek] = await Promise.all([
+      codexAdapter.capabilities(),
+      claudeAdapter.capabilities(),
+      deepseekAdapter.capabilities(),
+    ]);
+    return { codex, claude, deepseek } as const;
   });
   ipcMain.handle('harness:dispatch', async (_event, rawRequest: unknown) => {
-    const request = HandoffSchema.parse(rawRequest);
+    const request = HarnessDispatchSchema.parse(rawRequest);
+    const harness = request.harness;
     return handoffRequests.run(request.intentId, async () => {
       const snap = cache?.snapshot ?? (await refresh());
       const cwd = await projectRoot(snap, request.projectId);
       if (!cwd) {
-        const receipt = {
-          intentId: request.intentId,
-          harness: 'codex',
-          status: 'REJECTED',
-          at: new Date().toISOString(),
-          source: 'protocol',
-          protocolEvidence: 'Workbench machine projectRoots lookup',
-          message: `No project root binding for ${request.projectId}`,
-        } satisfies HandoffReceipt;
+        const receipt = workbenchRejectedReceipt(
+          request,
+          'Workbench machine projectRoots lookup',
+          `No project root binding for ${request.projectId}`,
+        );
         await recordActivity({
           id: randomUUID(), projectId: request.projectId, conversationKey: request.conversationKey,
+          harness, adapter: `${harness}-adapter`, capability: 'dispatch',
+          kind: 'handoff-failed', summary: receipt.message,
+          attentionKey: request.intentId,
+          observed: {
+            source: 'process', sourceRef: `workbench-intent:${request.intentId}`,
+            observedAt: receipt.at, verification: 'VERIFIED',
+          },
+        });
+        return receipt;
+      }
+      const adapter = harness === 'claude' ? claudeAdapter : harness === 'deepseek' ? deepseekAdapter : codexAdapter;
+      const caps = await adapter.capabilities();
+      if (!canDispatchToHarness(caps)) {
+        const receipt = workbenchRejectedReceipt(
+          request,
+          caps.evidence,
+          `Harness ${harness} dispatch unavailable: ${caps.evidence}`,
+        );
+        await recordActivity({
+          id: randomUUID(), projectId: request.projectId, conversationKey: request.conversationKey,
+          harness, adapter: `${harness}-adapter`, capability: 'dispatch',
           kind: 'handoff-failed', summary: receipt.message,
           attentionKey: request.intentId,
           observed: {
@@ -643,7 +743,8 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       }
       await recordActivity({
         id: randomUUID(), projectId: request.projectId, conversationKey: request.conversationKey,
-        kind: 'handoff-dispatched', summary: 'Packet dispatched to Codex',
+        harness, adapter: `${harness}-adapter`, capability: 'dispatch',
+        kind: 'handoff-dispatched', summary: `Packet dispatched to ${harness}`,
         observed: {
           source: 'process', sourceRef: `workbench-intent:${request.intentId}`,
           observedAt: new Date().toISOString(), verification: 'OBSERVED',
@@ -652,27 +753,49 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       const machine = snap.machine?.deviceId ?? 'UNKNOWN';
       let receipt: HandoffReceipt;
       try {
-        receipt = await codexAdapter.dispatch(request.intentId, cwd, request.packetText, (threadId) => {
-          runtimeContexts.set(threadId, {
+        const dispatchText = request.packetText;
+        const rememberRuntime = (threadId: string) => {
+          runtimeContexts.set(harness, threadId, {
             projectId: request.projectId,
             conversationKey: request.conversationKey,
             machine,
             cwd,
           });
+        };
+        const onCodexThread = (threadId: string) => {
+          rememberRuntime(threadId);
           void recordActivity({
             id: randomUUID(), projectId: request.projectId, conversationKey: request.conversationKey,
-            kind: 'session-started', summary: 'Codex session created', runtimeRef: threadId,
+            harness: 'codex', adapter: 'codex-app-server', capability: 'externalSessionRef',
+            kind: 'session-started', summary: `${harness} session created`, runtimeRef: threadId,
             runtimeState: 'unknown',
             binding: {
-              harness: 'codex', machine, cwd, externalSessionRef: threadId,
+              harness, machine, cwd, externalSessionRef: threadId,
             },
-            observed: observed('codex-app-server:thread/start.result.thread.id'),
+            observed: observed(`${harness}:${threadId}:session-start`),
           });
-        });
+        };
+        if (harness === 'claude') {
+          pendingClaudeContexts.set(request.intentId, { projectId: request.projectId, conversationKey: request.conversationKey, machine, cwd });
+          try {
+            receipt = await (adapter as typeof claudeAdapter).dispatch(request.intentId, cwd, dispatchText, rememberRuntime);
+          } finally {
+            pendingClaudeContexts.delete(request.intentId);
+          }
+        } else if (harness === 'deepseek') {
+          receipt = await (adapter as typeof deepseekAdapter).dispatch(request.intentId, cwd, dispatchText);
+          // deepseek currently has no thread callback; if it later provides runtimeRef, ensure context
+          if (receipt.runtimeRef) {
+            runtimeContexts.set('deepseek', receipt.runtimeRef, { projectId: request.projectId, conversationKey: request.conversationKey, machine, cwd });
+          }
+        } else {
+          receipt = await (adapter as typeof codexAdapter).dispatch(request.intentId, cwd, dispatchText, onCodexThread);
+        }
       } catch (error) {
         await recordActivity({
           id: randomUUID(), projectId: request.projectId, conversationKey: request.conversationKey,
-          kind: 'harness-error', summary: `Codex harness error: ${String(error)}`,
+          harness, adapter: `${harness}-adapter`, capability: 'dispatch',
+          kind: 'harness-error', summary: `${harness} harness error: ${String(error)}`,
           attentionKey: request.intentId,
           observed: {
             source: 'process', sourceRef: `workbench-intent:${request.intentId}`,
@@ -683,21 +806,24 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       }
       await recordActivity({
         id: randomUUID(), projectId: request.projectId, conversationKey: request.conversationKey,
+        harness, adapter: `${harness}-adapter`, capability: 'receipt',
         kind: receipt.status === 'ACCEPTED' ? 'handoff-accepted' : 'handoff-failed',
-        summary: receipt.status === 'ACCEPTED' ? 'Codex accepted the packet' : `Codex handoff ${receipt.status.toLowerCase()}`,
+        summary: receipt.status === 'ACCEPTED' ? `${harness} accepted the packet` : `${harness} handoff ${receipt.status.toLowerCase()}`,
         attentionKey: request.intentId,
         runtimeRef: receipt.runtimeRef, turnRef: receipt.turnRef,
-        observed: observed(`codex-app-server:${receipt.protocolEvidence}`),
+        observed: observed(`${harness}:${receipt.protocolEvidence}`),
       });
       return receipt;
     });
   });
-  ipcMain.handle('harness:smoke', async (_event, rawProjectId: unknown) => {
+  ipcMain.handle('harness:smoke', async (_event, rawProjectId: unknown, rawHarness: unknown) => {
     const projectId = KeySchema.parse(rawProjectId);
+    const harness = HarnessSmokeSchema.parse(rawHarness);
     const snap = cache?.snapshot ?? (await refresh());
     const cwd = await projectRoot(snap, projectId);
     if (!cwd) throw new Error(`No project root binding for ${projectId}`);
-    return codexAdapter.smoke(cwd);
+    const adapter = harness === 'claude' ? claudeAdapter : harness === 'deepseek' ? deepseekAdapter : codexAdapter;
+    return adapter.smoke(cwd);
   });
 
   ipcMain.handle('packet:freeze', async (_e, rawPacket: unknown) => {
@@ -909,7 +1035,11 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('before-quit', () => codexAdapter.close());
+app.on('before-quit', () => {
+  codexAdapter.close();
+  claudeAdapter.close();
+  deepseekAdapter.close();
+});
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {

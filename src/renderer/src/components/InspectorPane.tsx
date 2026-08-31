@@ -76,8 +76,9 @@ export function InspectorPane({
               <dt>Conversation</dt><dd>{conversation?.observed.sourceRef ?? 'UNKNOWN'}</dd>
               <dt>Runtime</dt><dd>{runtime?.observed.sourceRef ?? 'UNKNOWN'}</dd>
               <dt>Git</dt><dd>{git && 'observed' in git ? git.observed.sourceRef : 'UNKNOWN'}</dd>
+              <dt>Harness</dt><dd>{runtime?.binding?.harness ? `${runtime.binding.harness} · ${runtime.observed.sourceRef}` : runtime ? runtime.observed.sourceRef : 'no active binding — harness not guessed from cwd/provider'}</dd>
             </dl>
-            <p className="inspector-muted">UNKNOWN remains unknown; the Inspector does not infer missing runtime or flow.</p>
+            <p className="inspector-muted">UNKNOWN remains unknown; the Inspector does not infer missing runtime or flow. Runtime Binding belongs to one execution, not permanently to Conversation.</p>
           </div>
         )}
       </div>

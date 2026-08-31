@@ -12,6 +12,10 @@ describe('Codex adapter survives a missing executable (P0)', () => {
     expect(capabilities.harness).toBe('codex');
     expect(capabilities.canDispatch).toBe(false);
     expect(capabilities.canCreateSession).toBe(false);
+    expect(capabilities.support).toEqual({
+      dispatch: 'NO', observe: 'NO', receipt: 'NO', approval: 'NO', needsInput: 'NO',
+      toolEvents: 'NO', fileEvents: 'NO', externalSessionRef: 'NO', resume: 'NO',
+    });
     expect(capabilities.evidence).toContain('unavailable');
     expect(capabilities.evidence).toContain('ENOENT');
     adapter.close();
@@ -58,11 +62,19 @@ describe('Codex adapter against a fake app-server (protocol fixture)', () => {
     process.env.FAKE_MODE = 'die-after-turn-start';
     const adapter = new CodexAppServerAdapter({ command: process.execPath, args: [FAKE] });
     const events: { method: string; params?: unknown }[] = [];
-    adapter.onEvent((event) => events.push(event));
+    let resolveAdapterError: ((event: { method: string; params?: unknown }) => void) | undefined;
+    const adapterError = new Promise<{ method: string; params?: unknown }>((resolve) => { resolveAdapterError = resolve; });
+    adapter.onEvent((event) => {
+      events.push(event);
+      if (event.method === 'adapter/error') resolveAdapterError?.(event);
+    });
     try {
       const receipt = await adapter.dispatch('55555555-5555-4555-8555-555555555555', process.cwd(), 'accepted then crash');
       expect(receipt.status).toBe('ACCEPTED');
-      await new Promise((resolve) => setTimeout(resolve, 80));
+      await Promise.race([
+        adapterError,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('adapter/error event timeout')), 2_000)),
+      ]);
       expect(events).toContainEqual(expect.objectContaining({
         method: 'adapter/error',
         params: expect.objectContaining({ threadId: receipt.runtimeRef }),
@@ -106,6 +118,10 @@ describe('Codex adapter against a fake app-server (protocol fixture)', () => {
     try {
       const capabilities = await recovered.capabilities();
       expect(capabilities.canDispatch).toBe(true);
+      expect(capabilities.support).toEqual({
+        dispatch: 'YES', observe: 'YES', receipt: 'YES', approval: 'YES', needsInput: 'YES',
+        toolEvents: 'YES', fileEvents: 'YES', externalSessionRef: 'YES', resume: 'NO',
+      });
     } finally {
       recovered.close();
     }

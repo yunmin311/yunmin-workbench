@@ -46,6 +46,14 @@ describe('real harness handoff intent boundary', () => {
     expect(applyHandoffReceipt(intent, receipt(status)).state).toBe(status.toLowerCase());
   });
 
+  it('does not apply a receipt from a different harness to the intent', () => {
+    const intent = markHandoffDispatched(
+      createHandoffIntent('11111111-1111-4111-8111-111111111111', payload),
+    );
+    const wrongHarness = { ...receipt('ACCEPTED'), harness: 'claude' as const };
+    expect(applyHandoffReceipt(intent, wrongHarness)).toBe(intent);
+  });
+
   it('deduplicates repeated dispatches by intent id', async () => {
     const registry = new HandoffDispatchRegistry<HandoffReceipt>();
     const dispatch = vi.fn(async () => receipt('ACCEPTED'));

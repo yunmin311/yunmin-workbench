@@ -61,14 +61,17 @@ const api = {
     ipcRenderer.invoke('workspace:save', session),
   loadHarnessCapabilities: (): Promise<HarnessCapabilities> =>
     ipcRenderer.invoke('harness:capabilities'),
+  loadAllHarnessCapabilities: (): Promise<Record<string, HarnessCapabilities>> =>
+    ipcRenderer.invoke('harness:capabilitiesAll'),
   dispatchToHarness: (request: {
     intentId: string;
     projectId: string;
     conversationKey: string;
     packetText: string;
+    harness: 'codex' | 'claude' | 'deepseek';
   }): Promise<HandoffReceipt> => ipcRenderer.invoke('harness:dispatch', request),
-  smokeHarness: (projectId: string): Promise<{ userAgent: string; ephemeralThreadId: string }> =>
-    ipcRenderer.invoke('harness:smoke', projectId),
+  smokeHarness: (projectId: string, harness: 'codex' | 'claude' | 'deepseek'): Promise<HandoffReceipt | { userAgent: string; ephemeralThreadId: string }> =>
+    ipcRenderer.invoke('harness:smoke', projectId, harness),
   loadActivity: (): Promise<{ events: ActivityEvent[]; problem?: string }> =>
     ipcRenderer.invoke('activity:load'),
   clearActivity: (): Promise<void> => ipcRenderer.invoke('activity:clear'),

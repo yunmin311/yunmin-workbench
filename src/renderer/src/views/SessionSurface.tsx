@@ -34,8 +34,16 @@ function ActivityCard({ event }: { event: ActivityEvent }) {
   if (isBoundary) {
     return (
       <li className={`activity-boundary activity-kind-${event.kind}`} data-event-ref={event.id} data-session-ref={event.runtimeRef} data-source-ref={event.observed.sourceRef}>
-        <span><i />{ACTIVITY_LABEL[event.kind]}</span>
-        <p>{event.summary}</p>
+        <span>
+          <i />{ACTIVITY_LABEL[event.kind]}
+          {event.harness && <b className="harness-badge">{event.harness}</b>}
+        </span>
+        <p>
+          {event.summary}
+          <small title={event.observed.sourceRef}>
+            {event.adapter ?? event.observed.source} · {event.capability ?? 'observe'} · {event.observed.verification}
+          </small>
+        </p>
         <time>{new Date(event.observed.observedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
       </li>
     );
@@ -46,6 +54,7 @@ function ActivityCard({ event }: { event: ActivityEvent }) {
       <header>
         <span className="activity-card-icon" aria-hidden="true">{isTool ? '›_' : isChange ? '±' : 'A'}</span>
         <strong>{ACTIVITY_LABEL[event.kind]}</strong>
+        {event.harness && <span className="harness-badge" style={{ fontSize: 8, padding: '1px 4px', border: '1px solid var(--wb-border-color)', borderRadius: 4, background: 'var(--wb-surface-raised)', color: 'var(--wb-text-contrast)', marginLeft: 6 }}>{event.harness}</span>}
         <time>{new Date(event.observed.observedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
       </header>
       <p>{event.summary}</p>
@@ -55,6 +64,9 @@ function ActivityCard({ event }: { event: ActivityEvent }) {
           {event.runtimeRef && <span title={event.runtimeRef}>runtime {event.runtimeRef}</span>}
           {event.turnRef && <span title={event.turnRef}>turn {event.turnRef}</span>}
           <span title={event.observed.sourceRef}>{event.observed.source} · {event.observed.verification}</span>
+          {event.harness && <span>harness {event.harness}</span>}
+          {event.adapter && <span>adapter {event.adapter}</span>}
+          {event.capability && <span>capability {event.capability}</span>}
         </details>
       )}
     </li>

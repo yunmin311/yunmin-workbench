@@ -8,6 +8,7 @@ import type {
   AttentionPacketFact,
   RuntimeSession,
 } from '../types';
+import { runtimeExecutionId } from '../project/runtimeIdentity';
 
 export interface AttentionReducerInput {
   activity: ActivityEvent[];
@@ -83,7 +84,9 @@ function activityCandidates(events: ActivityEvent[]): Candidate[] {
     }
 
     if (event.kind === 'turn-error' || event.kind === 'turn-started' || event.kind === 'turn-completed') {
-      const key = `runtime:${event.turnRef ?? event.runtimeRef ?? event.attentionKey ?? event.id}`;
+      const harness = event.harness ?? event.binding?.harness;
+      const externalRef = event.turnRef ?? event.runtimeRef;
+      const key = `runtime:${harness && externalRef ? `${harness}::${externalRef}` : event.attentionKey ?? event.id}`;
       out.push(event.kind === 'turn-error'
         ? { key, active: true, observedAt: event.observed.observedAt, specificity: 2, item: eventItem(event, key, 'runtime-error', 'alert', 'Runtime or harness error') }
         : resolvedEvent(event, key));
@@ -173,7 +176,10 @@ function gateCandidates(facts: AttentionGateFact[]): Candidate[] {
 export function reduceAttention(input: AttentionReducerInput): AttentionItem[] {
   const trustedActivity = input.activity.filter((event) => isTrustedObservation(event.observed));
   const explicitlyObservedRuntimeRefs = new Set(
-    trustedActivity.flatMap((event) => event.runtimeRef ? [event.runtimeRef] : []),
+    trustedActivity.flatMap((event) => {
+      const harness = event.harness ?? event.binding?.harness;
+      return harness && event.runtimeRef ? [runtimeExecutionId(harness, event.runtimeRef)] : [];
+    }),
   );
   const candidates = [
     ...activityCandidates(trustedActivity),

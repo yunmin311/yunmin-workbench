@@ -14,6 +14,12 @@ const ActivityEventSchema = z.object({
     'approval-required', 'needs-user-input', 'harness-error',
   ]),
   summary: z.string(),
+  harness: z.enum(['codex', 'claude', 'deepseek']).optional(),
+  adapter: z.string().optional(),
+  capability: z.enum([
+    'dispatch', 'observe', 'receipt', 'approval', 'needsInput',
+    'toolEvents', 'fileEvents', 'externalSessionRef', 'resume',
+  ]).optional(),
   runtimeRef: z.string().optional(),
   turnRef: z.string().optional(),
   binding: z.object({

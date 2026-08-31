@@ -21,6 +21,7 @@ function event(id: string, kind: ActivityEvent['kind'], at: string, extra: Parti
     id,
     projectId: 'project-a',
     conversationKey: 'project-a::codex::main',
+    harness: 'codex',
     kind,
     summary: `${kind} ${id}`,
     observed: observed(at),
@@ -176,11 +177,11 @@ describe('Attention reducer', () => {
   });
 
   it('keeps the explicit event provenance when a runtime projection repeats the same observation', () => {
-    const errorEvent = event('runtime-event', 'turn-error', '2026-08-30T14:05:00Z', { runtimeRef: 'thread-explicit' });
+    const errorEvent = event('runtime-event', 'turn-error', '2026-08-30T14:05:00Z', { harness: 'codex', runtimeRef: 'thread-explicit' });
     const [item] = reduceAttention({
       activity: [errorEvent],
       runtimeSessions: [{
-        id: 'thread-explicit', conversationKey: errorEvent.conversationKey,
+        id: 'codex::thread-explicit', conversationKey: errorEvent.conversationKey,
         binding: { harness: 'codex', machine: 'machine', cwd: 'E:\\project-a' },
         state: 'error', observed: errorEvent.observed, startedAt: errorEvent.observed.observedAt,
       }],

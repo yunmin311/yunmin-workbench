@@ -261,8 +261,25 @@ export interface ContextItem {
   relativePath?: string;
 }
 
+export type HarnessCapabilitySupport = 'YES' | 'NO' | 'UNKNOWN';
+
+export interface HarnessCapabilityTruth {
+  dispatch: HarnessCapabilitySupport;
+  observe: HarnessCapabilitySupport;
+  receipt: HarnessCapabilitySupport;
+  approval: HarnessCapabilitySupport;
+  needsInput: HarnessCapabilitySupport;
+  toolEvents: HarnessCapabilitySupport;
+  fileEvents: HarnessCapabilitySupport;
+  externalSessionRef: HarnessCapabilitySupport;
+  resume: HarnessCapabilitySupport;
+}
+
 export interface HarnessCapabilities {
   harness: 'codex' | 'claude' | 'deepseek';
+  /** Explicit capability truth. UNKNOWN is never collapsed into a positive boolean. */
+  support: HarnessCapabilityTruth;
+  /** Compatibility flags consumed by the existing Codex UI path. */
   canDispatch: boolean;
   canCreateSession: boolean;
   canResumeSession: boolean;
@@ -279,7 +296,7 @@ export interface HandoffReceipt {
   at: string;
   runtimeRef?: string;
   turnRef?: string;
-  source: 'protocol';
+  source: 'protocol' | 'process' | 'workbench';
   protocolEvidence: string;
   message?: string;
 }
@@ -309,6 +326,10 @@ export interface ActivityEvent {
   conversationKey: string;
   kind: ActivityKind;
   summary: string;
+  /** Explicit adapter provenance; never reconstructed from cwd/provider/sourceRef text. */
+  harness?: HarnessCapabilities['harness'];
+  adapter?: string;
+  capability?: keyof HarnessCapabilityTruth;
   runtimeRef?: string;
   turnRef?: string;
   binding?: RuntimeBinding;

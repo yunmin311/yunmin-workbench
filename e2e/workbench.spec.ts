@@ -75,7 +75,13 @@ test.describe('Yunmin Workbench vertical slice (GOV_OVERLAY fixture, read-only)'
     await win.locator('.inspector-pane textarea').fill('E2E 冒烟：验证 Freeze 链路');
     await expect(win.locator('.inspector-pane .validity-current')).toBeVisible();
     if (hasCodex) {
-      await expect(win.locator('button', { hasText: 'Send to Codex' })).toBeEnabled();
+      const harnessSelector = win.locator('.harness-selector');
+      const sendToCodex = win.locator('button', { hasText: 'Send to Codex' });
+      await expect.poll(async () => (await harnessSelector.isVisible()) || (await sendToCodex.isEnabled())).toBe(true);
+      if (await harnessSelector.isVisible()) {
+        await harnessSelector.locator('button', { hasText: 'Codex' }).click();
+      }
+      await expect(sendToCodex).toBeEnabled();
     } else {
       await expect(win.locator('button', { hasText: 'Send to Codex' })).toBeDisabled();
     }

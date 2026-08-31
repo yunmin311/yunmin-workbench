@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { checkPacketValidity, compilePacket, renderAgentInput } from '../../../core/project/packet';
 import { applyHandoffReceipt, createHandoffIntent, markHandoffDispatched } from '../../../core/project/handoff';
+import { dispatchableHarnesses, resolveHarnessTarget, type HarnessCapabilityMatrix, type HarnessTarget } from '../../../core/project/harnessSelection';
 import { overlayFileSourceRef, projectFileSourceRef } from '../../../core/project/sourceIdentity';
 import type { FrozenPacketSummary, HandoffReceipt, HarnessCapabilities, SourceFingerprint, UserIntent } from '../../../core/types';
 import { useWorkbench } from '../store';
@@ -90,6 +91,8 @@ export function PacketPanel() {
   const [freezeError, setFreezeError] = useState('');
   const [copyMessage, setCopyMessage] = useState('');
   const [capabilities, setCapabilities] = useState<HarnessCapabilities | null>(null);
+  const [allCapabilities, setAllCapabilities] = useState<HarnessCapabilityMatrix | null>(null);
+  const [selectedHarness, setSelectedHarness] = useState<HarnessTarget | null>(null);
   const [intent, setIntent] = useState<UserIntent | null>(null);
   const [receipt, setReceipt] = useState<HandoffReceipt | null>(null);
   const [handoffPending, setHandoffPending] = useState(false);
@@ -98,7 +101,17 @@ export function PacketPanel() {
   useEffect(() => {
     void recheckSources();
     void window.wb.loadHarnessCapabilities().then(setCapabilities);
+    void (window.wb.loadAllHarnessCapabilities ? window.wb.loadAllHarnessCapabilities().then((all) => {
+      const matrix = all as HarnessCapabilityMatrix;
+      setAllCapabilities(matrix);
+      setSelectedHarness((current) => current && dispatchableHarnesses(matrix).includes(current) ? current : null);
+    }) : Promise.resolve());
   }, [projectId, conversation?.key, recheckSources]);
+
+  const availableHarnesses = allCapabilities ? dispatchableHarnesses(allCapabilities) : [];
+  const targetHarness = allCapabilities
+    ? resolveHarnessTarget(allCapabilities, selectedHarness)
+    : null;
 
   const currentFingerprints = useMemo(() => {
     const merged = new Map(snapshot?.sourceFingerprints.map((item) => [item.sourceRef, item.sha256]) ?? []);
@@ -162,12 +175,13 @@ export function PacketPanel() {
   };
 
   const handoff = async () => {
-    if (!projectId || !conversation || !compiledText || handoffPending || previewValidity !== 'CURRENT' || !capabilities?.canDispatch) return;
+    const effectiveCaps = targetHarness ? allCapabilities?.[targetHarness] : null;
+    if (!targetHarness || !projectId || !conversation || !compiledText || handoffPending || previewValidity !== 'CURRENT' || !effectiveCaps?.canDispatch) return;
     const draftIntent = createHandoffIntent(globalThis.crypto.randomUUID(), {
       projectId,
       conversationKey: conversation.key,
       packetText: compiledText,
-      harness: 'codex',
+      harness: targetHarness,
     });
     const dispatched = markHandoffDispatched(draftIntent);
     setIntent(dispatched);
@@ -181,12 +195,13 @@ export function PacketPanel() {
         projectId,
         conversationKey: conversation.key,
         packetText: compiledText,
+        harness: targetHarness,
       });
       setReceipt(nextReceipt);
       setIntent(applyHandoffReceipt(dispatched, nextReceipt));
       setHandoffStatus(nextReceipt.status);
       if (nextReceipt.status !== 'ACCEPTED') {
-        setHandoffError(`Dispatch did not reach Codex (${nextReceipt.status}).${nextReceipt.message ? ` ${nextReceipt.message}` : ''}`);
+        setHandoffError(`Dispatch did not reach ${targetHarness} (${nextReceipt.status}).${nextReceipt.message ? ` ${nextReceipt.message}` : ''}`);
       }
     } catch (error) {
       setHandoffStatus('FAILED');
@@ -242,14 +257,60 @@ export function PacketPanel() {
           </p>
         )}
         <pre className="agent-input-text">{compiledText}</pre>
+        {allCapabilities && availableHarnesses.length > 1 && (
+          <div className="harness-selector" style={{ margin: '10px 0 8px', padding: '8px 10px', border: '1px solid var(--wb-border-color)', borderRadius: 6, background: 'var(--wb-surface-raised)', fontSize: 11 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <span style={{ fontWeight: 600, color: 'var(--wb-text-contrast)' }}>Dispatch target</span>
+              <span style={{ color: 'var(--wb-text-contrast)', opacity: 0.6, fontSize: 9 }}>explicit user choice, not guessed</span>
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {availableHarnesses.map((h) => {
+                const c = allCapabilities[h];
+                if (!c) return null;
+                const label = h === 'codex' ? 'Codex' : h === 'claude' ? 'Claude' : 'DeepSeek';
+                const detail = `${c.canDispatch ? 'Dispatch' : 'No Dispatch'} · ${c.canObserveRuntime ? 'Observe' : 'No Observe'} · ${c.canReceiveReceipt ? 'Receipt' : 'No Receipt'}`;
+                const disabled = !c.canDispatch;
+                return (
+                  <button
+                    key={h}
+                    disabled={disabled}
+                    onClick={() => setSelectedHarness(h)}
+                    title={`${label}: ${detail} — ${c.evidence}`}
+                    style={{
+                      padding: '4px 8px',
+                      borderRadius: 5,
+                      border: `1px solid ${selectedHarness === h ? 'var(--wb-border-color)' : 'transparent'}`,
+                      background: selectedHarness === h ? 'var(--wb-surface-overlay)' : 'transparent',
+                      color: disabled ? 'var(--wb-text-contrast)' : 'var(--wb-text-contrast)',
+                      opacity: disabled ? 0.45 : 1,
+                      fontSize: 11,
+                    }}
+                    aria-pressed={selectedHarness === h}
+                  >
+                    <strong>{label}</strong> <span style={{ fontSize: 9, opacity: 0.7 }}>{detail}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ marginTop: 6, fontSize: 9, color: 'var(--wb-text-contrast)', opacity: 0.6 }}>
+              Selected: <strong>{targetHarness ?? 'none'}</strong>
+              {targetHarness && <> · {allCapabilities[targetHarness].evidence}</>}
+              {targetHarness && allCapabilities[targetHarness].support.resume === 'NO' && <span> · Resume NO</span>}
+            </div>
+          </div>
+        )}
         <div className="packet-copy-row">
           <button onClick={() => void copy()}>Copy Agent Input</button>
           <button
             className="primary"
-            disabled={handoffPending || previewValidity !== 'CURRENT' || !capabilities?.canDispatch}
+            disabled={handoffPending || previewValidity !== 'CURRENT' || !targetHarness || !(allCapabilities?.[targetHarness] ?? capabilities)?.canDispatch}
             onClick={() => void handoff()}
           >
-            {handoffPending ? 'Sending…' : 'Send to Codex'}
+            {handoffPending
+              ? 'Sending…'
+              : targetHarness
+                ? `Send to ${targetHarness === 'codex' ? 'Codex' : targetHarness === 'claude' ? 'Claude' : 'DeepSeek'}`
+                : capabilities?.harness === 'codex' ? 'Send to Codex' : 'Choose Harness'}
           </button>
           {copyMessage && <span className={copyMessage.startsWith('Copied') ? 'ok' : 'packet-alert'}>{copyMessage}</span>}
         </div>
