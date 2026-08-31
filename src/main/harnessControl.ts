@@ -1,32 +1,49 @@
 import { z } from 'zod';
+import { parseRuntimeExecutionId, runtimeExecutionId } from '../core/project/runtimeIdentity';
+import type { LiveExecution, LiveExecutionRegistry } from './liveExecutions';
 
-export const ExecutionIdSchema = z.string().regex(/^[a-z]+::.+|^intent:.+/);
+const RuntimeLiveRequestSchema = z.undefined();
+const CancelRequestSchema = z.object({
+  executionId: z.string().min(1).max(2048),
+}).strict();
 
 export interface CancelOutcome {
   delivered: boolean;
-  /** Machine-checkable reason when not delivered; never a synthetic success. */
-  reason?: 'no-live-context' | 'cancel-not-supported' | 'invalid-execution-id';
+  reason?: 'no-live-context' | 'cancel-not-supported' | 'invalid-execution-id' | 'adapter-error';
 }
 
-/**
- * Resolves a Cancel request against the live runtime context. Only adapters
- * with a real cancel path are delivered; everything else returns a structured
- * refusal so the UI can keep the control disabled or explain why.
- */
-export function resolveCancelRequest(input: {
-  executionId: string;
-  /** executionId -> intentId for executions the adapters currently hold. */
+export interface CancelDependencies {
   liveIntents: ReadonlyMap<string, string>;
   cancelByIntent: (intentId: string) => boolean;
-  /** Harnesses whose adapter implements a real cancel path. */
   cancelableHarnesses: ReadonlySet<string>;
-}): CancelOutcome {
-  const parsed = ExecutionIdSchema.safeParse(input.executionId);
-  if (!parsed.success) return { delivered: false, reason: 'invalid-execution-id' };
-  if (parsed.data.startsWith('intent:')) return { delivered: false, reason: 'no-live-context' };
-  const harness = parsed.data.slice(0, parsed.data.indexOf('::'));
-  const intentId = input.liveIntents.get(parsed.data);
+}
+
+export function handleRuntimeLiveRequest(
+  rawRequest: unknown,
+  registry: Pick<LiveExecutionRegistry, 'list'>,
+): LiveExecution[] {
+  if (!RuntimeLiveRequestSchema.safeParse(rawRequest).success) {
+    throw new Error('Invalid runtime:live request');
+  }
+  return registry.list();
+}
+
+export function handleCancelRequest(rawRequest: unknown, deps: CancelDependencies): CancelOutcome {
+  const request = CancelRequestSchema.safeParse(rawRequest);
+  if (!request.success) return { delivered: false, reason: 'invalid-execution-id' };
+  const parsed = parseRuntimeExecutionId(request.data.executionId);
+  if (!parsed) return { delivered: false, reason: 'invalid-execution-id' };
+  const executionId = runtimeExecutionId(parsed.harness, parsed.externalSessionRef);
+  const intentId = deps.liveIntents.get(executionId);
   if (!intentId) return { delivered: false, reason: 'no-live-context' };
-  if (!input.cancelableHarnesses.has(harness)) return { delivered: false, reason: 'cancel-not-supported' };
-  return { delivered: input.cancelByIntent(intentId) };
+  if (!deps.cancelableHarnesses.has(parsed.harness)) {
+    return { delivered: false, reason: 'cancel-not-supported' };
+  }
+  try {
+    return deps.cancelByIntent(intentId)
+      ? { delivered: true }
+      : { delivered: false, reason: 'no-live-context' };
+  } catch {
+    return { delivered: false, reason: 'adapter-error' };
+  }
 }

@@ -1,4 +1,4 @@
-import { runtimeExecutionId } from '../core/project/runtimeIdentity';
+import { isValidNativeRuntimeRef, runtimeExecutionId } from '../core/project/runtimeIdentity';
 import type { HarnessCapabilities } from '../core/types';
 
 type Harness = HarnessCapabilities['harness'];
@@ -25,6 +25,7 @@ export class LiveExecutionRegistry {
   }
 
   add(harness: Harness, externalSessionRef: string, startedAt: string): LiveExecution {
+    if (!isValidNativeRuntimeRef(externalSessionRef)) throw new Error('Invalid native runtime ref');
     const entry: LiveExecution = {
       executionId: runtimeExecutionId(harness, externalSessionRef),
       harness,

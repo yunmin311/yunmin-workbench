@@ -20,12 +20,12 @@ const ActivityEventSchema = z.object({
     'dispatch', 'observe', 'receipt', 'approval', 'needsInput',
     'toolEvents', 'fileEvents', 'externalSessionRef', 'resume',
   ]).optional(),
-  runtimeRef: z.string().optional(),
-  turnRef: z.string().optional(),
+  runtimeRef: z.string().min(1).max(1024).regex(/^[^\u0000\r\n]+$/).optional(),
+  turnRef: z.string().min(1).max(1024).regex(/^[^\u0000\r\n]+$/).optional(),
   binding: z.object({
-    harness: z.string(), machine: z.string(), cwd: z.string().optional(),
+    harness: z.enum(['codex', 'claude', 'deepseek']), machine: z.string(), cwd: z.string().optional(),
     worktree: z.string().optional(), branch: z.string().optional(), head: z.string().optional(),
-    externalSessionRef: z.string().optional(),
+    externalSessionRef: z.string().min(1).max(1024).regex(/^[^\u0000\r\n]+$/).optional(),
   }).optional(),
   runtimeState: z.enum(['working', 'idle', 'stopped', 'error', 'unknown']).optional(),
   attentionKey: z.string().optional(),
@@ -36,6 +36,13 @@ const ActivityEventSchema = z.object({
     sourceRef: z.string(), observedAt: z.string(),
     verification: z.enum(['VERIFIED', 'OBSERVED', 'INFERRED', 'UNKNOWN']),
   }),
+}).superRefine((event, ctx) => {
+  if (event.harness && event.binding?.harness && event.harness !== event.binding.harness) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['binding', 'harness'], message: 'binding harness contradicts event harness' });
+  }
+  if (event.runtimeRef && event.binding?.externalSessionRef && event.runtimeRef !== event.binding.externalSessionRef) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['binding', 'externalSessionRef'], message: 'binding external ref contradicts runtime ref' });
+  }
 });
 
 const ActivityLineSchema = z.object({ schemaVersion: z.literal(1), event: ActivityEventSchema });

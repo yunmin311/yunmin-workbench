@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { appendFile, mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -85,5 +85,26 @@ describe('runtime observation history', () => {
     expect(raw).toContain('"schemaVersion":1');
     await clearActivity(root);
     expect((await readActivity(root)).events).toEqual([]);
+  });
+
+  it('isolates malformed and contradictory runtime identity lines without discarding valid history', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'wb-activity-invalid-'));
+    const valid = event('valid', 'session-started', '2026-08-26T01:00:00.000Z', {
+      harness: 'codex', runtimeRef: 'thread-1',
+      binding: { harness: 'codex', machine: 'machine-1', externalSessionRef: 'thread-1' },
+    });
+    await appendActivity(root, valid);
+    await appendFile(join(root, 'activity', 'history.jsonl'), `${JSON.stringify({
+      schemaVersion: 1,
+      event: event('bad', 'session-started', '2026-08-26T01:00:01.000Z', {
+        harness: 'codex', runtimeRef: 'thread-a',
+        binding: { harness: 'claude', machine: 'machine-1', externalSessionRef: 'thread-b' },
+      }),
+    })}\nnot-json\n`, 'utf8');
+
+    const loaded = await readActivity(root);
+    expect(loaded.events).toEqual([valid]);
+    expect(loaded.rejectedLines).toBe(2);
+    expect(loaded.problem).toContain('isolated 2 malformed line(s)');
   });
 });

@@ -58,7 +58,7 @@ import { detectMaterialCapability } from './materialCapability';
 import { ClaudeCodeAdapter } from './adapters/claudeCodeAdapter';
 import { DeepSeekAdapter } from './adapters/deepseekAdapter';
 import { LiveExecutionRegistry } from './liveExecutions';
-import { resolveCancelRequest } from './harnessControl';
+import { handleCancelRequest, handleRuntimeLiveRequest } from './harnessControl';
 import { RuntimeContextRegistry } from './runtimeContextRegistry';
 import { HarnessDispatchSchema, HarnessSmokeSchema, workbenchRejectedReceipt } from './harnessRequest';
 import { canDispatchToHarness } from '../core/project/harnessSelection';
@@ -754,6 +754,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
         id: randomUUID(), projectId: request.projectId, conversationKey: request.conversationKey,
         harness, adapter: `${harness}-adapter`, capability: 'dispatch',
         kind: 'handoff-dispatched', summary: `Packet dispatched to ${harness}`,
+        attentionKey: request.intentId,
         observed: {
           source: 'process', sourceRef: `workbench-intent:${request.intentId}`,
           observedAt: new Date().toISOString(), verification: 'OBSERVED',
@@ -841,10 +842,10 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
 
   // Runtime Inspector: which executions currently hold adapter process evidence.
   // Empty after a restart — historical activity never renders as a live runtime.
-  ipcMain.handle('runtime:live', () => liveExecutions.list());
+  ipcMain.handle('runtime:live', (_event, rawRequest?: unknown) =>
+    handleRuntimeLiveRequest(rawRequest, liveExecutions));
 
   ipcMain.handle('harness:cancel', (_event, rawRequest: unknown) => {
-    const request = z.object({ executionId: z.string().min(1).max(1024) }).parse(rawRequest);
     const liveIntents = new Map<string, string>();
     for (const entry of liveExecutions.list()) {
       const context = runtimeContexts.get(entry.harness, entry.externalSessionRef);
@@ -852,8 +853,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     }
     // Mirrors adapter reality: only the Claude adapter implements a cancel path
     // today. Codex/DeepSeek return a structured refusal instead of a fake stop.
-    return resolveCancelRequest({
-      executionId: request.executionId,
+    return handleCancelRequest(rawRequest, {
       liveIntents,
       cancelableHarnesses: new Set(['claude']),
       cancelByIntent: (intentId) => claudeAdapter.cancel(intentId),
