@@ -17,6 +17,15 @@ const islandApi = {
     ipcRenderer.invoke('island:save-position', { x, y }),
   dismissAttention: (itemId: string, observedAt: string): Promise<void> =>
     ipcRenderer.invoke('attention:dismiss', { itemId, observedAt }),
+  loadMaterialPreference: (): Promise<{ material: string }> =>
+    ipcRenderer.invoke('material:load'),
+  getMaterialCapability: (): Promise<{ supportsGlass: boolean; supportsFrost: boolean; supportsPure: boolean; reason: string | null; isWindows: boolean; reducedTransparency: boolean }> =>
+    ipcRenderer.invoke('material:capability'),
+  onMaterialChanged: (cb: (pref: { material: string }) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, pref: unknown) => cb(pref as { material: string });
+    ipcRenderer.on('material:changed', listener);
+    return () => ipcRenderer.removeListener('material:changed', listener);
+  },
 };
 
 contextBridge.exposeInMainWorld('island', islandApi);

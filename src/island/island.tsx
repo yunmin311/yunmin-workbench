@@ -1,11 +1,18 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { AmbientIsland } from './components/AmbientIsland';
+import { useIslandMaterial } from './IslandMaterialProvider';
+import '../renderer/src/material/material-surfaces.css';
+
+function IslandApp() {
+  useIslandMaterial();
+  return <AmbientIsland />;
+}
 
 const container = document.getElementById('island-root');
 if (container) {
   const root = createRoot(container);
-  root.render(<AmbientIsland />);
+  root.render(<IslandApp />);
 } else {
   console.error('Island root container not found');
 }

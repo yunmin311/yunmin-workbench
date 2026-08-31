@@ -7,9 +7,11 @@ import { HistoryPanel } from './components/HistoryPanel';
 import { AttentionPanel } from './components/AttentionPanel';
 import { PortabilityPanel } from './components/PortabilityPanel';
 import { MemoryPanel } from './components/MemoryPanel';
+import { MaterialSettings } from './components/MaterialSettings';
 import { CanvasView } from './views/CanvasView';
 import { SessionSurface } from './views/SessionSurface';
 import { useWorkbench } from './store';
+import { useMaterial } from './material/MaterialProvider';
 
 export default function App() {
   const snapshot = useWorkbench((state) => state.snapshot);
@@ -31,7 +33,9 @@ export default function App() {
   const [attentionOpen, setAttentionOpen] = useState(false);
   const [portabilityOpen, setPortabilityOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
+  const [materialOpen, setMaterialOpen] = useState(false);
   const [historySourceSessionId, setHistorySourceSessionId] = useState<string | undefined>();
+  const material = useMaterial();
 
   useEffect(() => {
     void initialize();
@@ -222,6 +226,15 @@ export default function App() {
           <button disabled={!projectId} aria-pressed={inspectorTab === 'context'} onClick={() => openInspector('context')}>Context</button>
           <button disabled={!conversation} aria-pressed={inspectorTab === 'packet'} onClick={() => openInspector('packet')}>Packet</button>
           <button
+            aria-label={`Material ${material.effective}${material.fallbackReason ? ' fallback' : ''}`}
+            aria-expanded={materialOpen}
+            onClick={() => setMaterialOpen((o) => !o)}
+            title={material.fallbackReason ? `Requested ${material.preference} → ${material.effective}: ${material.fallbackReason}` : `Material ${material.effective}`}
+            style={{ borderColor: material.fallbackReason ? '#e0af68' : undefined }}
+          >
+            Material: {material.effective}{material.fallbackReason ? ' ↻' : ''}
+          </button>
+          <button
             className="icon-action"
             aria-label="Open command palette"
             onClick={() => window.dispatchEvent(new CustomEvent('workbench:open-command-palette'))}
@@ -259,6 +272,7 @@ export default function App() {
       {memoryOpen && <MemoryPanel onClose={() => setMemoryOpen(false)} />}
       {attentionOpen && <AttentionPanel onClose={() => setAttentionOpen(false)} />}
       {portabilityOpen && <PortabilityPanel onClose={() => setPortabilityOpen(false)} />}
+      {materialOpen && <MaterialSettings onClose={() => setMaterialOpen(false)} />}
     </div>
   );
 }

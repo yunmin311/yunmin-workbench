@@ -1,0 +1,136 @@
+/* Material Layer Phase 1 — shared token application.
+   Only core surfaces are themed; product IA, Session Spine structure, drawers behavior unchanged.
+   Main Window and Island share same token source via src/core/material/tokens.ts
+   Dark, low-saturation, restrained — glass via layering/blur/light border, not heavy glow.
+*/
+
+:root {
+  /* defaults until JS hydrates tokens — Pure fallback guarantees readability */
+  --wb-surface-base: #1b1e24;
+  --wb-surface-raised: #20242b;
+  --wb-surface-overlay: #272c35;
+  --wb-backdrop-blur: 0px;
+  --wb-frost-opacity: 1;
+  --wb-border-opacity: 1;
+  --wb-highlight-opacity: 0;
+  --wb-noise-opacity: 0;
+  --wb-elevation: 0 12px 40px rgba(0,0,0,0.34);
+  --wb-radius: 8px;
+  --wb-shadow: 0 4px 20px rgba(0,0,0,0.32);
+  --wb-text-contrast: #e2e5ea;
+  --wb-accent-glow: none;
+  --wb-border-color: rgba(48,54,64,1);
+  --wb-highlight-color: transparent;
+}
+
+/* Ensure window shell never becomes transparent穿透 or black-screen on fallback */
+html, body, #root, .prototype-app {
+  background: var(--wb-surface-base);
+  color: var(--wb-text-contrast);
+}
+
+/* Main Window shell & top chrome — Session Spine's container remains structural, only surface changes */
+.prototype-app {
+  background: var(--wb-surface-base);
+}
+.prototype-chrome {
+  background: var(--wb-surface-raised);
+  backdrop-filter: blur(var(--wb-backdrop-blur));
+  -webkit-backdrop-filter: blur(var(--wb-backdrop-blur));
+  border-bottom: 1px solid var(--wb-border-color);
+  box-shadow: var(--wb-shadow);
+  /* subtle highlight for Glass only — controlled via token */
+  position: relative;
+}
+.prototype-chrome::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  box-shadow: 0 1px 0 var(--wb-highlight-color) inset;
+  opacity: var(--wb-highlight-opacity);
+}
+
+/* Session Spine main surface — keep padding/layout, only surface/blurface */
+.active-surface,
+.prototype-surface {
+  background: var(--wb-surface-base);
+}
+.surface-scroll {
+  /* keep scrollbars readable, no material opacity encoding for state */
+}
+
+/* Drawer / Packet overlay — same material as Command Palette */
+.inspector-pane,
+.prototype-app .inspector-pane {
+  background: var(--wb-surface-overlay);
+  backdrop-filter: blur(var(--wb-backdrop-blur));
+  -webkit-backdrop-filter: blur(var(--wb-backdrop-blur));
+  border: 1px solid var(--wb-border-color);
+  border-radius: var(--wb-radius);
+  box-shadow: var(--wb-elevation);
+}
+.inspector-layer {
+  background: rgba(6, 8, 11, 0.22);
+  backdrop-filter: blur(calc(var(--wb-backdrop-blur) * 0.4));
+  -webkit-backdrop-filter: blur(calc(var(--wb-backdrop-blur) * 0.4));
+}
+.inspector-chrome {
+  background: var(--wb-surface-raised);
+  border-bottom: 1px solid var(--wb-border-color);
+}
+
+/* Command Palette — same overlay language */
+.command-dialog {
+  background: var(--wb-surface-overlay);
+  backdrop-filter: blur(var(--wb-backdrop-blur));
+  -webkit-backdrop-filter: blur(var(--wb-backdrop-blur));
+  border: 1px solid var(--wb-border-color);
+  border-radius: var(--wb-radius);
+  box-shadow: var(--wb-elevation);
+}
+.command-backdrop {
+  background: rgba(8, 10, 14, 0.38);
+  backdrop-filter: blur(calc(var(--wb-backdrop-blur) * 0.35));
+  -webkit-backdrop-filter: blur(calc(var(--wb-backdrop-blur) * 0.35));
+}
+.command-dialog [cmdk-input] {
+  background: transparent;
+  border-bottom-color: var(--wb-border-color);
+  color: var(--wb-text-contrast);
+}
+
+/* Ambient Island — handled via same tokens, border/shadow/highlight match Main */
+[data-material] { /* placeholder to ensure dataset exposed for testing */ }
+
+/* Accessibility: focus/selection/disabled remain clearly distinguished, not via transparency alone */
+button:focus-visible,
+[cmdk-item][data-selected='true'],
+.sidebar-section li > button.selected,
+.prototype-app .inspector-tabs button.active {
+  outline: 2px solid var(--wb-border-color);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 2px rgba(110,158,255,0.18);
+}
+button:disabled {
+  opacity: 0.45;
+  filter: grayscale(0.2);
+}
+
+/* reduced-transparency — forced pure ensures contrast; no backdrop */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --wb-backdrop-blur: 0px !important;
+  }
+}
+
+/* Ensure critical signals remain visible regardless of material — attention/error keep strong, not muted by frost */
+.attention-layer,
+.attention-trigger.has-items,
+.validity-invalid,
+.validity-stale,
+.surface-alert {
+  /* these keep their semantic colors, but inherit surface for backdrop — do not lower contrast */
+  backdrop-filter: none !important;
+}

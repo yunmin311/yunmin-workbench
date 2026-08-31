@@ -133,6 +133,17 @@ const api = {
   },
   syncIslandAttention: (items: unknown): void =>
     ipcRenderer.send('island:sync-attention', items),
+  loadMaterialPreference: (): Promise<{ material: string }> =>
+    ipcRenderer.invoke('material:load'),
+  saveMaterialPreference: (material: string): Promise<void> =>
+    ipcRenderer.invoke('material:save', material),
+  getMaterialCapability: (): Promise<{ supportsGlass: boolean; supportsFrost: boolean; supportsPure: boolean; reason: string | null; isWindows: boolean; reducedTransparency: boolean }> =>
+    ipcRenderer.invoke('material:capability'),
+  onMaterialChanged: (cb: (pref: { material: string }) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, pref: unknown) => cb(pref as { material: string });
+    ipcRenderer.on('material:changed', listener);
+    return () => ipcRenderer.removeListener('material:changed', listener);
+  },
 };
 
 export type WorkbenchApi = typeof api;

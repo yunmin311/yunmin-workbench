@@ -55,9 +55,9 @@ export function AmbientItem({ item }: AmbientItemProps): React.JSX.Element {
         textAlign: 'left',
         padding: 10,
         marginBottom: 6,
-        background: 'rgba(255, 255, 255, 0.03)',
+        background: 'var(--wb-surface-raised)',
         border: `1px solid ${levelBorders[item.level]}`,
-        borderRadius: 6,
+        borderRadius: 'var(--wb-radius)',
         cursor: 'pointer',
         transition: 'all 0.15s ease',
         display: 'flex',
@@ -65,11 +65,11 @@ export function AmbientItem({ item }: AmbientItemProps): React.JSX.Element {
         gap: 4,
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+        e.currentTarget.style.background = 'var(--wb-surface-overlay)';
         e.currentTarget.style.borderColor = levelColors[item.level];
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
+        e.currentTarget.style.background = 'var(--wb-surface-raised)';
         e.currentTarget.style.borderColor = levelBorders[item.level];
       }}
     >
@@ -146,9 +146,9 @@ export function AmbientItem({ item }: AmbientItemProps): React.JSX.Element {
         style={{
           marginTop: 6,
           alignSelf: 'flex-start',
-          background: 'rgba(255,255,255,0.06)',
-          border: '1px solid rgba(255,255,255,0.12)',
-          color: 'rgba(255,255,255,0.7)',
+          background: 'var(--wb-surface-overlay)',
+          border: '1px solid var(--wb-border-color)',
+          color: 'var(--wb-text-contrast)',
           borderRadius: 4,
           padding: '2px 6px',
           fontSize: 10,

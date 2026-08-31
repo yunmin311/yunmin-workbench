@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import type { AttentionItem } from '../../core/types';
 import { AmbientItem } from './AmbientItem';
+import { useIslandMaterial } from '../IslandMaterialProvider';
 
 interface AmbientSnapshot {
   visible: boolean;
@@ -10,6 +11,7 @@ interface AmbientSnapshot {
 }
 
 export function AmbientIsland(): React.JSX.Element {
+  const { effective } = useIslandMaterial();
   const [snapshot, setSnapshot] = useState<AmbientSnapshot>({ visible: false, count: 0, items: [] });
   const [expanded, setExpanded] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -80,15 +82,18 @@ export function AmbientIsland(): React.JSX.Element {
 
   return (
     <div
+      data-material={effective}
       style={{
         width: '100%',
         height: '100%',
-        background: expanded ? 'rgba(30, 30, 30, 0.95)' : 'rgba(30, 30, 30, 0.9)',
-        borderRadius: expanded ? 12 : 8,
-        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
+        background: 'var(--wb-surface-overlay)',
+        backdropFilter: 'blur(var(--wb-backdrop-blur))',
+        WebkitBackdropFilter: 'blur(var(--wb-backdrop-blur))',
+        borderRadius: 'var(--wb-radius)',
+        boxShadow: 'var(--wb-shadow)',
         display: 'flex',
         flexDirection: 'column',
-        border: `1px solid ${levelBorders[snapshot.highestLevel ?? 'review']}`,
+        border: `1px solid var(--wb-border-color)`,
         borderLeft: `3px solid ${levelColors[snapshot.highestLevel ?? 'review']}`,
         overflow: 'hidden',
         cursor: expanded ? 'default' : 'grab',
@@ -99,7 +104,7 @@ export function AmbientIsland(): React.JSX.Element {
       <div
         style={{
           padding: expanded ? '12px' : '8px',
-          borderBottom: expanded ? '1px solid rgba(255, 255, 255, 0.1)' : 'none',
+          borderBottom: expanded ? '1px solid var(--wb-border-color)' : 'none',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -148,8 +153,8 @@ export function AmbientIsland(): React.JSX.Element {
             justifyContent: 'center',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.color = 'rgba(255, 255, 255, 0.9)';
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+            e.currentTarget.style.color = 'var(--wb-text-contrast)';
+            e.currentTarget.style.background = 'var(--wb-highlight-color)';
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.color = 'rgba(255, 255, 255, 0.6)';

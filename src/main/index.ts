@@ -53,6 +53,8 @@ import {
   toggleIslandExpansion,
   updateIslandSnapshot,
 } from './island';
+import { readMaterialPreference, writeMaterialPreferenceAtomic } from './materialPersistence';
+import { detectMaterialCapability } from './materialCapability';
 
 // test hook: Playwright E2E redirects Workbench-owned state to a temp dir
 if (process.env.WB_STATE_DIR) app.setPath('userData', process.env.WB_STATE_DIR);
@@ -789,6 +791,23 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     } catch (err) {
       console.warn('[Island] invalid attention payload', err);
     }
+  });
+
+  ipcMain.handle('material:load', async () => {
+    const pref = await readMaterialPreference(stateDir());
+    return { material: pref.material };
+  });
+  ipcMain.handle('material:save', async (_event, raw: unknown) => {
+    const material = z.enum(['system', 'pure', 'frost', 'glass']).parse(raw);
+    await writeMaterialPreferenceAtomic(stateDir(), { schemaVersion: 1, material });
+    const updated = { material };
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send('material:changed', updated);
+    }
+    return updated;
+  });
+  ipcMain.handle('material:capability', async () => {
+    return detectMaterialCapability();
   });
 
   return { refresh };
