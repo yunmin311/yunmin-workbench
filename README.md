@@ -84,8 +84,9 @@ concurrency 8。损坏历史不能吞合法版本，损坏后仍能 freeze 新�
 |---|---|---|
 | `src/core` | 纯函数零 IO：parse（对话登记/项目适配/INBOX/记忆索引/机器档案/Harness Manifest）、project（Canvas+dagre / Staging / Packet 编译·Freeze·Validity / Activity / Binding / Draft）、attention（显式事件/状态 → bounded projection）；Canvas 区分 membership/mount 结构关系与 execution/handoff/data-context 真实流 | Vitest 直测 |
 | `src/core/history` | Claude Code / Codex parser、Harness 原生 identity 命名空间、bounded message excerpt 与 lexical Search 合同；cwd / filename / title 只作 observed metadata | Vitest 直测 |
+| `src/core/memory` | History 上的显式、确定性 Event/Fact 派生；source-first provenance、currentness、supersedes/conflicts 与 bounded evidence gate；retrieved 与 used 分离 | Vitest 直测 |
 | `src/main/adapters` | `overlaySource.ts`（只读 Overlay + 发现规则 + 文件指纹 + 记忆正文懒加载）、`gitFacts.ts`（simple-git 只读 remote/branch/HEAD/status）、`projectFiles.ts`（containment/traversal 保护）、`codexAppServer.ts` | 只读外部事实 / Harness 协议 |
-| `src/main` | IPC；chokidar 监听 Overlay canonical 文件 → `overlay:changed` 失效通知；History 按文件 byte watermark 增量读取，变化文件先核对旧长度范围的完整 hash，截断/替换/删除后失效重建；History index、Frozen Packet / Draft / Workspace / Activity / Window / Attention dismissal / Portability binding state 落 `userData` | 只写 Workbench 自有状态 |
+| `src/main` | IPC；chokidar 监听 Overlay canonical 文件 → `overlay:changed` 失效通知；History 按文件 byte watermark 增量读取，变化文件先核对旧长度范围的完整 hash，截断/替换/删除后失效重建；History/Memory index、显式 Memory use、Frozen Packet / Draft / Workspace / Activity / Window / Attention dismissal / Portability binding state 落 `userData` | 只写 Workbench 自有状态 |
 | `src/renderer` | React + @xyflow/react + zustand；Session Spine + 按需 Context/Packet/Changes/Evidence drawer | 投影渲染，拖动不改外部事实 |
 
 ## 环境
@@ -136,6 +137,7 @@ profile 的 `paths.governance_repo` 与 `project_roots` 按实际生成的路径
 2. **History / Search Phase 1（已完成）** — 只读 Claude Code + Codex 发现、parser、per-file watermark index、lexical Search、Command Palette / Session 入口与详情；index 在 Electron `userData/state/history`，parser problem 显式；History 不成为 live Runtime truth，也不自动进入 Context
 3. **Attention Phase 1（已完成）** — 纯 reducer 投影 approval / needs-input / failed receipt / runtime-harness error / STALE-INVALID packet or gate / explicit review-worthy completion；显式 ref 跳转、重复事实收敛、恢复后消退；dismissal 仅在 `userData/state/attention`，不用 cwd/provider pairing 猜 identity
 4. **Portability Phase 1（已完成）** — versioned + digest-locked Workbench Profile Bundle；强制 import preview、冲突 fail-closed、事务回滚；只迁移 Workspace session、Draft/Manual Context、Project File locator/fingerprint metadata 与非权威历史 root locator。项目根只能显式重绑，并复核 containment 与项目 identity；外部 SOT、Runtime、Git、History raw/index、Attention projection 与 secret 不进入 bundle
+5. **Memory Phase 1（已完成）** — History 上的 source-first Event/Fact projection、lexical retrieval、原始证据按需展开、SUFFICIENT/PARTIAL/WRONG evidence gate，以及用户显式 Add to Context / Pin / Inspect Source；索引与显式 use 记录仅在 Electron `userData/state/memory`，不自动注入 Context 或 Packet
 
 其后才是 activity durability、换机 Doctor GUI、真实大数据量后的 virtualization / SQLite WAL，以及任何云同步或跨客户端同步能力。
 

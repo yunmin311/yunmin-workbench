@@ -76,7 +76,7 @@ export function ContextStagingView() {
             <button
               className={`pin ${c.pinned ? 'on' : ''}`}
               disabled={c.state !== 'included'}
-              onClick={() => togglePin(c.id)}
+              onClick={() => void togglePin(c.id)}
               title={c.state === 'included' ? 'Pin into packet head' : 'Pinning requires included'}
             >
               {c.pinned ? '★' : '☆'}

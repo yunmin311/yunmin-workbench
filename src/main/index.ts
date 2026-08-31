@@ -44,6 +44,7 @@ import { effectiveProjectRoot, readProjectRootBindings, rebindProjectRoot } from
 import { applyProfileImportAtomic, exportProfileBundle, readPortableState, writeBundleFileAtomic } from './portabilityPersistence';
 import { parseProfileBundle, previewProfileImport, type ProfileImportPreview } from '../core/portability/bundle';
 import { projectFileSourceRef } from '../core/project/sourceIdentity';
+import { MemoryService } from './memory/memoryService';
 
 // test hook: Playwright E2E redirects Workbench-owned state to a temp dir
 if (process.env.WB_STATE_DIR) app.setPath('userData', process.env.WB_STATE_DIR);
@@ -84,6 +85,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
   }>();
   const reviewWorthyTurns = new Set<string>();
   const history = new HistoryService({ stateDir: stateDir(), roots: defaultHistoryRoots() });
+  const memory = new MemoryService(stateDir(), history);
   const pendingProfileImports = new Map<string, { raw: string; preview: ProfileImportPreview }>();
   const pendingProfileExports = new Map<string, string>();
   let profileStateOperation: Promise<void> = Promise.resolve();
@@ -400,6 +402,10 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
             sourceRef.slice('overlay:'.length),
             sourceRef,
           ));
+        } else if (sourceRef.startsWith('history:')) {
+          const fingerprint = await history.fingerprint(sourceRef);
+          if (!fingerprint) throw new Error('History source is unavailable');
+          fingerprints.push(fingerprint);
         } else {
           throw new Error('unsupported source identity');
         }
@@ -569,6 +575,12 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
   ipcMain.handle('history:list', () => history.list());
   ipcMain.handle('history:search', (_event, rawQuery: unknown) => history.search(HistoryQuerySchema.parse(rawQuery)));
   ipcMain.handle('history:detail', (_event, rawSessionId: unknown) => history.detail(KeySchema.parse(rawSessionId)));
+  const MemoryQuerySchema = z.object({
+    text: z.string().max(10_000), limit: z.number().int().min(1).max(100).optional(), includeInvalid: z.boolean().optional(),
+  });
+  ipcMain.handle('memory:search', (_event, rawQuery: unknown) => memory.search(MemoryQuerySchema.parse(rawQuery)));
+  ipcMain.handle('memory:expand', (_event, rawId: unknown) => memory.expand(KeySchema.parse(rawId)));
+  ipcMain.handle('memory:record-use', (_event, rawId: unknown) => memory.recordMemoryUse(KeySchema.parse(rawId)));
 
   ipcMain.handle('harness:capabilities', async (): Promise<HarnessCapabilities> => {
     try {

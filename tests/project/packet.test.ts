@@ -63,6 +63,16 @@ describe('compilePacket', () => {
     expect(p.sourceFingerprints.length).toBe(2);
     expect(p.unresolvedDependencies).toEqual([]);
   });
+
+  it('keeps every evidence source declared by a derived Memory reference', () => {
+    const refs = ['history:codex:first.jsonl', 'history:claude-code:second.jsonl'];
+    const memory = { ...ctx('memory', 'included', true, refs[0]), sourceRefs: refs };
+    const fingerprints = refs.map((sourceRef, index) => ({ sourceRef, sha256: `hash-${index}` }));
+    const packet = compilePacket({ ...base, staging: [memory], fingerprints });
+    expect(packet.sourceFingerprints.map((item) => item.sourceRef)).toEqual([...refs].sort());
+    expect(packet.unresolvedDependencies).toEqual([]);
+    expect(renderAgentInput(packet)).toContain(refs.join(', '));
+  });
 });
 
 describe('Frozen Packet Validity (Integrity §4)', () => {

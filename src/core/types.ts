@@ -253,6 +253,8 @@ export interface ContextItem {
   isReference: boolean;
   /** Resolvable canonical file for staleness checks, when the item projects one. */
   sourceRef?: string;
+  /** Complete evidence set for a derived item; sourceRef remains the primary display locator. */
+  sourceRefs?: string[];
   /** Manual input remains visibly user-owned and never impersonates external truth. */
   provenance?: 'EXTERNAL' | 'USER PROVIDED';
   /** Project-root-relative locator for an explicitly selected file. */

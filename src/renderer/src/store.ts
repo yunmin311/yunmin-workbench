@@ -4,7 +4,7 @@ import {
   restoreWorkbenchDraft,
   type WorkbenchDraftV1,
 } from '../../core/project/draft';
-import { buildStaging, createManualContext } from '../../core/project/staging';
+import { buildStaging, createManualContext, createMemoryProjectionContext } from '../../core/project/staging';
 import { orderActivity, projectRuntimeSessions } from '../../core/project/activity';
 import { applyAttentionLocalState, reduceAttention } from '../../core/attention/reducer';
 import { checkPacketValidity } from '../../core/project/packet';
@@ -30,6 +30,7 @@ import type {
   AttentionItem,
   AttentionLocalState,
 } from '../../core/types';
+import type { MemorySearchHit } from '../../core/memory/types';
 
 export type View = 'projects' | 'control' | 'canvas' | 'context' | 'packet';
 export type DraftSaveState = 'clean' | 'dirty' | 'saving' | 'saved' | 'error';
@@ -72,7 +73,7 @@ interface WorkbenchState {
   selectConversation: (c: Conversation) => void;
   setView: (v: View) => void;
   setStagingState: (id: string, state: ContextItem['state']) => void;
-  togglePin: (id: string) => void;
+  togglePin: (id: string) => Promise<void>;
   setTaskSummary: (s: string) => void;
   refreshFrozen: () => Promise<void>;
   loadFrozenDetail: (summary: FrozenPacketSummary) => Promise<FrozenPacket | null>;
@@ -82,6 +83,7 @@ interface WorkbenchState {
   refreshProjectFiles: () => Promise<void>;
   recheckSources: () => Promise<void>;
   addManualContext: (title: string, body: string) => void;
+  addMemoryContext: (hit: MemorySearchHit, pinned?: boolean) => Promise<void>;
   clearDraft: () => Promise<void>;
   loadActivity: () => Promise<void>;
   ingestActivity: (event: ActivityEvent) => void;
@@ -205,6 +207,45 @@ function messages(parts: (string | null | undefined)[]): string | null {
   return present.length > 0 ? present.join('\n') : null;
 }
 
+async function refreshMemoryContextItem(item: Pick<ContextItem, 'id' | 'state' | 'pinned'>): Promise<ContextItem | null> {
+  if (!item.id.startsWith('memory-projection:')) return null;
+  const memoryId = item.id.slice('memory-projection:'.length);
+  const expanded = await window.wb.expandMemory(memoryId);
+  if (!expanded || expanded.evidence.verdict !== 'SUFFICIENT') return null;
+  const currentness = 'currentness' in expanded.record ? expanded.record.currentness : expanded.record.status;
+  const summary = 'statement' in expanded.record ? expanded.record.statement : expanded.record.summary;
+  const fresh = createMemoryProjectionContext({
+    id: memoryId,
+    recordType: 'statement' in expanded.record ? 'fact' : 'event',
+    summary,
+    sourceRefs: expanded.record.sourceRefs,
+    sourceSessionIds: 'sourceSessionIds' in expanded.record ? expanded.record.sourceSessionIds : [],
+    currentness,
+    verification: expanded.record.verification,
+    score: 0,
+    useCount: 0,
+  });
+  return { ...fresh, state: item.state, pinned: item.state === 'included' ? item.pinned : false };
+}
+
+async function verifyMemoryContextItems(projectId: string, items: ContextItem[]): Promise<{
+  items: ContextItem[];
+  checkedSourceRefs: string[];
+  fingerprints: SourceFingerprint[];
+  errors: string[];
+}> {
+  const refs = [...new Set(items.flatMap((item) => item.sourceRefs?.length ? item.sourceRefs : item.sourceRef ? [item.sourceRef] : []))];
+  if (refs.length === 0) return { items, checkedSourceRefs: [], fingerprints: [], errors: [] };
+  const checked = await window.wb.recheckSources(projectId, refs);
+  const verified = new Set(checked.fingerprints.map((item) => item.sourceRef));
+  return {
+    items: items.filter((item) => (item.sourceRefs?.length ? item.sourceRefs : item.sourceRef ? [item.sourceRef] : []).every((ref) => verified.has(ref))),
+    checkedSourceRefs: checked.checkedSourceRefs,
+    fingerprints: checked.fingerprints,
+    errors: checked.errors.map((item) => `${item.sourceRef}: ${item.message}`),
+  };
+}
+
 export const useWorkbench = create<WorkbenchState>((set, get) => ({
   snapshot: null,
   loading: false,
@@ -282,11 +323,22 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   load: async (refresh) => {
     set({ loading: true });
     const snapshot = await window.wb.loadOverlay({ refresh });
+    const priorState = get();
+    const refreshedMemoryCandidates = refresh
+      ? (await Promise.all(priorState.staging.filter((item) => item.id.startsWith('memory-projection:')).map(refreshMemoryContextItem)))
+        .filter((item): item is ContextItem => item !== null)
+      : [];
+    const refreshedMemory = refresh && priorState.projectId
+      ? await verifyMemoryContextItems(priorState.projectId, refreshedMemoryCandidates)
+      : { items: refreshedMemoryCandidates, checkedSourceRefs: [], fingerprints: [], errors: [] };
     set((state) => {
+      const sameScope = state.projectId === priorState.projectId
+        && state.conversation?.key === priorState.conversation?.key;
+      const applyScopedRefresh = Boolean(refresh && sameScope);
       let staging = state.staging;
       let orphanedDraftDecisionIds = state.orphanedDraftDecisionIds;
-      if (state.projectId && refresh) {
-        const fresh = buildStaging(snapshot, state.projectId);
+      if (state.projectId && applyScopedRefresh) {
+        const fresh = [...buildStaging(snapshot, state.projectId), ...refreshedMemory.items];
         const localDraft = draftFromState(state);
         if (localDraft) {
           const restored = restoreWorkbenchDraft(
@@ -300,17 +352,20 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
           staging = fresh;
         }
       }
-      const recheckedSourceRefs = refresh ? [] : state.recheckedSourceRefs;
-      const recheckedFingerprints = refresh ? [] : state.recheckedFingerprints;
+      const recheckedSourceRefs = applyScopedRefresh ? refreshedMemory.checkedSourceRefs : state.recheckedSourceRefs;
+      const recheckedFingerprints = applyScopedRefresh ? refreshedMemory.fingerprints : state.recheckedFingerprints;
       const next = { ...state, snapshot, staging, orphanedDraftDecisionIds, recheckedSourceRefs, recheckedFingerprints };
       return {
         snapshot,
         loading: false,
-        memoryBodies: refresh ? {} : state.memoryBodies,
+        memoryBodies: applyScopedRefresh ? {} : state.memoryBodies,
         staging,
         orphanedDraftDecisionIds,
         recheckedSourceRefs,
         recheckedFingerprints,
+        contextMessage: applyScopedRefresh && refreshedMemory.errors.length > 0
+          ? messages([state.contextMessage, `Memory source unavailable: ${refreshedMemory.errors.join(', ')}`])
+          : state.contextMessage,
         attentionItems: projectAttention(next),
       };
     });
@@ -381,9 +436,15 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
           asReference: file.asReference,
         })),
       );
+      const restoredMemoryCandidates = (await Promise.all(
+        loaded.draft.projectedDecisions
+          .filter((decision) => decision.itemId.startsWith('memory-projection:'))
+          .map((decision) => refreshMemoryContextItem({ id: decision.itemId, state: decision.state, pinned: decision.pinned })),
+      )).filter((item): item is ContextItem => item !== null);
+      const restoredMemory = await verifyMemoryContextItems(projectId, restoredMemoryCandidates);
       if (get().projectId !== projectId || get().conversation?.key !== conversation.key) return;
       const restored = restoreWorkbenchDraft(
-        buildStaging(snapshot, projectId),
+        [...buildStaging(snapshot, projectId), ...restoredMemory.items],
         loaded.draft,
         fileResult.entries.map((entry) => entry.item),
       );
@@ -397,6 +458,8 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
         taskSummary: loaded.draft.taskSummary,
         staging: restored.staging,
         projectFingerprints: fileResult.entries.map((entry) => entry.fingerprint),
+        recheckedSourceRefs: restoredMemory.checkedSourceRefs,
+        recheckedFingerprints: restoredMemory.fingerprints,
         orphanedDraftDecisionIds: restored.orphanedDecisionIds,
         sourceChanges,
         contextMessage: messages([
@@ -408,6 +471,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
             : null,
           sourceChanges.length > 0 ? `Source changed since draft save: ${sourceChanges.join(', ')}` : null,
           fileResult.errors.length > 0 ? fileResult.errors.join('\n') : null,
+          restoredMemory.errors.length > 0 ? `Memory source unavailable: ${restoredMemory.errors.join(', ')}` : null,
         ]),
         draftSaveState: 'saved',
       });
@@ -431,7 +495,52 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     scheduleDraftSave(get());
   },
 
-  togglePin: (id) => {
+  togglePin: async (id) => {
+    const before = get();
+    const item = before.staging.find((candidate) => candidate.id === id);
+    if (item?.id.startsWith('memory-projection:') && item.state === 'included' && !item.pinned) {
+      try {
+        const scope = { projectId: before.projectId, conversationKey: before.conversation?.key };
+        const memoryId = item.id.slice('memory-projection:'.length);
+        const expanded = await window.wb.expandMemory(memoryId);
+        if (!expanded || expanded.evidence.verdict !== 'SUFFICIENT' || !scope.projectId || !scope.conversationKey) {
+          throw new Error('Memory evidence is no longer sufficient; Pin was not changed.');
+        }
+        const checked = await window.wb.recheckSources(scope.projectId, expanded.record.sourceRefs);
+        if (checked.errors.length > 0 || checked.fingerprints.length !== expanded.record.sourceRefs.length) {
+          throw new Error('Memory source fingerprint could not be verified; Pin was not changed.');
+        }
+        let committed = false;
+        set((state) => {
+          const stillInScope = state.projectId === scope.projectId && state.conversation?.key === scope.conversationKey;
+          const stillPinnable = state.staging.some((candidate) => candidate.id === id && candidate.state === 'included' && !candidate.pinned);
+          if (!stillInScope || !stillPinnable) return state;
+          committed = true;
+          return {
+            staging: state.staging.map((candidate) => candidate.id === id ? { ...candidate, pinned: true } : candidate),
+            recheckedSourceRefs: [...new Set([...state.recheckedSourceRefs, ...checked.checkedSourceRefs])],
+            recheckedFingerprints: [
+              ...state.recheckedFingerprints.filter((prior) => !checked.checkedSourceRefs.includes(prior.sourceRef)),
+              ...checked.fingerprints,
+            ],
+          };
+        });
+        if (!committed) return;
+        try {
+          await window.wb.recordMemoryUse(memoryId);
+        } catch (error) {
+          set((state) => state.projectId === scope.projectId && state.conversation?.key === scope.conversationKey
+            ? { staging: state.staging.map((candidate) => candidate.id === id ? { ...candidate, pinned: false } : candidate), contextMessage: String(error) }
+            : state);
+          return;
+        }
+        scheduleDraftSave(get());
+        return;
+      } catch (error) {
+        set({ contextMessage: String(error) });
+        return;
+      }
+    }
     set((current) => ({
       staging: current.staging.map((item) =>
         item.id === id && item.state === 'included' ? { ...item, pinned: !item.pinned } : item,
@@ -535,7 +644,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     const refs = new Set<string>([
       overlayFileSourceRef('memory/MEMORY.md'),
       ...(adapter?.canonicalSource?.path ? [projectFileSourceRef(projectId, adapter.canonicalSource.path)] : []),
-      ...before.staging.filter((item) => item.state === 'included').flatMap((item) => item.sourceRef ? [item.sourceRef] : []),
+      ...before.staging.filter((item) => item.state === 'included').flatMap((item) => item.sourceRefs?.length ? item.sourceRefs : item.sourceRef ? [item.sourceRef] : []),
       ...before.staging.filter((item) => item.source === `project-file:${projectId}`).flatMap((item) => item.sourceRef ? [item.sourceRef] : []),
       ...before.frozen.flatMap((packet) => [
         ...packet.sourceFingerprints.map((item) => item.sourceRef),
@@ -560,14 +669,35 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     const changed = checked.fingerprints
       .filter((item) => prior.has(item.sourceRef) && prior.get(item.sourceRef) !== item.sha256)
       .map((item) => item.sourceRef);
+    const historyProjectionChanged = changed.some((sourceRef) => sourceRef.startsWith('history:'))
+      || checked.errors.some((item) => item.sourceRef.startsWith('history:'));
+    const refreshedMemory = historyProjectionChanged
+      ? await verifyMemoryContextItems(projectId, (await Promise.all(
+        before.staging
+          .filter((item) => item.id.startsWith('memory-projection:'))
+          .map(refreshMemoryContextItem),
+      )).filter((item): item is ContextItem => item !== null))
+      : null;
+    if (get().projectId !== projectId || get().conversation?.key !== conversation.key) return;
     set((state) => {
-      const staging = state.staging.map((current) => {
+      let staging = state.staging.map((current) => {
         const refreshed = fileResult.entries.find((entry) => entry.item.id === current.id)?.item;
         return refreshed ? { ...refreshed, state: current.state, pinned: current.pinned } : current;
       });
+      if (refreshedMemory) {
+        staging = [
+          ...staging.filter((item) => !item.id.startsWith('memory-projection:')),
+          ...refreshedMemory.items,
+        ];
+      }
       const projectFingerprints = fileResult.entries.map((entry) => entry.fingerprint);
       const recheckedSourceRefs = checked.checkedSourceRefs;
-      const recheckedFingerprints = checked.fingerprints;
+      const recheckedFingerprints = refreshedMemory
+        ? [
+          ...checked.fingerprints.filter((item) => !item.sourceRef.startsWith('history:')),
+          ...refreshedMemory.fingerprints,
+        ]
+        : checked.fingerprints;
       const next = { ...state, staging, projectFingerprints, recheckedSourceRefs, recheckedFingerprints };
       return {
       staging,
@@ -581,6 +711,12 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
           ? `Source unavailable: ${checked.errors.map((item) => item.sourceRef).join(', ')}`
           : null,
         fileResult.errors.length > 0 ? fileResult.errors.join('\n') : null,
+        refreshedMemory && refreshedMemory.items.length < before.staging.filter((item) => item.id.startsWith('memory-projection:')).length
+          ? 'Memory Context removed because its source changed or is no longer sufficient.'
+          : null,
+        refreshedMemory && refreshedMemory.errors.length > 0
+          ? `Memory source unavailable: ${refreshedMemory.errors.join(', ')}`
+          : null,
         state.orphanedDraftDecisionIds.length > 0
           ? `Orphaned draft decisions: ${state.orphanedDraftDecisionIds.join(', ')}`
           : null,
@@ -656,6 +792,67 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       activity: [], runtimeSessions: [], activityProblem: null,
       attentionItems: projectAttention({ ...state, activity: [], runtimeSessions: [] }),
     }));
+  },
+
+  addMemoryContext: async (hit, pinned = false) => {
+    const { projectId, conversation } = get();
+    if (!projectId || !conversation) {
+      set({ contextMessage: 'Open a project session before adding Memory to Context.' });
+      return;
+    }
+    try {
+      // Revalidate at the action boundary: a compact search hit may have gone stale
+      // while the Memory panel was open, and must not become Context on old state.
+      const expanded = await window.wb.expandMemory(hit.id);
+      if (!expanded || expanded.evidence.verdict !== 'SUFFICIENT') {
+        throw new Error('Memory evidence is no longer sufficient; inspect or refresh its source first.');
+      }
+      const currentness = 'currentness' in expanded.record ? expanded.record.currentness : expanded.record.status;
+      const checked = await window.wb.recheckSources(projectId, expanded.record.sourceRefs);
+      if (checked.errors.length > 0 || checked.fingerprints.length !== expanded.record.sourceRefs.length) {
+        throw new Error('Memory source fingerprint could not be verified; Context was not changed.');
+      }
+      const item = createMemoryProjectionContext({
+        ...hit,
+        sourceRefs: expanded.record.sourceRefs,
+        currentness,
+        verification: expanded.record.verification,
+      }, pinned);
+      let committed = false;
+      let priorItem: ContextItem | undefined;
+      set((state) => {
+        if (state.projectId !== projectId || state.conversation?.key !== conversation.key) return state;
+        committed = true;
+        priorItem = state.staging.find((current) => current.id === item.id);
+        return {
+          staging: [...state.staging.filter((current) => current.id !== item.id), item],
+          recheckedSourceRefs: [...new Set([...state.recheckedSourceRefs, ...checked.checkedSourceRefs])],
+          recheckedFingerprints: [
+            ...state.recheckedFingerprints.filter((prior) => !checked.checkedSourceRefs.includes(prior.sourceRef)),
+            ...checked.fingerprints,
+          ],
+          contextMessage: `${pinned ? 'Pinned' : 'Added'} Memory reference: ${hit.summary}`,
+        };
+      });
+      if (!committed) return;
+      try {
+        await window.wb.recordMemoryUse(hit.id);
+      } catch (error) {
+        set((state) => state.projectId === projectId && state.conversation?.key === conversation.key
+          ? {
+            staging: [
+              ...state.staging.filter((current) => current.id !== item.id),
+              ...(priorItem ? [priorItem] : []),
+            ],
+            contextMessage: String(error),
+          }
+          : state);
+        return;
+      }
+      scheduleDraftSave(get());
+    } catch (error) {
+      set({ contextMessage: String(error) });
+    }
   },
 
   loadAttentionLocal: async () => {

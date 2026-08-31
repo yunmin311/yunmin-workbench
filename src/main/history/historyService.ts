@@ -19,6 +19,7 @@ import type {
   HistorySessionPatch,
 } from '../../core/history/types';
 import { SNIPPET_MARK } from '../../core/history/types';
+import type { SourceFingerprint } from '../../core/types';
 import { discoverHistoryFiles, type DiscoveredHistoryFile } from './discovery';
 import { readHistoryIndex, writeHistoryIndex, type HistoryIndexV1, type StoredHistoryFile } from './indexStore';
 import { readJsonlFromOffset } from './jsonlFile';
@@ -238,6 +239,12 @@ export class HistoryService {
       messages: view.messages.get(sessionId) ?? [],
       problems: [...synced.extraProblems, ...view.problems.filter((item) => fileKeys.has(item.fileKey))],
     };
+  }
+
+  async fingerprint(sourceRef: string): Promise<SourceFingerprint | null> {
+    const synced = await this.sync();
+    const file = Object.values(synced.index.files).find((item) => item.sourceRef === sourceRef);
+    return file ? { sourceRef, sha256: file.contentHash } : null;
   }
 
   async search(query: HistoryQuery): Promise<HistorySearchResult> {

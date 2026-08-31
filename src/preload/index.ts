@@ -5,6 +5,7 @@ import type { WorkspaceSessionV1 } from '../core/project/workspaceSession';
 import type { HistoryCatalogResult, HistoryQuery, HistorySearchResult, HistorySessionDetail } from '../core/history/types';
 import type { ProfileImportPreview } from '../core/portability/bundle';
 import type { ProjectRootBindingsV1 } from '../main/projectRootBindings';
+import type { MemoryEvidenceExpansion, MemorySearchQuery, MemorySearchResult, MemoryUseStateV1 } from '../core/memory/types';
 
 const api = {
   loadOverlay: (opts?: { refresh?: boolean }): Promise<OverlaySnapshot> =>
@@ -77,6 +78,9 @@ const api = {
   listHistory: (): Promise<HistoryCatalogResult> => ipcRenderer.invoke('history:list'),
   searchHistory: (query: HistoryQuery): Promise<HistorySearchResult> => ipcRenderer.invoke('history:search', query),
   readHistoryDetail: (sessionId: string): Promise<HistorySessionDetail | null> => ipcRenderer.invoke('history:detail', sessionId),
+  searchMemory: (query: MemorySearchQuery): Promise<MemorySearchResult> => ipcRenderer.invoke('memory:search', query),
+  expandMemory: (id: string): Promise<MemoryEvidenceExpansion | null> => ipcRenderer.invoke('memory:expand', id),
+  recordMemoryUse: (id: string): Promise<MemoryUseStateV1> => ipcRenderer.invoke('memory:record-use', id),
   previewProfileExport: (): Promise<{ preview: {
     digest: string; drafts: number; manualContexts: number; projectBindings: number; workspaceSession: boolean;
     included: string[]; skipped: string[];

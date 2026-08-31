@@ -81,6 +81,7 @@ export function CommandPalette() {
         <Command.Group heading="Navigate">
           <Command.Item onSelect={() => run(() => window.dispatchEvent(new CustomEvent('workbench:open-attention')))}>Review Attention</Command.Item>
           <Command.Item onSelect={() => run(() => window.dispatchEvent(new CustomEvent('workbench:open-history')))}>Search History</Command.Item>
+          <Command.Item onSelect={() => run(() => window.dispatchEvent(new CustomEvent('workbench:open-memory')))}>Search Memory</Command.Item>
           <Command.Item onSelect={() => run(() => window.dispatchEvent(new CustomEvent('workbench:open-session-picker')))}><span>Open Workspace / Switch Session</span><kbd>Ctrl 1</kbd></Command.Item>
           <Command.Item disabled={!projectId} onSelect={() => run(() => setView('canvas'))}><span>Canvas</span><kbd>Ctrl 2</kbd></Command.Item>
           <Command.Item disabled={!projectId} onSelect={() => run(() => window.dispatchEvent(new CustomEvent('workbench:open-inspector', { detail: 'context' })))}><span>Context Inspector</span><kbd>Ctrl 3</kbd></Command.Item>

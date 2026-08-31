@@ -20,7 +20,7 @@ export function roughTokenEstimate(text: string): number {
 
 function renderContextItem(item: ContextItem): string {
   const provenance = item.provenance === 'USER PROVIDED' ? ' [USER PROVIDED]' : '';
-  const source = item.sourceRef ?? item.source;
+  const source = item.sourceRefs?.length ? item.sourceRefs.join(', ') : item.sourceRef ?? item.source;
   return [`## ${item.title}${provenance}`, `Source: ${source}`, item.body].join('\n');
 }
 
@@ -81,8 +81,8 @@ export function packetDependencies(
     declarations.push(ref);
   }
   for (const item of staging) {
-    if (item.state !== 'included' || !item.sourceRef) continue;
-    declarations.push(item.sourceRef);
+    if (item.state !== 'included') continue;
+    declarations.push(...(item.sourceRefs?.length ? item.sourceRefs : item.sourceRef ? [item.sourceRef] : []));
   }
 
   const resolved = new Map<string, string>();

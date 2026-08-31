@@ -15,6 +15,7 @@ export const ContextItemSchema = z.object({
   pinned: z.boolean(),
   isReference: z.boolean(),
   sourceRef: z.string().optional(),
+  sourceRefs: z.array(z.string()).max(50).optional(),
   provenance: z.enum(['EXTERNAL', 'USER PROVIDED']).optional(),
   relativePath: z.string().optional(),
 });

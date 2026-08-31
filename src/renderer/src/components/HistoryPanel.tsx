@@ -5,7 +5,7 @@ function MarkedSnippet({ text }: { text: string }) {
   return <>{text.split(SNIPPET_MARK).map((part, index) => index % 2 === 1 ? <mark key={index}>{part}</mark> : part)}</>;
 }
 
-export function HistoryPanel({ onClose }: { onClose: () => void }) {
+export function HistoryPanel({ onClose, initialSessionId }: { onClose: () => void; initialSessionId?: string }) {
   const [query, setQuery] = useState('');
   const [catalog, setCatalog] = useState<HistoryCatalogResult | null>(null);
   const [result, setResult] = useState<HistorySearchResult | null>(null);
@@ -16,6 +16,10 @@ export function HistoryPanel({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     void window.wb.listHistory().then(setCatalog).catch((reason) => setError(String(reason))).finally(() => setBusy(false));
   }, []);
+
+  useEffect(() => {
+    if (initialSessionId) void openDetail(initialSessionId);
+  }, [initialSessionId]);
 
   const search = async () => {
     setBusy(true);

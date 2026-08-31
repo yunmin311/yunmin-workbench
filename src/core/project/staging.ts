@@ -1,4 +1,5 @@
 import type { ContextItem, OverlaySnapshot } from '../types';
+import type { MemorySearchHit } from '../memory/types';
 import { projectFileSourceRef } from './sourceIdentity';
 
 /**
@@ -87,5 +88,23 @@ export function createManualContext(id: string, title: string, body: string): Co
     pinned: false,
     isReference: false,
     provenance: 'USER PROVIDED',
+  };
+}
+
+/** Explicit user-selected derived Memory enters the existing staging contract as a source-backed reference. */
+export function createMemoryProjectionContext(hit: MemorySearchHit, pinned = false): ContextItem {
+  if (hit.sourceRefs.length === 0) throw new Error('Memory Context requires source provenance.');
+  if (hit.currentness !== 'CURRENT') throw new Error(`Memory Context is ${hit.currentness}; inspect or refresh its source first.`);
+  return {
+    id: `memory-projection:${hit.id}`,
+    title: `Memory: ${hit.summary.slice(0, 120)}`,
+    source: 'memory-projection',
+    body: hit.summary,
+    state: 'included',
+    pinned,
+    isReference: true,
+    sourceRef: hit.sourceRefs[0],
+    sourceRefs: [...hit.sourceRefs],
+    provenance: 'EXTERNAL',
   };
 }

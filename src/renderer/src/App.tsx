@@ -6,6 +6,7 @@ import { WorkspaceSidebar } from './components/WorkspaceSidebar';
 import { HistoryPanel } from './components/HistoryPanel';
 import { AttentionPanel } from './components/AttentionPanel';
 import { PortabilityPanel } from './components/PortabilityPanel';
+import { MemoryPanel } from './components/MemoryPanel';
 import { CanvasView } from './views/CanvasView';
 import { SessionSurface } from './views/SessionSurface';
 import { useWorkbench } from './store';
@@ -28,6 +29,8 @@ export default function App() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [attentionOpen, setAttentionOpen] = useState(false);
   const [portabilityOpen, setPortabilityOpen] = useState(false);
+  const [memoryOpen, setMemoryOpen] = useState(false);
+  const [historySourceSessionId, setHistorySourceSessionId] = useState<string | undefined>();
 
   useEffect(() => {
     void initialize();
@@ -66,6 +69,21 @@ export default function App() {
     const open = () => setHistoryOpen(true);
     window.addEventListener('workbench:open-history', open);
     return () => window.removeEventListener('workbench:open-history', open);
+  }, []);
+
+  useEffect(() => {
+    const open = () => setMemoryOpen(true);
+    const openSource = (event: Event) => {
+      setMemoryOpen(false);
+      setHistorySourceSessionId((event as CustomEvent<string>).detail);
+      setHistoryOpen(true);
+    };
+    window.addEventListener('workbench:open-memory', open);
+    window.addEventListener('workbench:open-history-source', openSource);
+    return () => {
+      window.removeEventListener('workbench:open-memory', open);
+      window.removeEventListener('workbench:open-history-source', openSource);
+    };
   }, []);
 
   useEffect(() => {
@@ -145,6 +163,7 @@ export default function App() {
             onClick={() => setAttentionOpen((open) => !open)}
           >Attention{attentionItems.length > 0 && <span>{attentionItems.length}</span>}</button>
           <button onClick={() => setHistoryOpen(true)}>History</button>
+          <button onClick={() => setMemoryOpen(true)}>Memory</button>
           <button disabled={!projectId} aria-pressed={inspectorTab === 'context'} onClick={() => openInspector('context')}>Context</button>
           <button disabled={!conversation} aria-pressed={inspectorTab === 'packet'} onClick={() => openInspector('packet')}>Packet</button>
           <button
@@ -181,7 +200,8 @@ export default function App() {
         <InspectorPane tab={inspectorTab} onSelect={openInspector} onClose={closeInspector} />
       </ErrorBoundary>
       <CommandPalette />
-      {historyOpen && <HistoryPanel onClose={() => setHistoryOpen(false)} />}
+      {historyOpen && <HistoryPanel initialSessionId={historySourceSessionId} onClose={() => { setHistoryOpen(false); setHistorySourceSessionId(undefined); }} />}
+      {memoryOpen && <MemoryPanel onClose={() => setMemoryOpen(false)} />}
       {attentionOpen && <AttentionPanel onClose={() => setAttentionOpen(false)} />}
       {portabilityOpen && <PortabilityPanel onClose={() => setPortabilityOpen(false)} />}
     </div>
