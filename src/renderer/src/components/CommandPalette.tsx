@@ -112,6 +112,7 @@ export function CommandPalette() {
           ))}
         </Command.Group>
         <Command.Group heading="Actions">
+          <Command.Item onSelect={() => run(() => window.dispatchEvent(new CustomEvent('workbench:open-portability')))}>Profile Portability</Command.Item>
           <Command.Item disabled={!conversation} onSelect={() => packetAction('copy')}>Copy Agent Input</Command.Item>
           <Command.Item disabled={!conversation} onSelect={() => packetAction('handoff')}>Dispatch to Codex</Command.Item>
           <Command.Item onSelect={() => run(() => void reloadAndRecheck())}>Reload External Truth</Command.Item>

@@ -5,6 +5,7 @@ import { InspectorPane, type InspectorTab } from './components/InspectorPane';
 import { WorkspaceSidebar } from './components/WorkspaceSidebar';
 import { HistoryPanel } from './components/HistoryPanel';
 import { AttentionPanel } from './components/AttentionPanel';
+import { PortabilityPanel } from './components/PortabilityPanel';
 import { CanvasView } from './views/CanvasView';
 import { SessionSurface } from './views/SessionSurface';
 import { useWorkbench } from './store';
@@ -26,6 +27,7 @@ export default function App() {
   const [inspectorTab, setInspectorTab] = useState<InspectorTab | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [attentionOpen, setAttentionOpen] = useState(false);
+  const [portabilityOpen, setPortabilityOpen] = useState(false);
 
   useEffect(() => {
     void initialize();
@@ -70,6 +72,12 @@ export default function App() {
     const open = () => setAttentionOpen(true);
     window.addEventListener('workbench:open-attention', open);
     return () => window.removeEventListener('workbench:open-attention', open);
+  }, []);
+
+  useEffect(() => {
+    const open = () => setPortabilityOpen(true);
+    window.addEventListener('workbench:open-portability', open);
+    return () => window.removeEventListener('workbench:open-portability', open);
   }, []);
 
   useEffect(() => {
@@ -175,6 +183,7 @@ export default function App() {
       <CommandPalette />
       {historyOpen && <HistoryPanel onClose={() => setHistoryOpen(false)} />}
       {attentionOpen && <AttentionPanel onClose={() => setAttentionOpen(false)} />}
+      {portabilityOpen && <PortabilityPanel onClose={() => setPortabilityOpen(false)} />}
     </div>
   );
 }

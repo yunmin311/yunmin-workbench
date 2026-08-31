@@ -77,4 +77,19 @@ describe('bindingCandidate (Integrity §2: confirm what real data confirms)', ()
     expect(candidate.evidence.map((e) => e.source)).toContain('process');
     expect(candidate.verification).toBe('OBSERVED');
   });
+
+  it('uses an explicitly verified Workbench-local root with separate provenance', () => {
+    const rebound: OverlaySnapshot = {
+      ...snap,
+      workbenchProjectRoots: {
+        'creative-os': {
+          projectId: 'creative-os', root: 'E:/rebound/creative-os', canonicalPath: 'CLAUDE.md',
+          observed: { source: 'process', sourceRef: 'workbench-userData:binding', observedAt: 't2', verification: 'VERIFIED' },
+        },
+      },
+    };
+    const candidate = bindingCandidate(rebound, design, null);
+    expect(candidate.binding.cwd).toBe('E:/rebound/creative-os');
+    expect(candidate.evidence.some((item) => item.sourceRef === 'workbench-userData:binding')).toBe(true);
+  });
 });

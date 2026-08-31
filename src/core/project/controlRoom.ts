@@ -46,7 +46,7 @@ export function buildControlRoom(snapshot: OverlaySnapshot, projectId: string): 
     roles: adapter?.roles ?? [],
     canonicalSource: adapter?.canonicalSource,
     machine: snapshot.machine,
-    localRoot: snapshot.machine?.projectRoots[projectId],
+    localRoot: snapshot.workbenchProjectRoots?.[projectId]?.root ?? snapshot.machine?.projectRoots[projectId],
   };
   for (const c of convos) model.conversationLifecycle[c.status].push(c);
   return model;

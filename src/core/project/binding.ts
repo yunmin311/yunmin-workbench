@@ -30,7 +30,8 @@ export function bindingCandidate(
   git: GitFacts | null,
 ): BindingCandidate {
   const machine = snapshot.machine;
-  const localRoot = machine?.projectRoots[conversation.project];
+  const localBinding = snapshot.workbenchProjectRoots?.[conversation.project];
+  const localRoot = localBinding?.root ?? machine?.projectRoots[conversation.project];
   const gitForProject = git && git.projectId === conversation.project ? git : null;
 
   const binding: RuntimeBinding = {
@@ -45,6 +46,7 @@ export function bindingCandidate(
 
   const evidence: Observation[] = [conversation.observed];
   if (machine) evidence.push(machine.observed);
+  if (localBinding) evidence.push(localBinding.observed);
   if (gitForProject) evidence.push(gitForProject.observed);
   const verification =
     binding.machine !== 'UNKNOWN' && binding.cwd && gitForProject?.head

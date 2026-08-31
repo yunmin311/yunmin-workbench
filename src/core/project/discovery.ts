@@ -25,11 +25,12 @@ export function discoverProjects(snapshot: OverlaySnapshot): ProjectEntry[] {
   const ids = new Set<string>([
     ...snapshot.projects.map((p) => p.projectId),
     ...Object.keys(snapshot.machine?.projectRoots ?? {}),
+    ...Object.keys(snapshot.workbenchProjectRoots ?? {}),
     ...snapshot.conversations.map((c) => c.project),
   ]);
   return [...ids].sort().map((id) => {
     const adapter = snapshot.projects.find((p) => p.projectId === id);
-    const localRoot = snapshot.machine?.projectRoots[id];
+    const localRoot = snapshot.workbenchProjectRoots?.[id]?.root ?? snapshot.machine?.projectRoots[id];
     const conversationCount = snapshot.conversations.filter((c) => c.project === id).length;
     const coverage: CoverageSource[] = [];
     if (adapter) coverage.push('adapter');

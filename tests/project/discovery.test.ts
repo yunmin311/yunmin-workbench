@@ -59,4 +59,16 @@ describe('discoverProjects coverage tiers (PDF §7)', () => {
     const bare = discoverProjects(snapshot(undefined));
     expect(bare.find((p) => p.projectId === 'creative-os')!.coverage).toEqual(['adapter', 'conversation']);
   });
+
+  it('shows an explicit Workbench-local rebind without changing the external machine profile', () => {
+    const rebound = snapshot(machine);
+    rebound.workbenchProjectRoots = {
+      'creative-os': {
+        projectId: 'creative-os', root: 'E:/rebound/creative-os', canonicalPath: 'CLAUDE.md',
+        observed: { source: 'process', sourceRef: 'workbench-userData:binding', observedAt: 't2', verification: 'VERIFIED' },
+      },
+    };
+    expect(discoverProjects(rebound).find((item) => item.projectId === 'creative-os')?.localRoot).toBe('E:/rebound/creative-os');
+    expect(machine.projectRoots['creative-os']).toBe('/workbench-fixtures/creative-os');
+  });
 });

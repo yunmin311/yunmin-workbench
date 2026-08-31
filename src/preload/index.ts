@@ -3,6 +3,8 @@ import type { ActivityEvent, AttentionLocalState, ContextItem, FrozenPacket, Fro
 import type { WorkbenchDraftV1 } from '../core/project/draft';
 import type { WorkspaceSessionV1 } from '../core/project/workspaceSession';
 import type { HistoryCatalogResult, HistoryQuery, HistorySearchResult, HistorySessionDetail } from '../core/history/types';
+import type { ProfileImportPreview } from '../core/portability/bundle';
+import type { ProjectRootBindingsV1 } from '../main/projectRootBindings';
 
 const api = {
   loadOverlay: (opts?: { refresh?: boolean }): Promise<OverlaySnapshot> =>
@@ -75,6 +77,18 @@ const api = {
   listHistory: (): Promise<HistoryCatalogResult> => ipcRenderer.invoke('history:list'),
   searchHistory: (query: HistoryQuery): Promise<HistorySearchResult> => ipcRenderer.invoke('history:search', query),
   readHistoryDetail: (sessionId: string): Promise<HistorySessionDetail | null> => ipcRenderer.invoke('history:detail', sessionId),
+  previewProfileExport: (): Promise<{ preview: {
+    digest: string; drafts: number; manualContexts: number; projectBindings: number; workspaceSession: boolean;
+    included: string[]; skipped: string[];
+  } }> => ipcRenderer.invoke('portability:export-preview'),
+  applyProfileExport: (digest: string): Promise<{ canceled?: boolean; path?: string }> =>
+    ipcRenderer.invoke('portability:export-apply', digest),
+  loadProjectRootBindings: (): Promise<ProjectRootBindingsV1> => ipcRenderer.invoke('portability:bindings'),
+  previewProfileImport: (): Promise<{ canceled?: boolean; preview?: ProfileImportPreview }> =>
+    ipcRenderer.invoke('portability:import-preview'),
+  applyProfileImport: (digest: string): Promise<{ imported: true }> => ipcRenderer.invoke('portability:import-apply', digest),
+  rebindProjectRoot: (projectId: string): Promise<{ canceled?: boolean; binding?: { root: string; verifiedAt: string } }> =>
+    ipcRenderer.invoke('portability:rebind', projectId),
   onActivityChanged: (cb: (event: ActivityEvent) => void): (() => void) => {
     const listener = (_e: IpcRendererEvent, event: ActivityEvent) => cb(event);
     ipcRenderer.on('activity:changed', listener);

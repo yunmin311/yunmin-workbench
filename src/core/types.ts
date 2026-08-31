@@ -162,6 +162,14 @@ export interface MachineProfile {
   observed: Observation;
 }
 
+/** Workbench-local, explicitly verified locator override. It never mutates or impersonates MachineProfile truth. */
+export interface WorkbenchProjectRootBinding {
+  projectId: string;
+  root: string;
+  canonicalPath: string;
+  observed: Observation;
+}
+
 export interface HarnessInfo {
   harness: string;
   model?: string;
@@ -197,6 +205,8 @@ export interface OverlaySnapshot {
   inbox: InboxItem[];
   memoryIndex: MemoryEntry[];
   machine?: MachineProfile;
+  /** Explicit userData bindings projected beside, never into, the external machine profile. */
+  workbenchProjectRoots?: Record<string, WorkbenchProjectRootBinding>;
   harness: HarnessInfo[];
   /** sha256 of every canonical file read — basis for packet staleness checks. */
   sourceFingerprints: SourceFingerprint[];
