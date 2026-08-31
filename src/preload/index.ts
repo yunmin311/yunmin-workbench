@@ -72,7 +72,7 @@ const api = {
   }): Promise<HandoffReceipt> => ipcRenderer.invoke('harness:dispatch', request),
   smokeHarness: (projectId: string, harness: 'codex' | 'claude' | 'deepseek'): Promise<HandoffReceipt | { userAgent: string; ephemeralThreadId: string }> =>
     ipcRenderer.invoke('harness:smoke', projectId, harness),
-  loadLiveExecutions: (): Promise<{ executionId: string; harness: string; externalSessionRef: string; startedAt: string }[]> =>
+  loadLiveExecutions: (): Promise<{ executionId: string; harness: string; externalSessionRef: string; startedAt: string; canCancel: boolean }[]> =>
     ipcRenderer.invoke('runtime:live'),
   cancelExecution: (executionId: string): Promise<{ delivered: boolean; reason?: string }> =>
     ipcRenderer.invoke('harness:cancel', { executionId }),

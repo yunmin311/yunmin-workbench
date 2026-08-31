@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ActivityEvent, HarnessCapabilities, RuntimeState } from '../../../core/types';
 import { projectRuntimeExecutions, type RuntimeExecutionView } from '../../../core/project/runtimeInspector';
 import type { LiveExecutionInfo } from '../store';
+import { resolveRuntimeInspectorScope, runtimeCancelAvailability } from '../runtimeInspectorModel';
 import { useWorkbench } from '../store';
 
 type CapabilityMatrix = Record<string, HarnessCapabilities>;
@@ -206,14 +207,13 @@ function HarnessDiagnostics({ matrix, probedAt }: { matrix: CapabilityMatrix | n
   );
 }
 
-export function RuntimeInspector() {
+export function RuntimeInspector({ onClose }: { onClose: () => void }) {
   const activity = useWorkbench((s) => s.activity);
   const liveExecutions = useWorkbench((s) => s.liveExecutions);
   const runtimeTarget = useWorkbench((s) => s.runtimeTarget);
   const projectId = useWorkbench((s) => s.projectId);
   const conversation = useWorkbench((s) => s.conversation);
   const refreshLiveExecutions = useWorkbench((s) => s.refreshLiveExecutions);
-  const openRuntimeInspector = useWorkbench((s) => s.openRuntimeInspector);
   const setView = useWorkbench((s) => s.setView);
 
   const [matrix, setMatrix] = useState<CapabilityMatrix | null>(null);
@@ -237,25 +237,24 @@ export function RuntimeInspector() {
     [activity, liveIds],
   );
 
-  const scoped = useMemo(() => {
-    const targetId = runtimeTarget?.executionId ?? (runtimeTarget?.intentId ? `intent:${runtimeTarget.intentId}` : null);
-    const target = targetId ? executions.find((item) => item.executionId === targetId) : undefined;
-    const inScope = executions.filter((item) =>
-      (projectId ? item.projectId === projectId : true)
-      && (conversation ? item.conversationKey === conversation.key || item.executionId === targetId : true));
-    if (target && !inScope.some((item) => item.executionId === target.executionId)) {
-      return { list: [target, ...inScope], target };
-    }
-    return { list: inScope, target };
-  }, [executions, projectId, conversation, runtimeTarget]);
+  useEffect(() => {
+    setSelectedId(null);
+    setCancelMessage(null);
+  }, [runtimeTarget?.executionId]);
 
-  const selected = useMemo(() => {
-    if (selectedId) {
-      const found = scoped.list.find((item) => item.executionId === selectedId);
-      if (found) return found;
-    }
-    return scoped.target ?? scoped.list[0] ?? null;
-  }, [scoped, selectedId]);
+  const scoped = useMemo(() => {
+    return resolveRuntimeInspectorScope({
+      executions,
+      targetExecutionId: runtimeTarget?.executionId ?? null,
+      selectedExecutionId: selectedId,
+      projectId,
+      conversationKey: conversation?.key ?? null,
+    });
+  }, [executions, projectId, conversation, runtimeTarget, selectedId]);
+  const selected = scoped.selected;
+  const cancelAvailability = selected
+    ? runtimeCancelAvailability(selected, liveExecutions)
+    : { enabled: false, reason: 'not-live' as const };
 
   const cancel = async (execution: RuntimeExecutionView) => {
     setCancelMessage(null);
@@ -299,24 +298,26 @@ export function RuntimeInspector() {
             ))}
           </div>
         )}
+        {scoped.targetUnavailable && (
+          <p className="runtime-target-unavailable" data-testid="runtime-target-unavailable">
+            Requested execution unavailable. Its exact harness + native ref is not present in current Activity; no recent runtime was substituted.
+          </p>
+        )}
       </section>
 
       {selected && (
         <section className="inspector-section runtime-detail" data-testid="runtime-detail" data-execution-id={selected.executionId}>
           <header><p className="eyebrow">Workbench execution</p><h2>{selected.harness ?? 'UNKNOWN'} execution</h2></header>
-          <dl className="evidence-list">
-            <Field label="Execution id"><span title={selected.executionId}>{selected.executionId}</span></Field>
+          <dl className="evidence-list runtime-identity-fields">
             <Field label="Harness">{selected.harness ?? <Unknown />}</Field>
-            <Field label="Native session ref">
+            <Field label="Workbench execution id"><span className="runtime-workbench-id" title={selected.executionId}>{selected.executionId}</span></Field>
+            <Field label="Native externalSessionRef">
               {selected.nativeRef
-                ? <span title={selected.nativeRef}>{selected.nativeRef}</span>
+                ? <span className="runtime-native-ref" title={selected.nativeRef}>{selected.nativeRef}</span>
                 : <Unknown>UNKNOWN — no native externalSessionRef observed</Unknown>}
             </Field>
-            <Field label="Conversation">
-              {selected.projectId
-                ? <span>{selected.projectId} / {selected.conversationKey ?? <Unknown />}</span>
-                : <Unknown />}
-            </Field>
+            <Field label="Project">{selected.projectId ?? <Unknown />}</Field>
+            <Field label="Conversation">{selected.conversationKey ?? <Unknown />}</Field>
             <Field label="Runtime state"><StateBadge state={selected.state} live={selected.live} /></Field>
             <Field label="Intent → receipt">
               {selected.receipt
@@ -325,6 +326,10 @@ export function RuntimeInspector() {
             </Field>
             <Field label="Started">{selected.startedAt ? new Date(selected.startedAt).toLocaleString() : <Unknown />}</Field>
             <Field label="Ended">{selected.endedAt ?? <Unknown>UNKNOWN — no session-end evidence</Unknown>}</Field>
+            <Field label="Adapter">{selected.events.find((event) => event.adapter)?.adapter ?? <Unknown />}</Field>
+            <Field label="Verification">{selected.observed?.verification ?? <Unknown />}</Field>
+            <Field label="Source">{selected.observed?.source ?? <Unknown />}</Field>
+            <Field label="Source ref">{selected.observed?.sourceRef ?? <Unknown />}</Field>
           </dl>
           <details className="runtime-binding">
             <summary>Execution binding (observed fields only)</summary>
@@ -340,28 +345,24 @@ export function RuntimeInspector() {
               <p className="inspector-muted">No binding was observed for this execution; fields stay UNKNOWN.</p>
             )}
           </details>
-          {selected.observed && (
-            <p className="runtime-provenance" title={selected.observed.sourceRef}>
-              provenance: {selected.observed.source} · {selected.observed.verification} · {selected.observed.sourceRef}
-            </p>
-          )}
-
           {matrix && selected.harness && matrix[selected.harness] && (
             <div className="runtime-capability-matrix" aria-label="Execution harness capability truth">
               {Object.entries(matrix[selected.harness].support).map(([key, value]) => (
                 <CapabilityLine key={key} label={key} value={value} />
               ))}
-              <CapabilityLine label="cancel" value={selected.harness === 'claude' ? 'YES' : 'NO'} />
+              <CapabilityLine label="cancel now" value={cancelAvailability.enabled ? 'YES' : 'NO'} />
             </div>
           )}
 
           <div className="runtime-controls" role="group" aria-label="Runtime controls">
             <button
               data-testid="runtime-cancel"
-              disabled={!(selected.live && selected.harness === 'claude')}
-              title={selected.live
-                ? (selected.harness === 'claude' ? 'Ask the adapter to stop this execution' : 'This adapter has no reliable cancel path')
-                : 'No live process evidence for this execution'}
+              disabled={!cancelAvailability.enabled}
+              title={cancelAvailability.enabled
+                ? 'Ask the live adapter to stop this exact execution'
+                : cancelAvailability.reason === 'unsupported'
+                  ? 'This live adapter exposes no reliable cancel path'
+                  : 'No exact live process evidence for this execution'}
               onClick={() => void cancel(selected)}
             >
               Cancel execution
@@ -375,8 +376,22 @@ export function RuntimeInspector() {
             >
               Copy refs
             </button>
-            <button onClick={() => setView('control')} title="Back to the Session Spine">
-              Back to session
+            <button
+              data-testid="runtime-inspect-source"
+              disabled={!selected.observed}
+              onClick={() => {
+                if (!selected.observed) return;
+                const sourceEvent = selected.events.find((event) => event.observed.sourceRef === selected.observed?.sourceRef);
+                onClose();
+                setTimeout(() => window.dispatchEvent(new CustomEvent('workbench:focus-attention-source', {
+                  detail: { eventRef: sourceEvent?.id, sourceRef: selected.observed?.sourceRef },
+                })), 0);
+              }}
+            >
+              Inspect source
+            </button>
+            <button onClick={() => { setView('control'); onClose(); }} title="Back to the Session Spine">
+              Close to session
             </button>
             <button onClick={() => window.dispatchEvent(new CustomEvent('workbench:open-inspector', { detail: 'packet' }))} title="Dispatch a NEW execution through the Packet review flow">
               New dispatch → Packet

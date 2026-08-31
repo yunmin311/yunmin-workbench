@@ -30,6 +30,17 @@ export function AttentionPanel({ onClose }: { onClose: () => void }) {
   const inspectRuntime = (item: AttentionItem) => {
     const executionId = resolveExecutionIdForAttention(item, eventsById);
     if (!executionId) return false;
+    if (item.projectId && snapshot?.projects.some((project) => project.projectId === item.projectId)) {
+      selectProject(item.projectId);
+    }
+    if (item.conversationKey) {
+      const exactConversation = snapshot?.conversations.find((candidate) =>
+        candidate.key === item.conversationKey
+          && (!item.projectId || candidate.project === item.projectId));
+      if (!exactConversation) return false;
+      selectConversation(exactConversation);
+      setView('control');
+    }
     openRuntimeInspector({ executionId });
     return true;
   };

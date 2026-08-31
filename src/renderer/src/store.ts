@@ -35,10 +35,9 @@ import type { MemorySearchHit } from '../../core/memory/types';
 export type View = 'projects' | 'control' | 'canvas' | 'context' | 'packet';
 export type DraftSaveState = 'clean' | 'dirty' | 'saving' | 'saved' | 'error';
 
-/** Exact Runtime Inspector target: a Workbench execution id or an intent-only dispatch. */
+/** Exact Runtime Inspector target: one observed `harness::nativeExternalRef` execution id. */
 export interface RuntimeInspectorTarget {
-  executionId?: string;
-  intentId?: string;
+  executionId: string;
 }
 
 export interface LiveExecutionInfo {
@@ -46,6 +45,7 @@ export interface LiveExecutionInfo {
   harness: string;
   externalSessionRef: string;
   startedAt: string;
+  canCancel: boolean;
 }
 
 interface WorkbenchState {

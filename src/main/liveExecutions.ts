@@ -8,6 +8,7 @@ export interface LiveExecution {
   harness: Harness;
   externalSessionRef: string;
   startedAt: string;
+  canCancel: boolean;
 }
 
 /**
@@ -24,13 +25,14 @@ export class LiveExecutionRegistry {
     return `${harness}\0${externalSessionRef}`;
   }
 
-  add(harness: Harness, externalSessionRef: string, startedAt: string): LiveExecution {
+  add(harness: Harness, externalSessionRef: string, startedAt: string, canCancel = false): LiveExecution {
     if (!isValidNativeRuntimeRef(externalSessionRef)) throw new Error('Invalid native runtime ref');
     const entry: LiveExecution = {
       executionId: runtimeExecutionId(harness, externalSessionRef),
       harness,
       externalSessionRef,
       startedAt,
+      canCancel,
     };
     this.entries.set(this.key(harness, externalSessionRef), entry);
     return entry;

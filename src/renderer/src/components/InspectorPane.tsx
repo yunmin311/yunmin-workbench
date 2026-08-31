@@ -95,7 +95,7 @@ export function InspectorPane({
             <p className="inspector-muted">UNKNOWN remains unknown; the Inspector does not infer missing runtime or flow. Runtime Binding belongs to one execution, not permanently to Conversation.</p>
           </div>
         )}
-        {projectId && tab === 'runtime' && <RuntimeInspector />}
+        {projectId && tab === 'runtime' && <RuntimeInspector onClose={onClose} />}
       </div>
     </aside>
     </div>

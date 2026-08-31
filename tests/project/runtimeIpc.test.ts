@@ -19,9 +19,9 @@ describe('Runtime IPC boundaries', () => {
   it('keeps equal external refs from different Harnesses distinct and rejects malformed refs', () => {
     const registry = new LiveExecutionRegistry();
     registry.add('codex', 'same-ref', '2026-08-31T01:00:00.000Z');
-    registry.add('claude', 'same-ref', '2026-08-31T01:00:01.000Z');
-    expect(registry.list().map((item) => item.executionId)).toEqual([
-      'claude::same-ref', 'codex::same-ref',
+    registry.add('claude', 'same-ref', '2026-08-31T01:00:01.000Z', true);
+    expect(registry.list().map((item) => [item.executionId, item.canCancel])).toEqual([
+      ['claude::same-ref', true], ['codex::same-ref', false],
     ]);
     expect(() => registry.add('claude', '', '2026-08-31T01:00:02.000Z')).toThrow('Invalid native runtime ref');
   });

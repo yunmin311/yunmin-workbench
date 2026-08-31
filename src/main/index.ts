@@ -772,7 +772,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
             cwd,
             intentId: request.intentId,
           });
-          liveExecutions.add(harness, threadId, new Date().toISOString());
+          liveExecutions.add(harness, threadId, new Date().toISOString(), harness === 'claude');
         };
         const onCodexThread = (threadId: string) => {
           rememberRuntime(threadId);

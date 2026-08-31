@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import type { ActivityEvent } from '../../../core/types';
-import { executionIdForEvent } from '../../../core/project/runtimeInspector';
+import { executionIdForEvent, projectRuntimeExecutions } from '../../../core/project/runtimeInspector';
+import { latestRuntimeExecutionForConversation } from '../runtimeInspectorModel';
 import { useWorkbench } from '../store';
 
 const ACTIVITY_LABEL: Record<ActivityEvent['kind'], string> = {
@@ -34,11 +35,7 @@ function ActivityCard({ event }: { event: ActivityEvent }) {
   const openRuntimeInspector = useWorkbench((s) => s.openRuntimeInspector);
   // Only events that explicitly name harness + native ref can target an exact execution.
   const executionId = executionIdForEvent(event);
-  const inspectTarget = executionId
-    ? { executionId }
-    : event.kind.startsWith('handoff-') && event.attentionKey
-      ? { intentId: event.attentionKey }
-      : null;
+  const inspectTarget = executionId ? { executionId } : null;
 
   const inspectButton = inspectTarget && (
     <button
@@ -98,7 +95,6 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
   const snapshot = useWorkbench((state) => state.snapshot);
   const projectId = useWorkbench((state) => state.projectId);
   const conversation = useWorkbench((state) => state.conversation);
-  const runtimeSessions = useWorkbench((state) => state.runtimeSessions);
   const activity = useWorkbench((state) => state.activity);
   const liveExecutions = useWorkbench((state) => state.liveExecutions);
   const openRuntimeInspector = useWorkbench((state) => state.openRuntimeInspector);
@@ -153,7 +149,8 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
     );
   }
 
-  const runtime = runtimeSessions.filter((session) => session.conversationKey === conversation.key).at(-1);
+  const runtimeExecutions = projectRuntimeExecutions(activity, liveExecutions.map((item) => item.executionId));
+  const runtime = latestRuntimeExecutionForConversation(runtimeExecutions, conversation.key);
   const events = activity.filter((event) =>
     event.projectId === projectId && event.conversationKey === conversation.key,
   );
@@ -162,10 +159,6 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
   const sessionAttention = attentionItems.filter(
     (item) => item.conversationKey === conversation.key || (!item.conversationKey && item.projectId === projectId),
   );
-  const liveForConversation = new Set(liveExecutions.filter((entry) => {
-    const execution = runtimeSessions.find((session) => session.id === entry.executionId);
-    return execution?.conversationKey === conversation.key;
-  }).map((entry) => entry.executionId));
   const runtimeLabel = runtime?.binding ? `${runtime.binding.harness} · ${runtime.binding.cwd ? runtime.binding.cwd.split(/[\\/]/).pop() : runtime.binding.machine}` : null;
 
   return (
@@ -225,12 +218,12 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
               <button
                 className="composer-harness session-runtime-badge"
                 data-testid="session-runtime-badge"
-                title={`Runtime ${runtime?.state ?? 'unknown'} · execution ${runtime?.id ?? 'UNKNOWN'}${liveForConversation.size > 0 ? ' · live' : ''}`}
-                onClick={() => runtime && openRuntimeInspector({ executionId: runtime.id })}
+                title={`Runtime ${runtime?.state ?? 'unknown'} · execution ${runtime?.executionId ?? 'UNKNOWN'}${runtime?.live ? ' · live' : ' · historical'}`}
+                onClick={() => runtime && openRuntimeInspector({ executionId: runtime.executionId })}
               >
-                <i className={`runtime-pulse runtime-${liveForConversation.size > 0 ? runtime?.state ?? 'unknown' : 'unknown'}`} />
+                <i className={`runtime-pulse runtime-${runtime?.live ? runtime.state : 'unknown'}`} />
                 {runtimeLabel}
-                {liveForConversation.size > 0 ? ' · live' : ''}
+                {runtime?.live ? ' · live' : ' · historical'}
               </button>
             )}
           </div>
