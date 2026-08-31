@@ -1,4 +1,5 @@
 import type { AttentionItem } from '../../../core/types';
+import { resolveExecutionIdForAttention } from '../../../core/project/runtimeInspector';
 import { useWorkbench } from '../store';
 
 const kindLabel: Record<AttentionItem['kind'], string> = {
@@ -16,11 +17,22 @@ export function AttentionPanel({ onClose }: { onClose: () => void }) {
   const items = useWorkbench((state) => state.attentionItems);
   const problem = useWorkbench((state) => state.attentionProblem);
   const snapshot = useWorkbench((state) => state.snapshot);
+  const activity = useWorkbench((state) => state.activity);
   const projectId = useWorkbench((state) => state.projectId);
   const selectProject = useWorkbench((state) => state.selectProject);
   const selectConversation = useWorkbench((state) => state.selectConversation);
   const setView = useWorkbench((state) => state.setView);
   const dismissAttention = useWorkbench((state) => state.dismissAttention);
+  const openRuntimeInspector = useWorkbench((state) => state.openRuntimeInspector);
+
+  const eventsById = new Map(activity.map((event) => [event.id, event]));
+
+  const inspectRuntime = (item: AttentionItem) => {
+    const executionId = resolveExecutionIdForAttention(item, eventsById);
+    if (!executionId) return false;
+    openRuntimeInspector({ executionId });
+    return true;
+  };
 
   const openSource = (item: AttentionItem) => {
     if (!snapshot) return;
@@ -74,6 +86,16 @@ export function AttentionPanel({ onClose }: { onClose: () => void }) {
                   <small>{item.projectId ?? 'Project not supplied'}{item.sessionRef ? ` · ${item.sessionRef}` : ''}</small>
                   <small className="source">{item.sourceRef}{item.eventRef ? ` · event ${item.eventRef}` : ''}</small>
                 </button>
+                {(item.kind === 'runtime-error' || item.kind === 'receipt-failed') && resolveExecutionIdForAttention(item, eventsById) && (
+                  <button
+                    className="attention-runtime-link"
+                    data-testid="attention-inspect-runtime"
+                    title="Open the exact execution this signal came from"
+                    onClick={() => { inspectRuntime(item); onClose(); }}
+                  >
+                    Inspect runtime
+                  </button>
+                )}
                 <button
                   className="attention-dismiss"
                   aria-label="Dismiss this observation"

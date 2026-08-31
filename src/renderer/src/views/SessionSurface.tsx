@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import type { ActivityEvent } from '../../../core/types';
+import { executionIdForEvent } from '../../../core/project/runtimeInspector';
 import { useWorkbench } from '../store';
 
 const ACTIVITY_LABEL: Record<ActivityEvent['kind'], string> = {
@@ -30,6 +31,24 @@ function ActivityCard({ event }: { event: ActivityEvent }) {
   const isChange = event.kind === 'file-change';
   const isResponse = event.kind === 'agent-response';
   const isBoundary = boundaryKinds.has(event.kind);
+  const openRuntimeInspector = useWorkbench((s) => s.openRuntimeInspector);
+  // Only events that explicitly name harness + native ref can target an exact execution.
+  const executionId = executionIdForEvent(event);
+  const inspectTarget = executionId
+    ? { executionId }
+    : event.kind.startsWith('handoff-') && event.attentionKey
+      ? { intentId: event.attentionKey }
+      : null;
+
+  const inspectButton = inspectTarget && (
+    <button
+      className="activity-inspect"
+      title="Open this event's exact execution in the Runtime Inspector"
+      onClick={() => openRuntimeInspector(inspectTarget)}
+    >
+      Inspect
+    </button>
+  );
 
   if (isBoundary) {
     return (
@@ -37,6 +56,7 @@ function ActivityCard({ event }: { event: ActivityEvent }) {
         <span>
           <i />{ACTIVITY_LABEL[event.kind]}
           {event.harness && <b className="harness-badge">{event.harness}</b>}
+          {inspectButton}
         </span>
         <p>
           {event.summary}
@@ -55,6 +75,7 @@ function ActivityCard({ event }: { event: ActivityEvent }) {
         <span className="activity-card-icon" aria-hidden="true">{isTool ? '›_' : isChange ? '±' : 'A'}</span>
         <strong>{ACTIVITY_LABEL[event.kind]}</strong>
         {event.harness && <span className="harness-badge" style={{ fontSize: 8, padding: '1px 4px', border: '1px solid var(--wb-border-color)', borderRadius: 4, background: 'var(--wb-surface-raised)', color: 'var(--wb-text-contrast)', marginLeft: 6 }}>{event.harness}</span>}
+        {inspectButton}
         <time>{new Date(event.observed.observedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
       </header>
       <p>{event.summary}</p>
@@ -79,11 +100,14 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
   const conversation = useWorkbench((state) => state.conversation);
   const runtimeSessions = useWorkbench((state) => state.runtimeSessions);
   const activity = useWorkbench((state) => state.activity);
+  const liveExecutions = useWorkbench((state) => state.liveExecutions);
+  const openRuntimeInspector = useWorkbench((state) => state.openRuntimeInspector);
   const activityProblem = useWorkbench((state) => state.activityProblem);
   const taskSummary = useWorkbench((state) => state.taskSummary);
   const draftSaveState = useWorkbench((state) => state.draftSaveState);
   const staging = useWorkbench((state) => state.staging);
   const packetValidity = useWorkbench((state) => state.packetValidity);
+  const attentionItems = useWorkbench((s) => s.attentionItems);
   const setTaskSummary = useWorkbench((state) => state.setTaskSummary);
   const setView = useWorkbench((state) => state.setView);
   const clearActivity = useWorkbench((state) => state.clearActivity);
@@ -135,11 +159,14 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
   );
   const included = staging.filter((item) => item.state === 'included').length;
   const pinned = staging.filter((item) => item.state === 'included' && item.pinned).length;
-  const attentionItems = useWorkbench((s) => s.attentionItems);
   const sessionAttention = attentionItems.filter(
     (item) => item.conversationKey === conversation.key || (!item.conversationKey && item.projectId === projectId),
   );
-  const harnessLabel = runtime?.binding ? `${runtime.binding.harness} · ${runtime.binding.cwd ? runtime.binding.cwd.split(/[\\/]/).pop() : runtime.binding.machine}` : null;
+  const liveForConversation = new Set(liveExecutions.filter((entry) => {
+    const execution = runtimeSessions.find((session) => session.id === entry.executionId);
+    return execution?.conversationKey === conversation.key;
+  }).map((entry) => entry.executionId));
+  const runtimeLabel = runtime?.binding ? `${runtime.binding.harness} · ${runtime.binding.cwd ? runtime.binding.cwd.split(/[\\/]/).pop() : runtime.binding.machine}` : null;
 
   return (
     <div className="session-surface">
@@ -194,7 +221,18 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
               Packet {packetValidity}
             </button>
             <span>Draft {draftSaveState}</span>
-            {harnessLabel && <span className="composer-harness" title={runtime?.binding.cwd ?? ''}>{harnessLabel}</span>}
+            {runtimeLabel && (
+              <button
+                className="composer-harness session-runtime-badge"
+                data-testid="session-runtime-badge"
+                title={`Runtime ${runtime?.state ?? 'unknown'} · execution ${runtime?.id ?? 'UNKNOWN'}${liveForConversation.size > 0 ? ' · live' : ''}`}
+                onClick={() => runtime && openRuntimeInspector({ executionId: runtime.id })}
+              >
+                <i className={`runtime-pulse runtime-${liveForConversation.size > 0 ? runtime?.state ?? 'unknown' : 'unknown'}`} />
+                {runtimeLabel}
+                {liveForConversation.size > 0 ? ' · live' : ''}
+              </button>
+            )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <button

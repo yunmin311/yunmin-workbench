@@ -35,6 +35,19 @@ import type { MemorySearchHit } from '../../core/memory/types';
 export type View = 'projects' | 'control' | 'canvas' | 'context' | 'packet';
 export type DraftSaveState = 'clean' | 'dirty' | 'saving' | 'saved' | 'error';
 
+/** Exact Runtime Inspector target: a Workbench execution id or an intent-only dispatch. */
+export interface RuntimeInspectorTarget {
+  executionId?: string;
+  intentId?: string;
+}
+
+export interface LiveExecutionInfo {
+  executionId: string;
+  harness: string;
+  externalSessionRef: string;
+  startedAt: string;
+}
+
 interface WorkbenchState {
   snapshot: OverlaySnapshot | null;
   loading: boolean;
@@ -59,6 +72,8 @@ interface WorkbenchState {
   activity: ActivityEvent[];
   runtimeSessions: RuntimeSession[];
   activityProblem: string | null;
+  liveExecutions: LiveExecutionInfo[];
+  runtimeTarget: RuntimeInspectorTarget | null;
   attentionItems: AttentionItem[];
   attentionLocal: AttentionLocalState;
   attentionProblem: string | null;
@@ -89,6 +104,8 @@ interface WorkbenchState {
   loadActivity: () => Promise<void>;
   ingestActivity: (event: ActivityEvent) => void;
   clearActivity: () => Promise<void>;
+  refreshLiveExecutions: () => Promise<void>;
+  openRuntimeInspector: (target: RuntimeInspectorTarget) => void;
   loadAttentionLocal: () => Promise<void>;
   dismissAttention: (item: AttentionItem) => Promise<void>;
   setPacketValidity: (validity: WorkbenchState['packetValidity']) => void;
@@ -271,6 +288,8 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   activity: [],
   runtimeSessions: [],
   activityProblem: null,
+  liveExecutions: [],
+  runtimeTarget: null,
   attentionItems: [],
   attentionLocal: EMPTY_ATTENTION_LOCAL,
   attentionProblem: null,
@@ -287,6 +306,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   initialize: async () => {
     await get().load(true);
     await get().loadActivity();
+    await get().refreshLiveExecutions();
     await get().loadAttentionLocal();
     const loaded = await window.wb.loadWorkspaceSession();
     set({
@@ -797,6 +817,11 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       const runtimeSessions = projectRuntimeSessions(activity);
       return { activity, runtimeSessions, attentionItems: projectAttention({ ...state, activity, runtimeSessions }) };
     });
+    // Session/process boundaries change what the adapter currently holds live;
+    // chatty per-item events (tools/files) do not.
+    if (['session-started', 'turn-completed', 'turn-error', 'harness-error', 'handoff-dispatched', 'handoff-accepted', 'handoff-failed'].includes(event.kind)) {
+      void get().refreshLiveExecutions();
+    }
     get().syncIslandAttention();
   },
 
@@ -807,6 +832,21 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       attentionItems: projectAttention({ ...state, activity: [], runtimeSessions: [] }),
     }));
     get().syncIslandAttention();
+  },
+
+  refreshLiveExecutions: async () => {
+    if (!window.wb.loadLiveExecutions) return;
+    try {
+      const live = await window.wb.loadLiveExecutions();
+      set({ liveExecutions: live });
+    } catch {
+      // Live probe is best-effort; absence keeps executions historical, never fake-live.
+    }
+  },
+
+  openRuntimeInspector: (target) => {
+    set({ runtimeTarget: target });
+    window.dispatchEvent(new CustomEvent('workbench:open-inspector', { detail: 'runtime' }));
   },
 
   addMemoryContext: async (hit, pinned = false) => {

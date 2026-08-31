@@ -57,6 +57,8 @@ import { readMaterialPreference, writeMaterialPreferenceAtomic } from './materia
 import { detectMaterialCapability } from './materialCapability';
 import { ClaudeCodeAdapter } from './adapters/claudeCodeAdapter';
 import { DeepSeekAdapter } from './adapters/deepseekAdapter';
+import { LiveExecutionRegistry } from './liveExecutions';
+import { resolveCancelRequest } from './harnessControl';
 import { RuntimeContextRegistry } from './runtimeContextRegistry';
 import { HarnessDispatchSchema, HarnessSmokeSchema, workbenchRejectedReceipt } from './harnessRequest';
 import { canDispatchToHarness } from '../core/project/harnessSelection';
@@ -95,11 +97,13 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
   let cache: { snapshot: OverlaySnapshot; at: number } | null = null;
   let refreshing: Promise<OverlaySnapshot> | null = null;
   let activityWrite: Promise<void> = Promise.resolve();
+  const liveExecutions = new LiveExecutionRegistry();
   const runtimeContexts = new RuntimeContextRegistry<{
     projectId: string;
     conversationKey: string;
     machine: string;
     cwd: string;
+    intentId?: string;
   }>();
   const pendingClaudeContexts = new Map<string, {
     projectId: string;
@@ -184,6 +188,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       observed: observed(`codex-app-server:${event.method}`),
     };
     if (event.method === 'adapter/error') {
+      liveExecutions.remove('codex', threadId);
       const message = typeof params?.message === 'string' ? params.message : 'Codex app-server stopped';
       void recordActivity({
         ...base, id: randomUUID(), kind: 'harness-error', runtimeState: 'error',
@@ -239,6 +244,10 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       return;
     }
     if (event.method === 'turn/completed' && turnId) {
+      // Turn completion ends the dispatch's turn; the thread leaves the live set
+      // because this adapter starts one thread per dispatch. Receipt/completion
+      // stay distinct from runtime state — they are separate projections.
+      liveExecutions.remove('codex', threadId);
       const failed = turn?.status === 'failed' || Boolean(turn?.error);
       const reviewKey = `${threadId}:${turnId}`;
       const reviewWorthy = !failed && reviewWorthyTurns.delete(reviewKey);
@@ -760,7 +769,9 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
             conversationKey: request.conversationKey,
             machine,
             cwd,
+            intentId: request.intentId,
           });
+          liveExecutions.add(harness, threadId, new Date().toISOString());
         };
         const onCodexThread = (threadId: string) => {
           rememberRuntime(threadId);
@@ -778,7 +789,9 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
         if (harness === 'claude') {
           pendingClaudeContexts.set(request.intentId, { projectId: request.projectId, conversationKey: request.conversationKey, machine, cwd });
           try {
-            receipt = await (adapter as typeof claudeAdapter).dispatch(request.intentId, cwd, dispatchText, rememberRuntime);
+            const claudeReceipt = await (adapter as typeof claudeAdapter).dispatch(request.intentId, cwd, dispatchText, rememberRuntime);
+            receipt = claudeReceipt;
+            if (claudeReceipt.runtimeRef) liveExecutions.remove('claude', claudeReceipt.runtimeRef);
           } finally {
             pendingClaudeContexts.delete(request.intentId);
           }
@@ -824,6 +837,27 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     if (!cwd) throw new Error(`No project root binding for ${projectId}`);
     const adapter = harness === 'claude' ? claudeAdapter : harness === 'deepseek' ? deepseekAdapter : codexAdapter;
     return adapter.smoke(cwd);
+  });
+
+  // Runtime Inspector: which executions currently hold adapter process evidence.
+  // Empty after a restart — historical activity never renders as a live runtime.
+  ipcMain.handle('runtime:live', () => liveExecutions.list());
+
+  ipcMain.handle('harness:cancel', (_event, rawRequest: unknown) => {
+    const request = z.object({ executionId: z.string().min(1).max(1024) }).parse(rawRequest);
+    const liveIntents = new Map<string, string>();
+    for (const entry of liveExecutions.list()) {
+      const context = runtimeContexts.get(entry.harness, entry.externalSessionRef);
+      if (context?.intentId) liveIntents.set(entry.executionId, context.intentId);
+    }
+    // Mirrors adapter reality: only the Claude adapter implements a cancel path
+    // today. Codex/DeepSeek return a structured refusal instead of a fake stop.
+    return resolveCancelRequest({
+      executionId: request.executionId,
+      liveIntents,
+      cancelableHarnesses: new Set(['claude']),
+      cancelByIntent: (intentId) => claudeAdapter.cancel(intentId),
+    });
   });
 
   ipcMain.handle('packet:freeze', async (_e, rawPacket: unknown) => {

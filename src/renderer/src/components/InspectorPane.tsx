@@ -1,8 +1,9 @@
 import { ContextStagingView } from '../views/ContextStagingView';
 import { PacketPanel } from './PacketPanel';
+import { RuntimeInspector } from './RuntimeInspector';
 import { useWorkbench } from '../store';
 
-export type InspectorTab = 'context' | 'packet' | 'changes' | 'evidence';
+export type InspectorTab = 'context' | 'packet' | 'changes' | 'evidence' | 'runtime';
 
 export function InspectorPane({
   tab,
@@ -20,6 +21,7 @@ export function InspectorPane({
   const activity = useWorkbench((state) => state.activity);
   const runtimeSessions = useWorkbench((state) => state.runtimeSessions);
   const git = useWorkbench((state) => state.git);
+  const openRuntimeInspector = useWorkbench((state) => state.openRuntimeInspector);
   if (!tab) return null;
   const sessionActivity = activity.filter((event) =>
     (!projectId || event.projectId === projectId)
@@ -35,7 +37,7 @@ export function InspectorPane({
     <aside className="inspector-pane" data-tab={tab} aria-label="Workspace inspector" onMouseDown={(event) => event.stopPropagation()}>
       <div className="inspector-chrome">
         <div className="inspector-tabs" role="tablist" aria-label="Inspector views">
-        {(['context', 'packet', 'changes', 'evidence'] as const).map((item) => (
+        {(['context', 'packet', 'changes', 'evidence', 'runtime'] as const).map((item) => (
           <button
             key={item}
             role="tab"
@@ -74,13 +76,26 @@ export function InspectorPane({
             <dl className="evidence-list">
               <dt>Project</dt><dd>{snapshot?.projects.find((item) => item.projectId === projectId)?.observed.sourceRef ?? 'UNKNOWN'}</dd>
               <dt>Conversation</dt><dd>{conversation?.observed.sourceRef ?? 'UNKNOWN'}</dd>
-              <dt>Runtime</dt><dd>{runtime?.observed.sourceRef ?? 'UNKNOWN'}</dd>
+              <dt>Runtime</dt>
+              <dd>
+                {runtime?.observed.sourceRef ?? 'UNKNOWN'}
+                {runtime && (
+                  <button
+                    className="runtime-link"
+                    data-testid="evidence-open-runtime"
+                    onClick={() => openRuntimeInspector({ executionId: runtime.id })}
+                  >
+                    Inspect in Runtime
+                  </button>
+                )}
+              </dd>
               <dt>Git</dt><dd>{git && 'observed' in git ? git.observed.sourceRef : 'UNKNOWN'}</dd>
               <dt>Harness</dt><dd>{runtime?.binding?.harness ? `${runtime.binding.harness} · ${runtime.observed.sourceRef}` : runtime ? runtime.observed.sourceRef : 'no active binding — harness not guessed from cwd/provider'}</dd>
             </dl>
             <p className="inspector-muted">UNKNOWN remains unknown; the Inspector does not infer missing runtime or flow. Runtime Binding belongs to one execution, not permanently to Conversation.</p>
           </div>
         )}
+        {projectId && tab === 'runtime' && <RuntimeInspector />}
       </div>
     </aside>
     </div>

@@ -50,15 +50,33 @@ export async function appendActivity(stateDir: string, event: ActivityEvent): Pr
   await appendFile(path, `${JSON.stringify({ schemaVersion: 1, event })}\n`, 'utf8');
 }
 
-export async function readActivity(stateDir: string): Promise<{ events: ActivityEvent[]; problem?: string }> {
+export async function readActivity(stateDir: string): Promise<{ events: ActivityEvent[]; problem?: string; rejectedLines?: number }> {
+  let text: string;
   try {
-    const text = await readFile(historyPath(stateDir), 'utf8');
-    const events = text.split(/\r?\n/).filter(Boolean).map((line) => ActivityLineSchema.parse(JSON.parse(line)).event);
-    return { events: events as ActivityEvent[] };
+    text = await readFile(historyPath(stateDir), 'utf8');
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { events: [] };
     return { events: [], problem: `Activity history rejected: ${String(error)}` };
   }
+  // Bad-line isolation: one malformed/corrupt line is skipped and reported;
+  // valid events around it still project. A partial trailing write is the
+  // common case (append interrupted) and must not erase live history.
+  const events: ActivityEvent[] = [];
+  let rejectedLines = 0;
+  let firstProblem: string | undefined;
+  for (const [index, line] of text.split(/\r?\n/).entries()) {
+    if (!line.trim()) continue;
+    try {
+      events.push(ActivityLineSchema.parse(JSON.parse(line)).event);
+    } catch (error) {
+      rejectedLines += 1;
+      firstProblem ??= `line ${index + 1}: ${String(error)}`;
+    }
+  }
+  const problem = rejectedLines > 0
+    ? `Activity history isolated ${rejectedLines} malformed line(s); first: ${firstProblem}`
+    : undefined;
+  return { events: events as ActivityEvent[], problem, rejectedLines };
 }
 
 export async function clearActivity(stateDir: string): Promise<void> {
