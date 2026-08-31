@@ -46,6 +46,13 @@ describe('real harness handoff intent boundary', () => {
     expect(applyHandoffReceipt(intent, receipt(status)).state).toBe(status.toLowerCase());
   });
 
+  it('preserves CANCELLED as a distinct user intent result', () => {
+    const intent = markHandoffDispatched(
+      createHandoffIntent('11111111-1111-4111-8111-111111111111', payload),
+    );
+    expect(applyHandoffReceipt(intent, receipt('CANCELLED')).state).toBe('cancelled');
+  });
+
   it('does not apply a receipt from a different harness to the intent', () => {
     const intent = markHandoffDispatched(
       createHandoffIntent('11111111-1111-4111-8111-111111111111', payload),

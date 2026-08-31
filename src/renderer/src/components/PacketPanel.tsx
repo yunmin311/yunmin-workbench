@@ -200,7 +200,9 @@ export function PacketPanel() {
       setReceipt(nextReceipt);
       setIntent(applyHandoffReceipt(dispatched, nextReceipt));
       setHandoffStatus(nextReceipt.status);
-      if (nextReceipt.status !== 'ACCEPTED') {
+      if (nextReceipt.status === 'CANCELLED') {
+        setHandoffError(`Dispatch to ${targetHarness} was cancelled by the user.`);
+      } else if (nextReceipt.status !== 'ACCEPTED') {
         setHandoffError(`Dispatch did not reach ${targetHarness} (${nextReceipt.status}).${nextReceipt.message ? ` ${nextReceipt.message}` : ''}`);
       }
     } catch (error) {

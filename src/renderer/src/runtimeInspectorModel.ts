@@ -7,6 +7,16 @@ export interface RuntimeInspectorScope {
   targetUnavailable: boolean;
 }
 
+export async function probeLiveExecutions(
+  load: () => Promise<LiveExecutionInfo[]>,
+): Promise<LiveExecutionInfo[]> {
+  try {
+    return await load();
+  } catch {
+    return [];
+  }
+}
+
 export function resolveRuntimeInspectorScope(input: {
   executions: RuntimeExecutionView[];
   targetExecutionId: string | null;

@@ -66,7 +66,9 @@ import { canDispatchToHarness } from '../core/project/harnessSelection';
 // test hook: Playwright E2E redirects Workbench-owned state to a temp dir
 if (process.env.WB_STATE_DIR) app.setPath('userData', process.env.WB_STATE_DIR);
 
-const codexAdapter = new CodexAppServerAdapter();
+const codexAdapter = new CodexAppServerAdapter({
+  ephemeralDispatch: process.env.WB_CODEX_EPHEMERAL_DISPATCH === '1',
+});
 const claudeAdapter = new ClaudeCodeAdapter();
 const deepseekAdapter = new DeepSeekAdapter();
 const handoffRequests = new HandoffDispatchRegistry<HandoffReceipt>();
@@ -303,6 +305,14 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
         verification: event.verification,
       },
     };
+    if (event.method === 'process/cancelled') {
+      void recordActivity({
+        ...base, id: randomUUID(), kind: 'process-cancelled', runtimeState: 'stopped' as const,
+        summary: 'Claude process cancelled by user',
+        observed: { ...base.observed, source: 'process' as const, verification: 'OBSERVED' as const },
+      });
+      return;
+    }
     if (event.method === 'adapter/error') {
       void recordActivity({
         ...base, id: randomUUID(), kind: 'harness-error', runtimeState: 'error' as const,
@@ -821,8 +831,10 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       await recordActivity({
         id: randomUUID(), projectId: request.projectId, conversationKey: request.conversationKey,
         harness, adapter: `${harness}-adapter`, capability: 'receipt',
-        kind: receipt.status === 'ACCEPTED' ? 'handoff-accepted' : 'handoff-failed',
-        summary: receipt.status === 'ACCEPTED' ? `${harness} accepted the packet` : `${harness} handoff ${receipt.status.toLowerCase()}`,
+        kind: receipt.status === 'ACCEPTED' ? 'handoff-accepted'
+          : receipt.status === 'CANCELLED' ? 'handoff-cancelled' : 'handoff-failed',
+        summary: receipt.status === 'ACCEPTED' ? `${harness} accepted the packet`
+          : receipt.status === 'CANCELLED' ? `${harness} handoff cancelled by user` : `${harness} handoff ${receipt.status.toLowerCase()}`,
         attentionKey: request.intentId,
         runtimeRef: receipt.runtimeRef, turnRef: receipt.turnRef,
         observed: observed(`${harness}:${receipt.protocolEvidence}`),

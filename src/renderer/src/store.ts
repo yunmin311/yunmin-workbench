@@ -31,6 +31,7 @@ import type {
   AttentionLocalState,
 } from '../../core/types';
 import type { MemorySearchHit } from '../../core/memory/types';
+import { probeLiveExecutions } from './runtimeInspectorModel';
 
 export type View = 'projects' | 'control' | 'canvas' | 'context' | 'packet';
 export type DraftSaveState = 'clean' | 'dirty' | 'saving' | 'saved' | 'error';
@@ -819,7 +820,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     });
     // Session/process boundaries change what the adapter currently holds live;
     // chatty per-item events (tools/files) do not.
-    if (['session-started', 'turn-completed', 'turn-error', 'harness-error', 'handoff-dispatched', 'handoff-accepted', 'handoff-failed'].includes(event.kind)) {
+    if (['session-started', 'turn-completed', 'turn-error', 'harness-error', 'process-cancelled', 'handoff-dispatched', 'handoff-accepted', 'handoff-failed', 'handoff-cancelled'].includes(event.kind)) {
       void get().refreshLiveExecutions();
     }
     get().syncIslandAttention();
@@ -835,13 +836,11 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   },
 
   refreshLiveExecutions: async () => {
-    if (!window.wb.loadLiveExecutions) return;
-    try {
-      const live = await window.wb.loadLiveExecutions();
-      set({ liveExecutions: live });
-    } catch {
-      // Live probe is best-effort; absence keeps executions historical, never fake-live.
+    if (!window.wb.loadLiveExecutions) {
+      set({ liveExecutions: [] });
+      return;
     }
+    set({ liveExecutions: await probeLiveExecutions(window.wb.loadLiveExecutions) });
   },
 
   openRuntimeInspector: (target) => {

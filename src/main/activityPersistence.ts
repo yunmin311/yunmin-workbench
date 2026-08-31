@@ -8,10 +8,10 @@ const ActivityEventSchema = z.object({
   projectId: z.string().min(1),
   conversationKey: z.string().min(1),
   kind: z.enum([
-    'handoff-dispatched', 'handoff-accepted', 'handoff-failed', 'session-started',
+    'handoff-dispatched', 'handoff-accepted', 'handoff-failed', 'handoff-cancelled', 'session-started',
     'turn-started', 'agent-response', 'tool-started', 'tool-completed',
     'file-change', 'turn-completed', 'turn-error',
-    'approval-required', 'needs-user-input', 'harness-error',
+    'approval-required', 'needs-user-input', 'harness-error', 'process-cancelled',
   ]),
   summary: z.string(),
   harness: z.enum(['codex', 'claude', 'deepseek']).optional(),

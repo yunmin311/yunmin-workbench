@@ -4,7 +4,7 @@ import { createInterface } from 'node:readline';
 import type { HandoffReceipt, HarnessCapabilities } from '../../core/types';
 
 export interface ClaudeProtocolEvent {
-  kind: 'session' | 'turn' | 'assistant' | 'result' | 'tool' | 'file' | 'approval' | 'input' | 'error' | 'receipt';
+  kind: 'session' | 'turn' | 'assistant' | 'result' | 'tool' | 'file' | 'approval' | 'input' | 'error' | 'receipt' | 'lifecycle';
   method: string;
   id?: string | number;
   params?: unknown;
@@ -308,12 +308,12 @@ export class ClaudeCodeAdapter {
 
       if (wasCancelled) {
         emit({
-          kind: 'error', method: 'adapter/error',
+          kind: 'lifecycle', method: 'process/cancelled',
           params: { message: 'Claude dispatch cancelled' },
           verification: 'OBSERVED', sourceRef: 'claude:process:cancelled',
         });
         return {
-          intentId, harness: 'claude', status: 'FAILED', at: new Date().toISOString(),
+          intentId, harness: 'claude', status: 'CANCELLED', at: new Date().toISOString(),
           runtimeRef: sessionId ?? undefined, source: 'process',
           protocolEvidence: 'Claude dispatch cancelled', message: 'Claude dispatch cancelled',
         };

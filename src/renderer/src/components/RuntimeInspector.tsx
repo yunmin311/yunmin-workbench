@@ -19,6 +19,7 @@ const CHRONOLOGY_LABEL: Record<ActivityEvent['kind'], string> = {
   'handoff-dispatched': 'Intent dispatched',
   'handoff-accepted': 'Receipt accepted',
   'handoff-failed': 'Receipt failed',
+  'handoff-cancelled': 'Receipt cancelled',
   'session-started': 'Session started',
   'turn-started': 'Turn started',
   'agent-response': 'Assistant result',
@@ -30,13 +31,14 @@ const CHRONOLOGY_LABEL: Record<ActivityEvent['kind'], string> = {
   'approval-required': 'Approval / input',
   'needs-user-input': 'Approval / input',
   'harness-error': 'Error / crash',
+  'process-cancelled': 'Process cancelled',
 };
 
 /** Kinds every inspector shows by default; provenance detail stays collapsed inside each row. */
 const ALWAYS_VISIBLE = new Set<ActivityEvent['kind']>([
-  'handoff-dispatched', 'handoff-accepted', 'handoff-failed',
+  'handoff-dispatched', 'handoff-accepted', 'handoff-failed', 'handoff-cancelled',
   'session-started', 'turn-started', 'agent-response', 'file-change',
-  'turn-completed', 'turn-error', 'approval-required', 'needs-user-input', 'harness-error',
+  'turn-completed', 'turn-error', 'approval-required', 'needs-user-input', 'harness-error', 'process-cancelled',
 ]);
 
 function Unknown({ children }: { children?: string }) {
@@ -85,7 +87,7 @@ function ExecutionRow({
       </span>
       <span className="runtime-execution-meta">
         {STATE_LABEL[execution.state]} · {execution.live ? 'live' : 'no live process evidence'}
-        {execution.receipt ? ` · receipt ${execution.receipt.accepted ? 'ACCEPTED' : 'NOT ACCEPTED'}` : ' · receipt UNKNOWN'}
+        {execution.receipt ? ` · receipt ${execution.receipt.status}` : ' · receipt UNKNOWN'}
       </span>
     </button>
   );
@@ -321,7 +323,7 @@ export function RuntimeInspector({ onClose }: { onClose: () => void }) {
             <Field label="Runtime state"><StateBadge state={selected.state} live={selected.live} /></Field>
             <Field label="Intent → receipt">
               {selected.receipt
-                ? <span>intent {selected.intentState.toUpperCase()} · receipt {selected.receipt.accepted ? 'ACCEPTED' : 'NOT ACCEPTED'} · {selected.receipt.summary}</span>
+                ? <span>intent {selected.intentState.toUpperCase()} · receipt {selected.receipt.status} · {selected.receipt.summary}</span>
                 : <span>intent {selected.intentState === 'unknown' ? <Unknown /> : selected.intentState.toUpperCase()} · receipt <Unknown /></span>}
             </Field>
             <Field label="Started">{selected.startedAt ? new Date(selected.startedAt).toLocaleString() : <Unknown />}</Field>

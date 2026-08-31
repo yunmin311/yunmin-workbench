@@ -8,6 +8,7 @@ const ACTIVITY_LABEL: Record<ActivityEvent['kind'], string> = {
   'handoff-dispatched': 'Handoff dispatched',
   'handoff-accepted': 'Handoff accepted',
   'handoff-failed': 'Handoff failed',
+  'handoff-cancelled': 'Handoff cancelled',
   'session-started': 'Session started',
   'turn-started': 'Turn started',
   'agent-response': 'Agent response',
@@ -19,12 +20,13 @@ const ACTIVITY_LABEL: Record<ActivityEvent['kind'], string> = {
   'approval-required': 'Approval required',
   'needs-user-input': 'User input needed',
   'harness-error': 'Harness error',
+  'process-cancelled': 'Process cancelled',
 };
 
 const boundaryKinds = new Set<ActivityEvent['kind']>([
-  'handoff-dispatched', 'handoff-accepted', 'handoff-failed',
+  'handoff-dispatched', 'handoff-accepted', 'handoff-failed', 'handoff-cancelled',
   'session-started', 'turn-started', 'turn-completed', 'turn-error',
-  'approval-required', 'needs-user-input', 'harness-error',
+  'approval-required', 'needs-user-input', 'harness-error', 'process-cancelled',
 ]);
 
 function ActivityCard({ event }: { event: ActivityEvent }) {

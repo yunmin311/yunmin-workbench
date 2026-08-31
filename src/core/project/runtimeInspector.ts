@@ -11,6 +11,7 @@ import { isValidNativeRuntimeRef, parseRuntimeExecutionId, runtimeExecutionId } 
 
 export interface ExecutionReceiptView {
   accepted: boolean;
+  status: 'ACCEPTED' | 'NOT ACCEPTED' | 'CANCELLED';
   at: string;
   summary: string;
   protocolSourceRef: string;
@@ -38,7 +39,7 @@ export interface RuntimeExecutionView {
   /** Null until a source event proves the session ended; a completed turn is not an ended session. */
   endedAt: string | null;
   intentId: string | null;
-  intentState: 'dispatched' | 'accepted' | 'failed' | 'unknown';
+  intentState: 'dispatched' | 'accepted' | 'failed' | 'cancelled' | 'unknown';
   /** Dispatch receipt; a receipt only proves the handoff, never completion. */
   receipt: ExecutionReceiptView | null;
   /** Provenance of the event that established this execution. */
@@ -63,11 +64,12 @@ export function executionIdForEvent(event: ActivityEvent): string | null {
 function isIntentEvent(event: ActivityEvent): boolean {
   return event.kind === 'handoff-dispatched'
     || event.kind === 'handoff-accepted'
-    || event.kind === 'handoff-failed';
+    || event.kind === 'handoff-failed'
+    || event.kind === 'handoff-cancelled';
 }
 
 type IntentEvent = ActivityEvent & {
-  kind: 'handoff-dispatched' | 'handoff-accepted' | 'handoff-failed';
+  kind: 'handoff-dispatched' | 'handoff-accepted' | 'handoff-failed' | 'handoff-cancelled';
 };
 
 function isTypedIntentEvent(event: ActivityEvent): event is IntentEvent {
@@ -100,10 +102,11 @@ export function resolveExecutionIdForAttention(
   return null;
 }
 
-const INTENT_STATE_BY_KIND: Record<'handoff-dispatched' | 'handoff-accepted' | 'handoff-failed', RuntimeExecutionView['intentState']> = {
+const INTENT_STATE_BY_KIND: Record<'handoff-dispatched' | 'handoff-accepted' | 'handoff-failed' | 'handoff-cancelled', RuntimeExecutionView['intentState']> = {
   'handoff-dispatched': 'dispatched',
   'handoff-accepted': 'accepted',
   'handoff-failed': 'failed',
+  'handoff-cancelled': 'cancelled',
 };
 
 interface ExecutionBucket {
@@ -172,7 +175,9 @@ export function projectRuntimeExecutions(
     const binding = bucket.events.find((event) => event.binding !== undefined)?.binding ?? null;
     const intentEvents = bucket.events.filter(isTypedIntentEvent);
     const latestIntent = intentEvents.at(-1) ?? null;
-    const receiptEvent = [...bucket.events].reverse().find((event) => event.kind === 'handoff-accepted' || event.kind === 'handoff-failed') ?? null;
+    const receiptEvent = [...bucket.events].reverse().find((event) =>
+      event.kind === 'handoff-accepted' || event.kind === 'handoff-failed' || event.kind === 'handoff-cancelled') ?? null;
+    const endedEvent = [...bucket.events].reverse().find((event) => event.kind === 'process-cancelled') ?? null;
     const projectId = bucket.events.find((event) => event.projectId)?.projectId ?? null;
     const conversationKey = bucket.events.find((event) => event.conversationKey)?.conversationKey ?? null;
     return {
@@ -185,12 +190,14 @@ export function projectRuntimeExecutions(
       state: withState?.runtimeState ?? 'unknown',
       live: live.has(bucket.executionId),
       startedAt: identityEvent?.observed.observedAt ?? null,
-      endedAt: null,
+      endedAt: endedEvent?.observed.observedAt ?? null,
       intentId: latestIntent ? intentIdOf(latestIntent) : null,
       intentState: latestIntent ? INTENT_STATE_BY_KIND[latestIntent.kind] : 'unknown',
       receipt: receiptEvent
         ? {
           accepted: receiptEvent.kind === 'handoff-accepted',
+          status: receiptEvent.kind === 'handoff-accepted' ? 'ACCEPTED'
+            : receiptEvent.kind === 'handoff-cancelled' ? 'CANCELLED' : 'NOT ACCEPTED',
           at: receiptEvent.observed.observedAt,
           summary: receiptEvent.summary,
           protocolSourceRef: receiptEvent.observed.sourceRef,

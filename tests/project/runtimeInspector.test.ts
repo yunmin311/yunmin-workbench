@@ -118,6 +118,24 @@ describe('Runtime Inspector execution projection', () => {
     expect(projectRuntimeExecutions(events)).toEqual([]);
   });
 
+  it('projects an observed user cancellation as stopped and cancelled, never error or completed', () => {
+    const [execution] = projectRuntimeExecutions([
+      event('started', 'session-started', '2026-08-31T01:00:00.000Z', {
+        harness: 'claude', runtimeRef: 'session-cancelled', runtimeState: 'working',
+      }),
+      event('stopped', 'process-cancelled', '2026-08-31T01:00:01.000Z', {
+        harness: 'claude', runtimeRef: 'session-cancelled', runtimeState: 'stopped',
+      }),
+      event('receipt', 'handoff-cancelled', '2026-08-31T01:00:02.000Z', {
+        harness: 'claude', runtimeRef: 'session-cancelled', attentionKey: 'intent-cancelled',
+      }),
+    ]);
+    expect(execution).toMatchObject({
+      state: 'stopped', intentState: 'cancelled', receipt: { status: 'CANCELLED', accepted: false },
+    });
+    expect(execution.events.some((item) => item.kind === 'turn-completed')).toBe(false);
+  });
+
   it('resolves Attention only to an exact execution observed in activity', () => {
     const runtime = event('runtime-error', 'harness-error', '2026-08-31T01:00:00.000Z', {
       harness: 'codex', runtimeRef: 'thread-1', runtimeState: 'error',

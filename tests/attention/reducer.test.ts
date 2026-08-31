@@ -86,6 +86,17 @@ describe('Attention reducer', () => {
     })).toEqual([]);
   });
 
+  it('keeps an observed user cancellation in Activity without turning it into Attention', () => {
+    expect(reduceAttention({ activity: [
+      event('cancel-process', 'process-cancelled', '2026-08-30T12:05:00Z', {
+        harness: 'claude', runtimeRef: 'session-1', runtimeState: 'stopped',
+      }),
+      event('cancel-receipt', 'handoff-cancelled', '2026-08-30T12:05:01Z', {
+        harness: 'claude', runtimeRef: 'session-1', attentionKey: 'intent-cancelled',
+      }),
+    ] })).toEqual([]);
+  });
+
   it('rejects UNKNOWN, INFERRED, and heuristic observations from Attention', () => {
     const heuristic = observed('2026-08-30T12:09:00Z', 'VERIFIED');
     const items = reduceAttention({

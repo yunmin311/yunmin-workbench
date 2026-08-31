@@ -41,6 +41,21 @@ describe('Codex adapter survives a missing executable (P0)', () => {
 });
 
 describe('Codex adapter against a fake app-server (protocol fixture)', () => {
+  it('can make a full dispatch ephemeral for a no-trace real smoke', async () => {
+    process.env.FAKE_MODE = 'require-ephemeral-dispatch';
+    const adapter = new CodexAppServerAdapter({
+      command: process.execPath, args: [FAKE], ephemeralDispatch: true,
+    });
+    try {
+      await expect(adapter.dispatch(
+        'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', process.cwd(), 'smoke',
+      )).resolves.toMatchObject({ status: 'ACCEPTED', runtimeRef: 'fake-thread-1' });
+    } finally {
+      delete process.env.FAKE_MODE;
+      adapter.close();
+    }
+  });
+
   it('exposes server-initiated approval requests with their explicit request id', async () => {
     process.env.FAKE_MODE = 'server-requests';
     const adapter = new CodexAppServerAdapter({ command: process.execPath, args: [FAKE] });

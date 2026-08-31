@@ -124,7 +124,7 @@ describe('Claude adapter — process crash structured', () => {
       const pending = adapter.dispatch('44444444-4444-4111-8111-111111111111', process.cwd(), 'cleanup test');
       await new Promise((resolve) => setTimeout(resolve, 50));
       expect(adapter.cancel('44444444-4444-4111-8111-111111111111')).toBe(true);
-      await expect(pending).resolves.toMatchObject({ status: 'FAILED', protocolEvidence: 'Claude dispatch cancelled' });
+      await expect(pending).resolves.toMatchObject({ status: 'CANCELLED', protocolEvidence: 'Claude dispatch cancelled' });
     } finally {
       delete process.env.FAKE_MODE;
       adapter.close();

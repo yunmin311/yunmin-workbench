@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { RuntimeExecutionView } from '../../src/core/project/runtimeInspector';
 import {
   latestRuntimeExecutionForConversation,
+  probeLiveExecutions,
   resolveRuntimeInspectorScope,
   runtimeCancelAvailability,
 } from '../../src/renderer/src/runtimeInspectorModel';
@@ -33,6 +34,10 @@ function execution(
 }
 
 describe('Runtime Inspector renderer model', () => {
+  it('fails a live probe closed instead of retaining a previously live execution', async () => {
+    await expect(probeLiveExecutions(async () => { throw new Error('main unavailable'); })).resolves.toEqual([]);
+  });
+
   it('selects the exact harness-scoped execution when native refs are equal', () => {
     const list = [
       execution('codex::same-ref', '2026-08-31T01:00:00.000Z'),

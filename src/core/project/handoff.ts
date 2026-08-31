@@ -27,6 +27,8 @@ export function applyHandoffReceipt(intent: UserIntent, receipt: HandoffReceipt)
   if (intent.payload.harness !== receipt.harness) return intent;
   const state = receipt.status === 'ACCEPTED'
     ? 'accepted'
+    : receipt.status === 'CANCELLED'
+      ? 'cancelled'
     : receipt.status === 'REJECTED'
       ? 'rejected'
       : 'failed';

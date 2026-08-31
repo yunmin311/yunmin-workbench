@@ -26,6 +26,7 @@ interface PendingRequest {
 export interface CodexAdapterOptions {
   command?: string;
   args?: string[];
+  ephemeralDispatch?: boolean;
 }
 
 function unavailableCapabilities(reason: string): HarnessCapabilities {
@@ -57,10 +58,12 @@ export class CodexAppServerAdapter {
   private closing = false;
   private readonly command: string;
   private readonly args: string[];
+  private readonly ephemeralDispatch: boolean;
 
   constructor(options: CodexAdapterOptions = {}) {
     this.command = options.command ?? 'codex';
     this.args = options.args ?? ['app-server', '--stdio'];
+    this.ephemeralDispatch = options.ephemeralDispatch ?? false;
   }
 
   private ensureProcess(): ChildProcessWithoutNullStreams {
@@ -238,7 +241,7 @@ export class CodexAppServerAdapter {
     onThreadStarted?: (threadId: string) => void,
   ): Promise<HandoffReceipt> {
     try {
-      const { threadId } = await this.startThread(cwd, false);
+      const { threadId } = await this.startThread(cwd, this.ephemeralDispatch);
       onThreadStarted?.(threadId);
       const response = await this.request('turn/start', {
         threadId,

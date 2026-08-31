@@ -16,6 +16,10 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     return;
   }
   if (message.method === 'thread/start') {
+    if (process.env.FAKE_MODE === 'require-ephemeral-dispatch' && message.params?.ephemeral !== true) {
+      process.stdout.write(`${JSON.stringify({ id: message.id, error: { code: -32602, message: 'dispatch was not ephemeral' } })}\n`);
+      return;
+    }
     threads += 1;
     process.stdout.write(`${JSON.stringify({ id: message.id, result: { thread: { id: `fake-thread-${threads}` } } })}\n`);
     if (process.env.FAKE_MODE === 'die-after-thread-start') {

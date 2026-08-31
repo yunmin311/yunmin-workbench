@@ -90,7 +90,7 @@ export interface RuntimeSession {
 // Workbench emitting an Intent does NOT mean the external runtime changed.
 // Only an Adapter/Runtime receipt may update the projection.
 
-export type IntentState = 'draft' | 'dispatched' | 'accepted' | 'rejected' | 'failed';
+export type IntentState = 'draft' | 'dispatched' | 'accepted' | 'rejected' | 'failed' | 'cancelled';
 
 export interface IntentReceipt {
   at: string;
@@ -292,7 +292,7 @@ export interface HarnessCapabilities {
 export interface HandoffReceipt {
   intentId: string;
   harness: 'codex' | 'claude' | 'deepseek';
-  status: 'ACCEPTED' | 'REJECTED' | 'FAILED';
+  status: 'ACCEPTED' | 'REJECTED' | 'FAILED' | 'CANCELLED';
   at: string;
   runtimeRef?: string;
   turnRef?: string;
@@ -305,6 +305,7 @@ export type ActivityKind =
   | 'handoff-dispatched'
   | 'handoff-accepted'
   | 'handoff-failed'
+  | 'handoff-cancelled'
   | 'session-started'
   | 'turn-started'
   | 'agent-response'
@@ -315,7 +316,8 @@ export type ActivityKind =
   | 'turn-error'
   | 'approval-required'
   | 'needs-user-input'
-  | 'harness-error';
+  | 'harness-error'
+  | 'process-cancelled';
 
 export type ExplicitAttentionKind = 'approval-required' | 'needs-user-input' | 'execution-review';
 
