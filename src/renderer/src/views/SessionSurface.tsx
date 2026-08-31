@@ -122,6 +122,12 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
     event.projectId === projectId && event.conversationKey === conversation.key,
   );
   const included = staging.filter((item) => item.state === 'included').length;
+  const pinned = staging.filter((item) => item.state === 'included' && item.pinned).length;
+  const attentionItems = useWorkbench((s) => s.attentionItems);
+  const sessionAttention = attentionItems.filter(
+    (item) => item.conversationKey === conversation.key || (!item.conversationKey && item.projectId === projectId),
+  );
+  const harnessLabel = runtime?.binding ? `${runtime.binding.harness} · ${runtime.binding.cwd ? runtime.binding.cwd.split(/[\\/]/).pop() : runtime.binding.machine}` : null;
 
   return (
     <div className="session-surface">
@@ -136,6 +142,13 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
           <button onClick={() => window.dispatchEvent(new CustomEvent('workbench:open-inspector', { detail: 'evidence' }))}>Evidence</button>
         </div>
       </header>
+
+      {sessionAttention.length > 0 && (
+        <div className="session-attention-strip" role="status" aria-label={`${sessionAttention.length} attention items`}>
+          <span><strong>{sessionAttention[0].kind === 'approval-required' ? 'Approval' : sessionAttention[0].kind === 'needs-user-input' ? 'Needs input' : sessionAttention[0].level === 'alert' ? 'Attention' : 'Review'} · {sessionAttention.length}</strong> — {sessionAttention[0].title}</span>
+          <button onClick={() => window.dispatchEvent(new CustomEvent('workbench:open-attention'))}>Review</button>
+        </div>
+      )}
 
       <section className="session-activity" aria-label="Structured runtime activity">
         {activityProblem && <p className="surface-alert">{activityProblem}</p>}
@@ -156,18 +169,46 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
           value={taskSummary}
           onChange={(event) => setTaskSummary(event.target.value)}
           rows={2}
-          placeholder="Prepare the next handoff intent…"
+          placeholder="Prepare the next handoff intent… (Add Context → Freeze → Send)"
         />
         <div className="composer-row">
           <div className="composer-context">
-            <button onClick={() => setView('context')}>{included} included</button>
-            <button className={`validity-${packetValidity.toLowerCase()}`} onClick={() => setView('packet')}>Packet {packetValidity}</button>
+            <button onClick={() => window.dispatchEvent(new CustomEvent('workbench:open-inspector', { detail: 'context' }))} title="Open Context staging drawer">+ Context</button>
+            <button onClick={() => setView('context')} title="Agent will receive these items">
+              {included} included{pinned ? ` · ${pinned} pinned` : ''}
+            </button>
+            <span className="composer-sep" aria-hidden="true" />
+            <button className={`composer-packet-status validity-${packetValidity.toLowerCase()}`} onClick={() => window.dispatchEvent(new CustomEvent('workbench:open-inspector', { detail: 'packet' }))}>
+              Packet {packetValidity}
+            </button>
             <span>Draft {draftSaveState}</span>
+            {harnessLabel && <span className="composer-harness" title={runtime?.binding.cwd ?? ''}>{harnessLabel}</span>}
           </div>
-          <button className="composer-send" disabled title="No structured follow-up / steer backend is available">
-            Follow up unavailable
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button
+              aria-label="Search History"
+              title="Search History (⌘K → History)"
+              onClick={() => window.dispatchEvent(new CustomEvent('workbench:open-history'))}
+              style={{ padding: '2px 6px', fontSize: 10 }}
+            >
+              History
+            </button>
+            <button
+              aria-label="Search Memory"
+              title="Search Memory (⌘K → Memory)"
+              onClick={() => window.dispatchEvent(new CustomEvent('workbench:open-memory'))}
+              style={{ padding: '2px 6px', fontSize: 10 }}
+            >
+              Memory
+            </button>
+            <button className="composer-send" disabled title="No structured follow-up / steer backend is available">
+              Follow up unavailable
+            </button>
+          </div>
         </div>
+        <p style={{ margin: '6px 2px 0', fontSize: 9, color: 'var(--wb-text-contrast)', opacity: 0.45 }}>
+          Context → Packet: included items + task summary become immutable Agent Input only after Freeze.
+        </p>
       </section>
     </div>
   );

@@ -215,7 +215,9 @@ export function PacketPanel() {
 
   return (
     <div className="panel">
+      <p className="eyebrow">CONTEXT → PACKET · WIDE REVIEW · NOT A PERMANENT COLUMN</p>
       <h2>Task Packet — {conversation.role}</h2>
+      <p className="hint">Packet compiles Context + task summary into immutable Agent Input. Review sources & CURRENT/STALE/INVALID before handoff. Copy ≠ Dispatch.</p>
       <label className="field">
         <span>Task summary（本轮真正要推进的事）</span>
         <textarea value={taskSummary} onChange={(e) => setTaskSummary(e.target.value)} rows={3} placeholder="例：把 INBOX 里 needs-user 项分诊到各对话" />

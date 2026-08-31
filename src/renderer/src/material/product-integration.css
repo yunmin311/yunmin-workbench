@@ -1,0 +1,346 @@
+/* Product/UI Integration — not new IA, only convergence.
+   Uses Material tokens for depth; keeps Session Spine as single truth.
+   Progressive disclosure: L0 Session+composer always, L1 status/summary, L2 drawer/packet/search, L3 provenance.
+*/
+
+:root {
+  /* product spacing scale (4/8 base) */
+  --wb-space-xs: 4px;
+  --wb-space-sm: 8px;
+  --wb-space-md: 12px;
+  --wb-space-lg: 18px;
+  --wb-space-xl: 24px;
+}
+
+/* ——— Session Spine ——— */
+.session-surface {
+  /* Center spine should feel like long-running workspace, not dashboard */
+  max-width: 880px;
+  width: min(880px, calc(100% - 40px));
+  margin: 0 auto;
+}
+.session-header {
+  border-color: var(--wb-border-color);
+  padding: 12px 2px 10px;
+}
+.session-header h1 {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  color: var(--wb-text-contrast);
+}
+.session-path {
+  color: var(--wb-text-contrast);
+  opacity: 0.55;
+  font-size: 9px;
+}
+.session-header-actions button,
+.session-header-actions span {
+  font-size: 9px;
+  color: var(--wb-text-contrast);
+  opacity: 0.7;
+}
+.session-header-actions button:hover {
+  opacity: 1;
+  background: var(--wb-surface-raised);
+}
+
+/* Inline attention strip — L1, only when needed */
+.session-attention-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 6px 0 0;
+  padding: 6px 10px;
+  border: 1px solid var(--wb-border-color);
+  border-left: 3px solid #e0af68;
+  border-radius: 6px;
+  background: var(--wb-surface-raised);
+  font-size: 11px;
+}
+.session-attention-strip strong {
+  color: #e0af68;
+  font-weight: 600;
+}
+.session-attention-strip button {
+  padding: 2px 8px;
+  font-size: 10px;
+  border: 1px solid var(--wb-border-color);
+  background: transparent;
+  color: var(--wb-text-contrast);
+}
+.session-attention-strip button:hover {
+  background: var(--wb-surface-overlay);
+}
+
+/* Activity chronology — improve readability, keep boundary signals */
+.session-activity {
+  padding-top: 10px;
+}
+.activity-boundary {
+  font-size: 9px;
+  letter-spacing: 0.02em;
+  color: var(--wb-text-contrast);
+  opacity: 0.6;
+}
+.activity-card {
+  background: var(--wb-surface-raised);
+  border: 1px solid var(--wb-border-color);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.activity-card:hover {
+  border-color: var(--wb-border-color);
+  background: var(--wb-surface-overlay);
+}
+.activity-card > header {
+  border-bottom: 1px solid var(--wb-border-color);
+  background: transparent;
+}
+.activity-card > p {
+  color: var(--wb-text-contrast);
+  opacity: 0.85;
+}
+.activity-detail {
+  border-top: 1px solid var(--wb-border-color);
+  color: var(--wb-text-contrast);
+  opacity: 0.6;
+}
+.change-card .activity-card-icon {
+  color: #e0af68;
+}
+.activity-card.tool-call-card {
+  /* ordinary tool detail is quieter */
+  opacity: 0.9;
+}
+.activity-card.tool-call-card > p {
+  font-size: 10px;
+}
+
+/* ——— Composer as primary work entry ——— */
+.session-composer {
+  border-color: var(--wb-border-color);
+  background: var(--wb-surface-base);
+  padding: 10px 0 14px;
+}
+.session-composer textarea {
+  background: var(--wb-surface-raised);
+  border: 1px solid var(--wb-border-color);
+  border-radius: 7px 7px 0 0;
+  color: var(--wb-text-contrast);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.session-composer textarea:focus {
+  border-color: var(--wb-border-color);
+  box-shadow: 0 0 0 1px var(--wb-border-color);
+}
+.composer-row {
+  background: var(--wb-surface-raised);
+  border: 1px solid var(--wb-border-color);
+  border-top: 0;
+  border-radius: 0 0 7px 7px;
+}
+.composer-context {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 8.5px;
+  color: var(--wb-text-contrast);
+}
+.composer-context button {
+  padding: 2px 6px;
+  font-size: 9px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--wb-text-contrast);
+  opacity: 0.7;
+}
+.composer-context button:hover {
+  background: var(--wb-surface-overlay);
+  opacity: 1;
+  border-color: var(--wb-border-color);
+}
+.composer-context .composer-sep {
+  width: 1px;
+  height: 12px;
+  background: var(--wb-border-color);
+  opacity: 0.5;
+}
+.composer-harness {
+  font: 8px/1 ui-monospace, monospace;
+  color: var(--wb-text-contrast);
+  opacity: 0.55;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composer-packet-status {
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+}
+.composer-packet-status.validity-current {
+  color: var(--wb-text-contrast);
+  opacity: 0.5;
+  border-color: transparent;
+}
+.composer-packet-status.validity-stale {
+  color: #e0af68;
+  border-color: rgba(224,175,104,0.3);
+  background: rgba(224,175,104,0.08);
+}
+.composer-packet-status.validity-invalid {
+  color: #f7768e;
+  border-color: rgba(247,118,142,0.3);
+  background: rgba(247,118,142,0.08);
+}
+.composer-send {
+  background: var(--wb-surface-raised);
+  border: 1px solid var(--wb-border-color);
+  color: var(--wb-text-contrast);
+  opacity: 0.6;
+  font-size: 9px;
+}
+.composer-send:not(:disabled):hover {
+  background: var(--wb-surface-overlay);
+  opacity: 1;
+}
+
+/* Progressive disclosure: only CURRENT quiet; STALE/INVALID/UNKNOWN remain visible (UNKNOWN = not yet verified) */
+.composer-packet-status.validity-current {
+  display: none;
+}
+.composer-packet-status.validity-unknown {
+  display: inline-flex;
+  color: var(--wb-text-contrast);
+  opacity: 0.4;
+  border-color: var(--wb-border-color);
+  background: transparent;
+}
+.composer-packet-status.validity-stale,
+.composer-packet-status.validity-invalid {
+  display: inline-flex;
+}
+
+/* ——— Context / Packet relationship ——— */
+.context-to-packet {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 12px 0 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--wb-border-color);
+  border-radius: 6px;
+  background: var(--wb-surface-raised);
+  font-size: 11px;
+}
+.context-to-packet span {
+  color: var(--wb-text-contrast);
+  opacity: 0.7;
+}
+.context-to-packet strong {
+  color: var(--wb-text-contrast);
+}
+.packet-preview {
+  background: var(--wb-surface-raised);
+  border: 1px solid var(--wb-border-color);
+  border-radius: var(--wb-radius);
+}
+.packet-preview .agent-input-text {
+  background: var(--wb-surface-base);
+  border: 1px solid var(--wb-border-color);
+  color: var(--wb-text-contrast);
+}
+
+/* History / Memory as integrated search — same surface language */
+.history-panel,
+.memory-panel {
+  background: var(--wb-surface-overlay);
+  backdrop-filter: blur(var(--wb-backdrop-blur));
+  -webkit-backdrop-filter: blur(var(--wb-backdrop-blur));
+  border: 1px solid var(--wb-border-color);
+  box-shadow: var(--wb-elevation);
+}
+.history-layer {
+  backdrop-filter: blur(calc(var(--wb-backdrop-blur) * 0.35));
+}
+
+/* Attention light entry + drawer */
+.attention-trigger.has-items {
+  color: #e0af68 !important;
+  border-color: rgba(224,175,104,0.4) !important;
+}
+.attention-panel {
+  background: var(--wb-surface-overlay);
+  backdrop-filter: blur(var(--wb-backdrop-blur));
+  border: 1px solid var(--wb-border-color);
+}
+
+/* Visual hierarchy: spacing + typography */
+.prototype-app .inspector-pane .panel h2 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--wb-text-contrast);
+}
+.panel h3 {
+  font-size: 12px;
+  color: var(--wb-text-contrast);
+  opacity: 0.8;
+}
+.hint {
+  color: var(--wb-text-contrast);
+  opacity: 0.55;
+  font-size: 11px;
+}
+
+/* Empty / loading / unavailable — consistent */
+.surface-empty,
+.inspector-empty,
+.history-hint {
+  color: var(--wb-text-contrast);
+  opacity: 0.6;
+}
+.surface-empty h1, .inspector-empty strong {
+  color: var(--wb-text-contrast);
+}
+
+/* Focus consistency via material tokens */
+button:focus-visible,
+[cmdk-item][data-selected='true'] {
+  outline: 2px solid var(--wb-border-color);
+  outline-offset: 1px;
+}
+
+/* Island keeps same token language — ensure island root inherits vars */
+#island-root {
+  --wb-surface-base: var(--wb-surface-base);
+}
+
+/* Hide low-value metadata by default — hover or drawer */
+.activity-detail summary {
+  font-size: 9px;
+  opacity: 0.6;
+}
+.session-meta {
+  font-size: 9px;
+  opacity: 0.45;
+}
+
+/* Differentiate Packet wide review from Context drawer */
+.inspector-pane[data-tab="packet"] {
+  width: min(860px, calc(100vw - 20px));
+}
+.inspector-pane[data-tab="packet"] .panel {
+  max-width: none;
+}
+
+/* Ensure STALE/INVALID/approval/error remain prominent even in glass */
+.validity-stale, .validity-invalid, .surface-alert, .packet-alert {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}

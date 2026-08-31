@@ -32,7 +32,7 @@ export function InspectorPane({
 
   return (
     <div className="inspector-layer" role="presentation" onMouseDown={onClose}>
-    <aside className="inspector-pane" aria-label="Workspace inspector" onMouseDown={(event) => event.stopPropagation()}>
+    <aside className="inspector-pane" data-tab={tab} aria-label="Workspace inspector" onMouseDown={(event) => event.stopPropagation()}>
       <div className="inspector-chrome">
         <div className="inspector-tabs" role="tablist" aria-label="Inspector views">
         {(['context', 'packet', 'changes', 'evidence'] as const).map((item) => (

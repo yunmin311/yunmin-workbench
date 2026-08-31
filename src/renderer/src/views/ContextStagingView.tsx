@@ -162,6 +162,11 @@ export function ContextStagingView() {
           {renderItems(boundGovernance)}
         </details>
       )}
+      <div className="context-to-packet" role="note" aria-label="Context to Packet relationship">
+        <span>Context → Packet: <strong>{counts.included} included</strong> will be compiled into Agent Input</span>
+        <button disabled={!conversation} onClick={() => setView('packet')}>Review Packet</button>
+      </div>
+
       {groups.map((group) => {
         const items = workContext.filter((item) => item.state === group.state);
         return (
@@ -179,6 +184,7 @@ export function ContextStagingView() {
       <button className="primary" disabled={!conversation} onClick={() => setView('packet')}>
         → Packet Preview / Freeze
       </button>
+      <p className="hint" style={{ marginTop: 6, fontSize: 10 }}>Packet shows exact Agent Input, sources, and CURRENT/STALE/INVALID. Copy ≠ Dispatch; frozen body is immutable.</p>
     </div>
   );
 }
