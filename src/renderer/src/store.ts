@@ -65,6 +65,7 @@ interface WorkbenchState {
   draftSaveState: DraftSaveState;
   packetValidity: 'CURRENT' | 'STALE' | 'INVALID' | 'UNKNOWN';
   handoffStatus: string;
+  syncIslandAttention: () => void;
   initialize: () => Promise<void>;
   resumeWorkspace: (target?: WorkspaceTargetV1) => void;
   load: (refresh?: boolean) => Promise<void>;
@@ -276,6 +277,12 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   draftSaveState: 'clean',
   packetValidity: 'UNKNOWN',
   handoffStatus: 'IDLE',
+  syncIslandAttention: () => {
+    const items = get().attentionItems;
+    if (window.wb?.syncIslandAttention) {
+      void window.wb.syncIslandAttention(items);
+    }
+  },
 
   initialize: async () => {
     await get().load(true);
@@ -369,6 +376,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
         attentionItems: projectAttention(next),
       };
     });
+    get().syncIslandAttention();
   },
 
   reloadAndRecheck: async () => {
@@ -399,6 +407,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       handoffStatus: 'IDLE',
     });
     set((state) => ({ attentionItems: projectAttention(state) }));
+    get().syncIslandAttention();
     void get().loadGit(projectId);
     scheduleWorkspaceSave(get());
   },
@@ -421,6 +430,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       handoffStatus: 'IDLE',
     });
     set((state) => ({ attentionItems: projectAttention(state) }));
+    get().syncIslandAttention();
     void (async () => {
       const loaded = await window.wb.loadDraft(projectId, conversation.key);
       if (get().projectId !== projectId || get().conversation?.key !== conversation.key) return;
@@ -565,6 +575,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
         frozenDetails: {},
         attentionItems: projectAttention({ ...state, frozen: result.packets }),
       }));
+      get().syncIslandAttention();
     }
   },
 
@@ -725,6 +736,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     };
     });
     scheduleDraftSave(get());
+    get().syncIslandAttention();
     const overlayProjectionChanged = changed.some((sourceRef) => sourceRef.startsWith('overlay:'))
       || checked.errors.some((item) => item.sourceRef.startsWith('overlay:'));
     if (overlayProjectionChanged) await get().load(true);
@@ -776,6 +788,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       const next = { ...state, activity, runtimeSessions };
       return { activity, runtimeSessions, activityProblem: loaded.problem ?? null, attentionItems: projectAttention(next) };
     });
+    get().syncIslandAttention();
   },
 
   ingestActivity: (event) => {
@@ -784,6 +797,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       const runtimeSessions = projectRuntimeSessions(activity);
       return { activity, runtimeSessions, attentionItems: projectAttention({ ...state, activity, runtimeSessions }) };
     });
+    get().syncIslandAttention();
   },
 
   clearActivity: async () => {
@@ -792,6 +806,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       activity: [], runtimeSessions: [], activityProblem: null,
       attentionItems: projectAttention({ ...state, activity: [], runtimeSessions: [] }),
     }));
+    get().syncIslandAttention();
   },
 
   addMemoryContext: async (hit, pinned = false) => {
@@ -888,6 +903,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
           attentionProblem: null,
         };
       });
+      get().syncIslandAttention();
     } catch (error) {
       set({ attentionProblem: `Attention dismissal was not saved: ${String(error)}` });
     }

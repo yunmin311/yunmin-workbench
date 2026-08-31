@@ -24,6 +24,7 @@ export default function App() {
   const initialize = useWorkbench((state) => state.initialize);
   const reloadAndRecheck = useWorkbench((state) => state.reloadAndRecheck);
   const setView = useWorkbench((state) => state.setView);
+  const syncIslandAttention = useWorkbench((state) => state.syncIslandAttention);
   const [sessionPickerOpen, setSessionPickerOpen] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -42,14 +43,68 @@ export default function App() {
     });
     const offActivity = window.wb.onActivityChanged((event) => useWorkbench.getState().ingestActivity(event));
     const offActivityCleared = window.wb.onActivityCleared(() => void useWorkbench.getState().loadActivity());
+    const offIslandSourceSelected = window.wb.onIslandSourceSelected((target) => {
+      const state = useWorkbench.getState();
+      const snap = state.snapshot;
+      if (!snap) {
+        window.dispatchEvent(new CustomEvent('workbench:island-target-unavailable', { detail: target }));
+        return;
+      }
+      // Strict identity: no guessing. Both project and conversation must exist verbatim in snapshot.
+      let resolvedProject = false;
+      let resolvedConversation = false;
+      if (target.projectId) {
+        resolvedProject = snap.projects.some((p) => p.projectId === target.projectId);
+        if (!resolvedProject) {
+          window.dispatchEvent(new CustomEvent('workbench:island-target-unavailable', { detail: target }));
+          return;
+        }
+        if (state.projectId !== target.projectId) state.selectProject(target.projectId);
+      }
+      if (target.conversationKey) {
+        const exactConversation = snap.conversations.find((candidate) =>
+          candidate.key === target.conversationKey
+            && (!target.projectId || candidate.project === target.projectId));
+        if (!exactConversation) {
+          window.dispatchEvent(new CustomEvent('workbench:island-target-unavailable', { detail: target }));
+          // still ensure project view if project was resolvable
+          if (resolvedProject) state.setView('control');
+          return;
+        }
+        state.selectConversation(exactConversation);
+        resolvedConversation = true;
+      }
+      if (resolvedProject || resolvedConversation) state.setView('control');
+      // Only emit focus if at least one identity was verifiably resolved; source/session alone is unavailable
+      if (!resolvedProject && !resolvedConversation) {
+        // Covers source-only or session-only stale targets: already dispatched unavailable or will dispatch now
+        if (!(target.sourceRef && !target.projectId && !target.conversationKey)) {
+          // Already handled for project/conversation failures; ensure unavailable for pure session case
+          window.dispatchEvent(new CustomEvent('workbench:island-target-unavailable', { detail: target }));
+        } else {
+          window.dispatchEvent(new CustomEvent('workbench:island-target-unavailable', { detail: target }));
+        }
+        return;
+      }
+      if (target.eventRef || target.sessionRef) {
+        setTimeout(() => window.dispatchEvent(new CustomEvent('workbench:focus-attention-source', {
+          detail: { eventRef: target.eventRef, sessionRef: target.sessionRef, sourceRef: target.sourceRef },
+        })), 30);
+      }
+    });
     return () => {
       offOverlay();
       offFocus();
       offActivity();
       offActivityCleared();
+      offIslandSourceSelected();
       if (focusTimer) clearTimeout(focusTimer);
     };
   }, [initialize]);
+
+  useEffect(() => {
+    syncIslandAttention();
+  }, [syncIslandAttention]);
 
   useEffect(() => {
     if (view === 'context' || view === 'packet') setInspectorTab(view);

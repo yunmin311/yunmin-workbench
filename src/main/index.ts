@@ -45,12 +45,21 @@ import { applyProfileImportAtomic, exportProfileBundle, readPortableState, write
 import { parseProfileBundle, previewProfileImport, type ProfileImportPreview } from '../core/portability/bundle';
 import { projectFileSourceRef } from '../core/project/sourceIdentity';
 import { MemoryService } from './memory/memoryService';
+import {
+  closeIsland,
+  moveIslandBy,
+  saveIslandPosition,
+  setIslandEnabled,
+  toggleIslandExpansion,
+  updateIslandSnapshot,
+} from './island';
 
 // test hook: Playwright E2E redirects Workbench-owned state to a temp dir
 if (process.env.WB_STATE_DIR) app.setPath('userData', process.env.WB_STATE_DIR);
 
 const codexAdapter = new CodexAppServerAdapter();
 const handoffRequests = new HandoffDispatchRegistry<HandoffReceipt>();
+const windowRoles = new WeakMap<BrowserWindow, { role: 'main' | 'island' }>();
 
 /** Workbench-owned state: frozen packets live here, never in the overlay. */
 function stateDir(): string {
@@ -720,6 +729,68 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     for (const entry of overlayWatchers) armOverlayWatcher(entry);
   });
 
+  ipcMain.handle('island:enable', async (_event, enabled: unknown) => {
+    const parsed = z.boolean().parse(enabled);
+    await setIslandEnabled(stateDir(), parsed);
+  });
+
+  ipcMain.handle('island:toggle-expansion', async () => {
+    return toggleIslandExpansion(stateDir());
+  });
+
+  ipcMain.handle('island:save-position', async (_event, raw: unknown) => {
+    const parsed = z.object({ x: z.number().int(), y: z.number().int() }).parse(raw);
+    await saveIslandPosition(stateDir(), parsed.x, parsed.y);
+  });
+
+  ipcMain.on('island:move', (_event, raw: unknown) => {
+    const parsed = z.object({ dx: z.number(), dy: z.number() }).parse(raw);
+    moveIslandBy(parsed.dx, parsed.dy, stateDir());
+  });
+
+  ipcMain.on('island:open-source', (_event, raw: unknown) => {
+    const target = z.object({
+      projectId: z.string().optional(),
+      conversationKey: z.string().optional(),
+      sessionRef: z.string().optional(),
+      sourceRef: z.string(),
+      eventRef: z.string().optional(),
+    }).parse(raw);
+
+    const mainWindow = BrowserWindow.getAllWindows().find((w) => windowRoles.get(w)?.role === 'main');
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+
+    mainWindow.focus();
+    mainWindow.webContents.send('island:source-selected', target);
+  });
+
+  ipcMain.on('island:sync-attention', (_event, rawItems: unknown) => {
+    try {
+      const items = z.array(
+        z.object({
+          id: z.string(),
+          kind: z.enum([
+            'approval-required', 'needs-user-input', 'receipt-failed', 'runtime-error',
+            'packet-stale', 'packet-invalid', 'gate-attention', 'execution-review',
+          ]),
+          level: z.enum(['alert', 'action', 'review']),
+          title: z.string(),
+          summary: z.string(),
+          projectId: z.string().optional(),
+          conversationKey: z.string().optional(),
+          sessionRef: z.string().optional(),
+          sourceRef: z.string(),
+          eventRef: z.string().optional(),
+          observedAt: z.string(),
+          verification: z.enum(['VERIFIED', 'OBSERVED', 'INFERRED', 'UNKNOWN']),
+        }),
+      ).parse(rawItems);
+      void updateIslandSnapshot(stateDir(), items).catch((err) => console.warn('[Island] sync failed', err));
+    } catch (err) {
+      console.warn('[Island] invalid attention payload', err);
+    }
+  });
+
   return { refresh };
 }
 
@@ -757,9 +828,9 @@ function attachOverlayWatch(getRoot: () => string | undefined, win: BrowserWindo
   });
 }
 
-async function createWindow(refresh: () => Promise<OverlaySnapshot>): Promise<void> {
+async function createWindow(refresh: () => Promise<OverlaySnapshot>): Promise<BrowserWindow> {
   const savedWindow = await readWindowState(stateDir());
-  const display = savedWindow?.x !== undefined && savedWindow.y !== undefined
+  const display = savedWindow?.x !== undefined && savedWindow?.y !== undefined
     ? screen.getDisplayNearestPoint({ x: savedWindow.x, y: savedWindow.y })
     : screen.getPrimaryDisplay();
   const windowState = normalizeWindowState(savedWindow, display.workArea);
@@ -803,11 +874,16 @@ async function createWindow(refresh: () => Promise<OverlaySnapshot>): Promise<vo
   win.on('move', saveWindow);
   win.on('maximize', saveWindow);
   win.on('unmaximize', saveWindow);
+  win.on('closed', () => {
+    closeIsland();
+  });
   if (process.env.ELECTRON_RENDERER_URL) {
     void win.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {
     void win.loadFile(join(__dirname, '../renderer/index.html'));
   }
+  windowRoles.set(win, { role: 'main' });
+  return win;
 }
 
 app.on('window-all-closed', () => {
@@ -821,11 +897,11 @@ if (!gotSingleInstanceLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    const win = BrowserWindow.getAllWindows()[0];
-    if (!win) return;
-    if (win.isMinimized()) win.restore();
-    win.show();
-    win.focus();
+    const mainWindow = BrowserWindow.getAllWindows().find((w) => windowRoles.get(w)?.role === 'main');
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
   });
 
   app.whenReady().then(() => {

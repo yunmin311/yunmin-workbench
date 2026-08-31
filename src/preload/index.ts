@@ -114,6 +114,25 @@ const api = {
     ipcRenderer.on('app:focus', listener);
     return () => ipcRenderer.removeListener('app:focus', listener);
   },
+  onIslandSourceSelected: (cb: (target: {
+    projectId?: string;
+    conversationKey?: string;
+    sessionRef?: string;
+    sourceRef: string;
+    eventRef?: string;
+  }) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, target: unknown) => cb(target as {
+      projectId?: string;
+      conversationKey?: string;
+      sessionRef?: string;
+      sourceRef: string;
+      eventRef?: string;
+    });
+    ipcRenderer.on('island:source-selected', listener);
+    return () => ipcRenderer.removeListener('island:source-selected', listener);
+  },
+  syncIslandAttention: (items: unknown): void =>
+    ipcRenderer.send('island:sync-attention', items),
 };
 
 export type WorkbenchApi = typeof api;

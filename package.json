@@ -10,7 +10,7 @@
   },
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "build": "electron-vite build && vite build --config vite.island.config.ts && node scripts/copy-island.mjs",
     "start": "electron-vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
