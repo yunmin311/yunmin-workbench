@@ -82,10 +82,10 @@ concurrency 8。损坏历史不能吞合法版本，损坏后仍能 freeze 新�
 
 | 层 | 位置 | 说明 |
 |---|---|---|
-| `src/core` | 纯函数零 IO：parse（对话登记/项目适配/INBOX/记忆索引/机器档案/Harness Manifest）、project（Canvas+dagre / Staging / Packet 编译·Freeze·Validity / Activity / Binding / Draft）；Canvas 区分 membership/mount 结构关系与 execution/handoff/data-context 真实流 | Vitest 直测 |
+| `src/core` | 纯函数零 IO：parse（对话登记/项目适配/INBOX/记忆索引/机器档案/Harness Manifest）、project（Canvas+dagre / Staging / Packet 编译·Freeze·Validity / Activity / Binding / Draft）、attention（显式事件/状态 → bounded projection）；Canvas 区分 membership/mount 结构关系与 execution/handoff/data-context 真实流 | Vitest 直测 |
 | `src/core/history` | Claude Code / Codex parser、Harness 原生 identity 命名空间、bounded message excerpt 与 lexical Search 合同；cwd / filename / title 只作 observed metadata | Vitest 直测 |
 | `src/main/adapters` | `overlaySource.ts`（只读 Overlay + 发现规则 + 文件指纹 + 记忆正文懒加载）、`gitFacts.ts`（simple-git 只读 remote/branch/HEAD/status）、`projectFiles.ts`（containment/traversal 保护）、`codexAppServer.ts` | 只读外部事实 / Harness 协议 |
-| `src/main` | IPC；chokidar 监听 Overlay canonical 文件 → `overlay:changed` 失效通知；History 按文件 byte watermark 增量读取，变化文件先核对旧长度范围的完整 hash，截断/替换/删除后失效重建；History index、Frozen Packet / Draft / Workspace / Activity / Window state 落 `userData` | 只写 Workbench 自有状态 |
+| `src/main` | IPC；chokidar 监听 Overlay canonical 文件 → `overlay:changed` 失效通知；History 按文件 byte watermark 增量读取，变化文件先核对旧长度范围的完整 hash，截断/替换/删除后失效重建；History index、Frozen Packet / Draft / Workspace / Activity / Window / Attention dismissal state 落 `userData` | 只写 Workbench 自有状态 |
 | `src/renderer` | React + @xyflow/react + zustand；Session Spine + 按需 Context/Packet/Changes/Evidence drawer | 投影渲染，拖动不改外部事实 |
 
 ## 环境
@@ -134,7 +134,7 @@ profile 的 `paths.governance_repo` 与 `project_roots` 按实际生成的路径
 
 1. **CLEAN-ROOM GREEN** — 全新 clone → install → typecheck → build → Vitest → Playwright
 2. **History / Search Phase 1（已完成）** — 只读 Claude Code + Codex 发现、parser、per-file watermark index、lexical Search、Command Palette / Session 入口与详情；index 在 Electron `userData/state/history`，parser problem 显式；History 不成为 live Runtime truth，也不自动进入 Context
-3. **Attention（下一阶段，未开始）** — 只依据明确 ActivityEvent / runtime / session ref，不用 cwd/provider pairing 猜 identity
+3. **Attention Phase 1（已完成）** — 纯 reducer 投影 approval / needs-input / failed receipt / runtime-harness error / STALE-INVALID packet or gate / explicit review-worthy completion；显式 ref 跳转、重复事实收敛、恢复后消退；dismissal 仅在 `userData/state/attention`，不用 cwd/provider pairing 猜 identity
 
 其后才是 Portability（project-root rebinding、Profile Bundle、activity durability、
 真实大数据量后的 virtualization / SQLite WAL）。

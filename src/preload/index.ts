@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
-import type { ActivityEvent, ContextItem, FrozenPacket, FrozenPacketSummary, GitFacts, HandoffReceipt, HarnessCapabilities, OverlaySnapshot, SourceFingerprint, TaskPacket } from '../core/types';
+import type { ActivityEvent, AttentionLocalState, ContextItem, FrozenPacket, FrozenPacketSummary, GitFacts, HandoffReceipt, HarnessCapabilities, OverlaySnapshot, SourceFingerprint, TaskPacket } from '../core/types';
 import type { WorkbenchDraftV1 } from '../core/project/draft';
 import type { WorkspaceSessionV1 } from '../core/project/workspaceSession';
 import type { HistoryCatalogResult, HistoryQuery, HistorySearchResult, HistorySessionDetail } from '../core/history/types';
@@ -69,6 +69,9 @@ const api = {
   loadActivity: (): Promise<{ events: ActivityEvent[]; problem?: string }> =>
     ipcRenderer.invoke('activity:load'),
   clearActivity: (): Promise<void> => ipcRenderer.invoke('activity:clear'),
+  loadAttentionLocal: (): Promise<AttentionLocalState> => ipcRenderer.invoke('attention:local:load'),
+  dismissAttention: (itemId: string, observedAt: string): Promise<void> =>
+    ipcRenderer.invoke('attention:dismiss', { itemId, observedAt }),
   listHistory: (): Promise<HistoryCatalogResult> => ipcRenderer.invoke('history:list'),
   searchHistory: (query: HistoryQuery): Promise<HistorySearchResult> => ipcRenderer.invoke('history:search', query),
   readHistoryDetail: (sessionId: string): Promise<HistorySessionDetail | null> => ipcRenderer.invoke('history:detail', sessionId),

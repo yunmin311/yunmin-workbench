@@ -283,7 +283,12 @@ export type ActivityKind =
   | 'tool-completed'
   | 'file-change'
   | 'turn-completed'
-  | 'turn-error';
+  | 'turn-error'
+  | 'approval-required'
+  | 'needs-user-input'
+  | 'harness-error';
+
+export type ExplicitAttentionKind = 'approval-required' | 'needs-user-input' | 'execution-review';
 
 /** Workbench-owned observation history. It projects protocol facts; it is not external runtime truth. */
 export interface ActivityEvent {
@@ -296,7 +301,78 @@ export interface ActivityEvent {
   turnRef?: string;
   binding?: RuntimeBinding;
   runtimeState?: RuntimeState;
+  /** Stable key supplied by the source for repeated/resolved attention facts. */
+  attentionKey?: string;
+  /** Only explicit source events may request review; normal completion is silent. */
+  attentionKind?: ExplicitAttentionKind;
+  attentionStatus?: 'active' | 'resolved';
   observed: Observation;
+}
+
+// ===== Attention projection (Workbench-derived, never a Task/SOT) =====
+
+export type AttentionKind =
+  | 'approval-required'
+  | 'needs-user-input'
+  | 'receipt-failed'
+  | 'runtime-error'
+  | 'packet-stale'
+  | 'packet-invalid'
+  | 'gate-attention'
+  | 'execution-review';
+
+/** Lightweight EigenFlux-style signal level, not TaskState or RuntimeState. */
+export type AttentionLevel = 'alert' | 'action' | 'review';
+
+export interface AttentionItem {
+  id: string;
+  kind: AttentionKind;
+  level: AttentionLevel;
+  title: string;
+  summary: string;
+  projectId?: string;
+  conversationKey?: string;
+  sessionRef?: string;
+  sourceRef: string;
+  eventRef?: string;
+  observedAt: string;
+  verification: ObservationVerification;
+}
+
+export interface AttentionPacketFact {
+  key: string;
+  projectId: string;
+  conversationKey?: string;
+  validity: PacketValidity | 'UNKNOWN';
+  packetRef: string;
+  observed: Observation;
+}
+
+export type AttentionGateStatus =
+  | 'approval-required'
+  | 'needs-user-input'
+  | 'failed'
+  | 'stale'
+  | 'invalid'
+  | 'current'
+  | 'resolved'
+  | 'unknown';
+
+export interface AttentionGateFact {
+  key: string;
+  projectId: string;
+  conversationKey?: string;
+  sessionRef?: string;
+  status: AttentionGateStatus;
+  title: string;
+  summary: string;
+  observed: Observation;
+}
+
+export interface AttentionLocalState {
+  schemaVersion: 1;
+  /** item id -> exact observed version dismissed by the user */
+  dismissed: Record<string, string>;
 }
 
 // ===== 4. Frozen Packet Validity =====

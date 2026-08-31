@@ -42,7 +42,7 @@ function FrozenRow({
   };
 
   return (
-    <li className="frozen-row">
+    <li className="frozen-row" data-source-ref={`workbench-frozen-packet:${summary.projectId}:${summary.conversationKey}:${summary.version}:${summary.hash}`}>
       <button className="frozen-toggle" aria-expanded={open} onClick={toggle}>
         v{summary.version} · {summary.frozenAt} · {summary.hash.slice(0, 12)} · ≈{summary.roughTokens} tok ·{' '}
         <span className={`validity validity-${validity.toLowerCase()}`}>{validity}</span>
@@ -128,7 +128,6 @@ export function PacketPanel() {
 
   const previewValidity = packet ? checkPacketValidity(packet, currentFingerprints) : 'INVALID';
   const compiledText = useMemo(() => (packet ? renderAgentInput(packet) : ''), [packet]);
-
   useEffect(() => {
     setPacketValidity(packet ? previewValidity : 'UNKNOWN');
   }, [packet, previewValidity, setPacketValidity]);

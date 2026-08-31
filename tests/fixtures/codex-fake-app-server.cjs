@@ -27,6 +27,16 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
   if (dying) return;
   if (message.method === 'turn/start') {
     process.stdout.write(`${JSON.stringify({ id: message.id, result: { turn: { id: `fake-turn-${message.params?.threadId ?? 'x'}` } } })}\n`);
+    if (process.env.FAKE_MODE === 'die-after-turn-start') {
+      setTimeout(() => process.exit(0), 30);
+    }
+    if (process.env.FAKE_MODE === 'server-requests') {
+      process.stdout.write(`${JSON.stringify({
+        method: 'item/commandExecution/requestApproval',
+        id: 'approval-1',
+        params: { threadId: message.params?.threadId, turnId: 'fake-turn', itemId: 'item-1', reason: 'network' },
+      })}\n`);
+    }
     return;
   }
   process.stdout.write(`${JSON.stringify({ id: message.id, result: {} })}\n`);

@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import type { ActivityEvent } from '../../../core/types';
 import { useWorkbench } from '../store';
 
@@ -13,11 +14,15 @@ const ACTIVITY_LABEL: Record<ActivityEvent['kind'], string> = {
   'file-change': 'File changed',
   'turn-completed': 'Turn completed',
   'turn-error': 'Turn failed',
+  'approval-required': 'Approval required',
+  'needs-user-input': 'User input needed',
+  'harness-error': 'Harness error',
 };
 
 const boundaryKinds = new Set<ActivityEvent['kind']>([
   'handoff-dispatched', 'handoff-accepted', 'handoff-failed',
   'session-started', 'turn-started', 'turn-completed', 'turn-error',
+  'approval-required', 'needs-user-input', 'harness-error',
 ]);
 
 function ActivityCard({ event }: { event: ActivityEvent }) {
@@ -28,7 +33,7 @@ function ActivityCard({ event }: { event: ActivityEvent }) {
 
   if (isBoundary) {
     return (
-      <li className={`activity-boundary activity-kind-${event.kind}`}>
+      <li className={`activity-boundary activity-kind-${event.kind}`} data-event-ref={event.id} data-session-ref={event.runtimeRef} data-source-ref={event.observed.sourceRef}>
         <span><i />{ACTIVITY_LABEL[event.kind]}</span>
         <p>{event.summary}</p>
         <time>{new Date(event.observed.observedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
@@ -37,7 +42,7 @@ function ActivityCard({ event }: { event: ActivityEvent }) {
   }
 
   return (
-    <li className={`activity-card activity-kind-${event.kind} ${isTool ? 'tool-call-card' : ''} ${isChange ? 'change-card' : ''} ${isResponse ? 'response-card' : ''}`}>
+    <li className={`activity-card activity-kind-${event.kind} ${isTool ? 'tool-call-card' : ''} ${isChange ? 'change-card' : ''} ${isResponse ? 'response-card' : ''}`} data-event-ref={event.id} data-session-ref={event.runtimeRef} data-source-ref={event.observed.sourceRef}>
       <header>
         <span className="activity-card-icon" aria-hidden="true">{isTool ? '›_' : isChange ? '±' : 'A'}</span>
         <strong>{ACTIVITY_LABEL[event.kind]}</strong>
@@ -70,6 +75,24 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
   const setTaskSummary = useWorkbench((state) => state.setTaskSummary);
   const setView = useWorkbench((state) => state.setView);
   const clearActivity = useWorkbench((state) => state.clearActivity);
+
+  useEffect(() => {
+    const focusSource = (rawEvent: Event) => {
+      const detail = (rawEvent as CustomEvent<{ eventRef?: string; sessionRef?: string; sourceRef: string }>).detail;
+      setTimeout(() => {
+        const candidates = [...document.querySelectorAll<HTMLElement>('[data-event-ref], [data-session-ref], [data-source-ref]')];
+        const target = candidates.find((node) => Boolean(detail.eventRef) && node.dataset.eventRef === detail.eventRef)
+          ?? candidates.find((node) => Boolean(detail.sessionRef) && node.dataset.sessionRef === detail.sessionRef)
+          ?? candidates.find((node) => node.dataset.sourceRef === detail.sourceRef);
+        if (!target) return;
+        target.scrollIntoView({ block: 'center' });
+        target.classList.add('attention-source-focus');
+        setTimeout(() => target.classList.remove('attention-source-focus'), 1_800);
+      }, 80);
+    };
+    window.addEventListener('workbench:focus-attention-source', focusSource);
+    return () => window.removeEventListener('workbench:focus-attention-source', focusSource);
+  }, []);
 
   if (!projectId) {
     return (

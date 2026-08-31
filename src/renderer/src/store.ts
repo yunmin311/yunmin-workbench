@@ -6,6 +6,10 @@ import {
 } from '../../core/project/draft';
 import { buildStaging, createManualContext } from '../../core/project/staging';
 import { orderActivity, projectRuntimeSessions } from '../../core/project/activity';
+import { applyAttentionLocalState, reduceAttention } from '../../core/attention/reducer';
+import { checkPacketValidity } from '../../core/project/packet';
+import { sha256 } from '@noble/hashes/sha256';
+import { bytesToHex } from '@noble/hashes/utils';
 import { overlayFileSourceRef, projectFileSourceRef } from '../../core/project/sourceIdentity';
 import {
   resolveWorkspaceTarget,
@@ -23,6 +27,8 @@ import type {
   OverlaySnapshot,
   SourceFingerprint,
   RuntimeSession,
+  AttentionItem,
+  AttentionLocalState,
 } from '../../core/types';
 
 export type View = 'projects' | 'control' | 'canvas' | 'context' | 'packet';
@@ -52,6 +58,9 @@ interface WorkbenchState {
   activity: ActivityEvent[];
   runtimeSessions: RuntimeSession[];
   activityProblem: string | null;
+  attentionItems: AttentionItem[];
+  attentionLocal: AttentionLocalState;
+  attentionProblem: string | null;
   draftSaveState: DraftSaveState;
   packetValidity: 'CURRENT' | 'STALE' | 'INVALID' | 'UNKNOWN';
   handoffStatus: string;
@@ -77,6 +86,8 @@ interface WorkbenchState {
   loadActivity: () => Promise<void>;
   ingestActivity: (event: ActivityEvent) => void;
   clearActivity: () => Promise<void>;
+  loadAttentionLocal: () => Promise<void>;
+  dismissAttention: (item: AttentionItem) => Promise<void>;
   setPacketValidity: (validity: WorkbenchState['packetValidity']) => void;
   setHandoffStatus: (status: string) => void;
 }
@@ -89,6 +100,47 @@ const EMPTY_WORKSPACE_SESSION: WorkspaceSessionV1 = {
   last: null,
   recent: [],
 };
+
+const EMPTY_ATTENTION_LOCAL: AttentionLocalState = { schemaVersion: 1, dismissed: {} };
+
+type AttentionProjectionSource = Pick<
+  WorkbenchState,
+  'activity' | 'runtimeSessions' | 'attentionLocal' | 'frozen' | 'snapshot'
+    | 'recheckedSourceRefs' | 'recheckedFingerprints' | 'projectFingerprints'
+>;
+
+function projectAttention(state: AttentionProjectionSource): AttentionItem[] {
+  const current = new Map(state.snapshot?.sourceFingerprints.map((item) => [item.sourceRef, item.sha256]) ?? []);
+  for (const sourceRef of state.recheckedSourceRefs) current.delete(sourceRef);
+  for (const item of state.recheckedFingerprints) current.set(item.sourceRef, item.sha256);
+  for (const item of state.projectFingerprints) current.set(item.sourceRef, item.sha256);
+  const packetFacts = state.frozen.map((packet) => {
+    const validity = checkPacketValidity(packet, [...current].map(([sourceRef, sha256]) => ({ sourceRef, sha256 })));
+    const dependencyVersion = packet.sourceFingerprints
+      .map((item) => `${item.sourceRef}=${current.get(item.sourceRef) ?? 'MISSING'}`)
+      .sort()
+      .join('\n');
+    const versionHash = bytesToHex(sha256(new TextEncoder().encode(dependencyVersion)));
+    return {
+      key: `${packet.hash}:${validity}:${versionHash}`,
+      projectId: packet.projectId,
+      conversationKey: packet.conversationKey,
+      validity,
+      packetRef: `v${packet.version}:${packet.hash}`,
+      observed: {
+        source: 'process' as const,
+        sourceRef: `workbench-frozen-packet:${packet.projectId}:${packet.conversationKey}:${packet.version}:${packet.hash}`,
+        observedAt: new Date().toISOString(),
+        verification: 'VERIFIED' as const,
+      },
+    };
+  });
+  return applyAttentionLocalState(reduceAttention({
+    activity: state.activity,
+    runtimeSessions: state.runtimeSessions,
+    packetFacts,
+  }), state.attentionLocal);
+}
 
 function scheduleWorkspaceSave(state: WorkbenchState): void {
   if (!state.projectId) return;
@@ -177,6 +229,9 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   activity: [],
   runtimeSessions: [],
   activityProblem: null,
+  attentionItems: [],
+  attentionLocal: EMPTY_ATTENTION_LOCAL,
+  attentionProblem: null,
   draftSaveState: 'clean',
   packetValidity: 'UNKNOWN',
   handoffStatus: 'IDLE',
@@ -184,6 +239,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   initialize: async () => {
     await get().load(true);
     await get().loadActivity();
+    await get().loadAttentionLocal();
     const loaded = await window.wb.loadWorkspaceSession();
     set({
       workspaceSession: loaded.session ?? EMPTY_WORKSPACE_SESSION,
@@ -244,14 +300,18 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
           staging = fresh;
         }
       }
+      const recheckedSourceRefs = refresh ? [] : state.recheckedSourceRefs;
+      const recheckedFingerprints = refresh ? [] : state.recheckedFingerprints;
+      const next = { ...state, snapshot, staging, orphanedDraftDecisionIds, recheckedSourceRefs, recheckedFingerprints };
       return {
         snapshot,
         loading: false,
         memoryBodies: refresh ? {} : state.memoryBodies,
         staging,
         orphanedDraftDecisionIds,
-        recheckedSourceRefs: refresh ? [] : state.recheckedSourceRefs,
-        recheckedFingerprints: refresh ? [] : state.recheckedFingerprints,
+        recheckedSourceRefs,
+        recheckedFingerprints,
+        attentionItems: projectAttention(next),
       };
     });
   },
@@ -283,6 +343,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       packetValidity: 'UNKNOWN',
       handoffStatus: 'IDLE',
     });
+    set((state) => ({ attentionItems: projectAttention(state) }));
     void get().loadGit(projectId);
     scheduleWorkspaceSave(get());
   },
@@ -304,6 +365,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       packetValidity: 'UNKNOWN',
       handoffStatus: 'IDLE',
     });
+    set((state) => ({ attentionItems: projectAttention(state) }));
     void (async () => {
       const loaded = await window.wb.loadDraft(projectId, conversation.key);
       if (get().projectId !== projectId || get().conversation?.key !== conversation.key) return;
@@ -388,7 +450,12 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     if (!projectId || !conversation) return;
     const result = await window.wb.listFrozen(projectId, conversation.key);
     if (get().projectId === projectId && get().conversation?.key === conversation.key) {
-      set({ frozen: result.packets, frozenProblems: result.problems, frozenDetails: {} });
+      set((state) => ({
+        frozen: result.packets,
+        frozenProblems: result.problems,
+        frozenDetails: {},
+        attentionItems: projectAttention({ ...state, frozen: result.packets }),
+      }));
     }
   },
 
@@ -493,14 +560,20 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     const changed = checked.fingerprints
       .filter((item) => prior.has(item.sourceRef) && prior.get(item.sourceRef) !== item.sha256)
       .map((item) => item.sourceRef);
-    set((state) => ({
-      staging: state.staging.map((current) => {
+    set((state) => {
+      const staging = state.staging.map((current) => {
         const refreshed = fileResult.entries.find((entry) => entry.item.id === current.id)?.item;
         return refreshed ? { ...refreshed, state: current.state, pinned: current.pinned } : current;
-      }),
-      projectFingerprints: fileResult.entries.map((entry) => entry.fingerprint),
-      recheckedSourceRefs: checked.checkedSourceRefs,
-      recheckedFingerprints: checked.fingerprints,
+      });
+      const projectFingerprints = fileResult.entries.map((entry) => entry.fingerprint);
+      const recheckedSourceRefs = checked.checkedSourceRefs;
+      const recheckedFingerprints = checked.fingerprints;
+      const next = { ...state, staging, projectFingerprints, recheckedSourceRefs, recheckedFingerprints };
+      return {
+      staging,
+      projectFingerprints,
+      recheckedSourceRefs,
+      recheckedFingerprints,
       sourceChanges: [...new Set([...state.sourceChanges, ...changed])],
       contextMessage: messages([
         changed.length > 0 ? `Source changed: ${changed.join(', ')}` : null,
@@ -512,7 +585,9 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
           ? `Orphaned draft decisions: ${state.orphanedDraftDecisionIds.join(', ')}`
           : null,
       ]),
-    }));
+      attentionItems: projectAttention(next),
+    };
+    });
     scheduleDraftSave(get());
     const overlayProjectionChanged = changed.some((sourceRef) => sourceRef.startsWith('overlay:'))
       || checked.errors.some((item) => item.sourceRef.startsWith('overlay:'));
@@ -560,23 +635,65 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   loadActivity: async () => {
     const loaded = await window.wb.loadActivity();
     const activity = orderActivity(loaded.events);
-    set({
-      activity,
-      runtimeSessions: projectRuntimeSessions(activity),
-      activityProblem: loaded.problem ?? null,
+    set((state) => {
+      const runtimeSessions = projectRuntimeSessions(activity);
+      const next = { ...state, activity, runtimeSessions };
+      return { activity, runtimeSessions, activityProblem: loaded.problem ?? null, attentionItems: projectAttention(next) };
     });
   },
 
   ingestActivity: (event) => {
     set((state) => {
       const activity = orderActivity([...state.activity.filter((item) => item.id !== event.id), event]);
-      return { activity, runtimeSessions: projectRuntimeSessions(activity) };
+      const runtimeSessions = projectRuntimeSessions(activity);
+      return { activity, runtimeSessions, attentionItems: projectAttention({ ...state, activity, runtimeSessions }) };
     });
   },
 
   clearActivity: async () => {
     await window.wb.clearActivity();
-    set({ activity: [], runtimeSessions: [], activityProblem: null });
+    set((state) => ({
+      activity: [], runtimeSessions: [], activityProblem: null,
+      attentionItems: projectAttention({ ...state, activity: [], runtimeSessions: [] }),
+    }));
+  },
+
+  loadAttentionLocal: async () => {
+    try {
+      const attentionLocal = await window.wb.loadAttentionLocal();
+      set((state) => ({
+        attentionLocal,
+        attentionItems: projectAttention({ ...state, attentionLocal }),
+        attentionProblem: null,
+      }));
+    } catch (error) {
+      set({ attentionProblem: `Attention local state unavailable: ${String(error)}` });
+    }
+  },
+
+  dismissAttention: async (item) => {
+    try {
+      await window.wb.dismissAttention(item.id, item.observedAt);
+      set((state) => {
+        const priorObservedAt = state.attentionLocal.dismissed[item.id];
+        const attentionLocal: AttentionLocalState = {
+          schemaVersion: 1,
+          dismissed: {
+            ...state.attentionLocal.dismissed,
+            [item.id]: priorObservedAt && priorObservedAt > item.observedAt
+              ? priorObservedAt
+              : item.observedAt,
+          },
+        };
+        return {
+          attentionLocal,
+          attentionItems: projectAttention({ ...state, attentionLocal }),
+          attentionProblem: null,
+        };
+      });
+    } catch (error) {
+      set({ attentionProblem: `Attention dismissal was not saved: ${String(error)}` });
+    }
   },
 
   setPacketValidity: (packetValidity) => set({ packetValidity }),

@@ -4,6 +4,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, screen, type OpenDialog
 import { watch, type FSWatcher } from 'chokidar';
 import { z } from 'zod';
 import type { ActivityEvent, HandoffReceipt, HarnessCapabilities, OverlaySnapshot, SourceFingerprint, TaskPacket } from '../core/types';
+import { isReviewWorthyCodexFileChange } from '../core/attention/codexSignals';
 import {
   listFrozenPackets,
   readFrozenPacketDetail,
@@ -21,6 +22,7 @@ import { readGitFacts } from './adapters/gitFacts';
 import { createProjectFileContext, fingerprintFileAtRoot, fingerprintProjectFile } from './adapters/projectFiles';
 import { CodexAppServerAdapter } from './adapters/codexAppServer';
 import { appendActivity, clearActivity, readActivity } from './activityPersistence';
+import { dismissAttention, readAttentionLocalState } from './attentionPersistence';
 import { HandoffDispatchRegistry } from './handoffDispatch';
 import {
   clearWorkbenchDraft,
@@ -74,6 +76,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     machine: string;
     cwd: string;
   }>();
+  const reviewWorthyTurns = new Set<string>();
   const history = new HistoryService({ stateDir: stateDir(), roots: defaultHistoryRoots() });
 
   const recordActivity = (event: ActivityEvent): Promise<void> => {
@@ -112,17 +115,71 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       turnRef: turnId,
       observed: observed(`codex-app-server:${event.method}`),
     };
+    if (event.method === 'adapter/error') {
+      const message = typeof params?.message === 'string' ? params.message : 'Codex app-server stopped';
+      void recordActivity({
+        ...base, id: randomUUID(), kind: 'harness-error', runtimeState: 'error',
+        summary: message, attentionKey: `runtime:${threadId}`,
+        observed: {
+          source: 'process', sourceRef: `codex-app-server-process:${threadId}`,
+          observedAt: new Date().toISOString(), verification: 'OBSERVED',
+        },
+      });
+      return;
+    }
+    const requestId = event.id !== undefined ? String(event.id) : undefined;
+    const approvalMethods = new Set([
+      'item/commandExecution/requestApproval',
+      'item/fileChange/requestApproval',
+      'item/permissions/requestApproval',
+      'applyPatchApproval',
+      'execCommandApproval',
+    ]);
+    if (requestId && approvalMethods.has(event.method)) {
+      const reason = typeof params?.reason === 'string' ? `: ${params.reason}` : '';
+      void recordActivity({
+        ...base, id: randomUUID(), kind: 'approval-required',
+        summary: `Codex approval required${reason}`,
+        attentionKey: `codex-request:${requestId}`, attentionStatus: 'active',
+      });
+      return;
+    }
+    if (requestId && (event.method === 'item/tool/requestUserInput' || event.method === 'mcpServer/elicitation/request')) {
+      void recordActivity({
+        ...base, id: randomUUID(), kind: 'needs-user-input',
+        summary: 'Codex requires user input',
+        attentionKey: `codex-request:${requestId}`, attentionStatus: 'active',
+      });
+      return;
+    }
+    if (event.method === 'serverRequest/resolved') {
+      const resolvedRequestId = typeof params?.requestId === 'string' || typeof params?.requestId === 'number'
+        ? String(params.requestId)
+        : undefined;
+      if (resolvedRequestId) {
+        void recordActivity({
+          ...base, id: randomUUID(), kind: 'approval-required',
+          summary: 'Codex request resolved', attentionKey: `codex-request:${resolvedRequestId}`,
+          attentionStatus: 'resolved',
+        });
+      }
+      return;
+    }
     if (event.method === 'turn/started' && turnId) {
       void recordActivity({ ...base, kind: 'turn-started', summary: 'Codex turn started', runtimeState: 'working' });
       return;
     }
     if (event.method === 'turn/completed' && turnId) {
       const failed = turn?.status === 'failed' || Boolean(turn?.error);
+      const reviewKey = `${threadId}:${turnId}`;
+      const reviewWorthy = !failed && reviewWorthyTurns.delete(reviewKey);
       void recordActivity({
         ...base,
         kind: failed ? 'turn-error' : 'turn-completed',
         summary: failed ? 'Codex turn failed' : `Codex turn ${String(turn?.status ?? 'completed')}`,
         runtimeState: failed ? 'error' : 'idle',
+        attentionKey: reviewWorthy ? `execution-review:${reviewKey}` : undefined,
+        attentionKind: reviewWorthy ? 'execution-review' : undefined,
       });
       return;
     }
@@ -131,6 +188,9 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       if (itemType === 'agentMessage' && event.method === 'item/completed') {
         void recordActivity({ ...base, kind: 'agent-response', summary: 'Agent response completed' });
       } else if (itemType === 'fileChange') {
+        if (isReviewWorthyCodexFileChange(event.method, item) && turnId) {
+          reviewWorthyTurns.add(`${threadId}:${turnId}`);
+        }
         void recordActivity({ ...base, kind: 'file-change', summary: `File change ${event.method === 'item/started' ? 'started' : 'completed'}` });
       } else if (['commandExecution', 'mcpToolCall', 'dynamicToolCall'].includes(itemType)) {
         void recordActivity({
@@ -326,6 +386,14 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       if (!win.isDestroyed()) win.webContents.send('activity:cleared');
     }
   });
+  ipcMain.handle('attention:local:load', () => readAttentionLocalState(stateDir()));
+  ipcMain.handle('attention:dismiss', (_event, rawDismissal: unknown) => {
+    const dismissal = z.object({
+      itemId: z.string().min(1).max(4096),
+      observedAt: z.string().datetime(),
+    }).parse(rawDismissal);
+    return dismissAttention(stateDir(), dismissal.itemId, dismissal.observedAt);
+  });
 
   const HistoryQuerySchema = z.object({
     text: z.string().max(10_000),
@@ -365,7 +433,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       const snap = cache?.snapshot ?? (await refresh());
       const cwd = snap.machine?.projectRoots[request.projectId];
       if (!cwd) {
-        return {
+        const receipt = {
           intentId: request.intentId,
           harness: 'codex',
           status: 'REJECTED',
@@ -374,6 +442,16 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
           protocolEvidence: 'Workbench machine projectRoots lookup',
           message: `No project root binding for ${request.projectId}`,
         } satisfies HandoffReceipt;
+        await recordActivity({
+          id: randomUUID(), projectId: request.projectId, conversationKey: request.conversationKey,
+          kind: 'handoff-failed', summary: receipt.message,
+          attentionKey: request.intentId,
+          observed: {
+            source: 'process', sourceRef: `workbench-intent:${request.intentId}`,
+            observedAt: receipt.at, verification: 'VERIFIED',
+          },
+        });
+        return receipt;
       }
       await recordActivity({
         id: randomUUID(), projectId: request.projectId, conversationKey: request.conversationKey,
@@ -384,27 +462,42 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
         },
       });
       const machine = snap.machine?.deviceId ?? 'UNKNOWN';
-      const receipt = await codexAdapter.dispatch(request.intentId, cwd, request.packetText, (threadId) => {
-        runtimeContexts.set(threadId, {
-          projectId: request.projectId,
-          conversationKey: request.conversationKey,
-          machine,
-          cwd,
+      let receipt: HandoffReceipt;
+      try {
+        receipt = await codexAdapter.dispatch(request.intentId, cwd, request.packetText, (threadId) => {
+          runtimeContexts.set(threadId, {
+            projectId: request.projectId,
+            conversationKey: request.conversationKey,
+            machine,
+            cwd,
+          });
+          void recordActivity({
+            id: randomUUID(), projectId: request.projectId, conversationKey: request.conversationKey,
+            kind: 'session-started', summary: 'Codex session created', runtimeRef: threadId,
+            runtimeState: 'unknown',
+            binding: {
+              harness: 'codex', machine, cwd, externalSessionRef: threadId,
+            },
+            observed: observed('codex-app-server:thread/start.result.thread.id'),
+          });
         });
-        void recordActivity({
+      } catch (error) {
+        await recordActivity({
           id: randomUUID(), projectId: request.projectId, conversationKey: request.conversationKey,
-          kind: 'session-started', summary: 'Codex session created', runtimeRef: threadId,
-          runtimeState: 'unknown',
-          binding: {
-            harness: 'codex', machine, cwd, externalSessionRef: threadId,
+          kind: 'harness-error', summary: `Codex harness error: ${String(error)}`,
+          attentionKey: request.intentId,
+          observed: {
+            source: 'process', sourceRef: `workbench-intent:${request.intentId}`,
+            observedAt: new Date().toISOString(), verification: 'OBSERVED',
           },
-          observed: observed('codex-app-server:thread/start.result.thread.id'),
         });
-      });
+        throw error;
+      }
       await recordActivity({
         id: randomUUID(), projectId: request.projectId, conversationKey: request.conversationKey,
         kind: receipt.status === 'ACCEPTED' ? 'handoff-accepted' : 'handoff-failed',
         summary: receipt.status === 'ACCEPTED' ? 'Codex accepted the packet' : `Codex handoff ${receipt.status.toLowerCase()}`,
+        attentionKey: request.intentId,
         runtimeRef: receipt.runtimeRef, turnRef: receipt.turnRef,
         observed: observed(`codex-app-server:${receipt.protocolEvidence}`),
       });

@@ -11,6 +11,7 @@ const ActivityEventSchema = z.object({
     'handoff-dispatched', 'handoff-accepted', 'handoff-failed', 'session-started',
     'turn-started', 'agent-response', 'tool-started', 'tool-completed',
     'file-change', 'turn-completed', 'turn-error',
+    'approval-required', 'needs-user-input', 'harness-error',
   ]),
   summary: z.string(),
   runtimeRef: z.string().optional(),
@@ -21,6 +22,9 @@ const ActivityEventSchema = z.object({
     externalSessionRef: z.string().optional(),
   }).optional(),
   runtimeState: z.enum(['working', 'idle', 'stopped', 'error', 'unknown']).optional(),
+  attentionKey: z.string().optional(),
+  attentionKind: z.enum(['approval-required', 'needs-user-input', 'execution-review']).optional(),
+  attentionStatus: z.enum(['active', 'resolved']).optional(),
   observed: z.object({
     source: z.enum(['canonical-file', 'protocol', 'hook', 'process', 'heuristic']),
     sourceRef: z.string(), observedAt: z.string(),

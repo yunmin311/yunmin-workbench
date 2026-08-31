@@ -12,6 +12,8 @@ interface RpcResponse {
 
 export interface CodexProtocolEvent {
   method: string;
+  /** Present for server-initiated requests such as approval and user input. */
+  id?: number | string;
   params?: unknown;
 }
 
@@ -47,6 +49,8 @@ export class CodexAppServerAdapter {
   private initialized: Promise<string> | null = null;
   private stderr = '';
   private listeners = new Set<(event: CodexProtocolEvent) => void>();
+  private activeThreads = new Set<string>();
+  private closing = false;
   private readonly command: string;
   private readonly args: string[];
 
@@ -57,6 +61,7 @@ export class CodexAppServerAdapter {
 
   private ensureProcess(): ChildProcessWithoutNullStreams {
     if (this.child) return this.child;
+    this.closing = false;
     const child = spawn(this.command, this.args, {
       windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -79,9 +84,14 @@ export class CodexAppServerAdapter {
     child.stderr.on('error', () => undefined);
     child.stdin?.on('error', () => undefined);
     child.on('exit', (code, signal) => {
-      this.failAllPending(
-        new Error(`Codex app-server exited (${code ?? signal ?? 'unknown'}): ${this.stderr}`),
-      );
+      const error = new Error(`Codex app-server exited (${code ?? signal ?? 'unknown'}): ${this.stderr}`);
+      if (!this.closing) {
+        for (const threadId of this.activeThreads) {
+          this.emit({ method: 'adapter/error', params: { threadId, message: error.message } });
+        }
+      }
+      this.activeThreads.clear();
+      this.failAllPending(error);
     });
     return child;
   }
@@ -104,8 +114,13 @@ export class CodexAppServerAdapter {
     } catch {
       return;
     }
-    if (message.method && message.id === undefined) {
-      for (const listener of this.listeners) listener({ method: message.method, params: message.params });
+    if (message.method) {
+      this.emit({ method: message.method, id: message.id, params: message.params });
+      if (message.method === 'turn/completed') {
+        const params = message.params as { threadId?: unknown } | undefined;
+        if (typeof params?.threadId === 'string') this.activeThreads.delete(params.threadId);
+      }
+      return;
     }
     if (message.id === undefined) return;
     const pending = this.pending.get(message.id);
@@ -122,6 +137,10 @@ export class CodexAppServerAdapter {
   onEvent(listener: (event: CodexProtocolEvent) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  private emit(event: CodexProtocolEvent): void {
+    for (const listener of this.listeners) listener(event);
   }
 
   private notify(method: string): void {
@@ -221,6 +240,7 @@ export class CodexAppServerAdapter {
       }) as { turn?: { id?: string } };
       const turnId = response.turn?.id;
       if (!turnId) throw new Error('turn/start response omitted turn.id');
+      this.activeThreads.add(threadId);
       return {
         intentId,
         harness: 'codex',
@@ -252,6 +272,8 @@ export class CodexAppServerAdapter {
   }
 
   close(): void {
+    this.closing = true;
+    this.activeThreads.clear();
     this.child?.kill();
     this.failAllPending(new Error('Codex app-server closed'));
   }

@@ -37,6 +37,42 @@ describe('Codex adapter survives a missing executable (P0)', () => {
 });
 
 describe('Codex adapter against a fake app-server (protocol fixture)', () => {
+  it('exposes server-initiated approval requests with their explicit request id', async () => {
+    process.env.FAKE_MODE = 'server-requests';
+    const adapter = new CodexAppServerAdapter({ command: process.execPath, args: [FAKE] });
+    const events: { method: string; id?: string | number }[] = [];
+    adapter.onEvent((event) => events.push(event));
+    try {
+      await adapter.dispatch('44444444-4444-4444-8444-444444444444', process.cwd(), 'approval');
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(events).toContainEqual(expect.objectContaining({
+        method: 'item/commandExecution/requestApproval', id: 'approval-1',
+      }));
+    } finally {
+      delete process.env.FAKE_MODE;
+      adapter.close();
+    }
+  });
+
+  it('emits a process error for an accepted active thread when the server exits', async () => {
+    process.env.FAKE_MODE = 'die-after-turn-start';
+    const adapter = new CodexAppServerAdapter({ command: process.execPath, args: [FAKE] });
+    const events: { method: string; params?: unknown }[] = [];
+    adapter.onEvent((event) => events.push(event));
+    try {
+      const receipt = await adapter.dispatch('55555555-5555-4555-8555-555555555555', process.cwd(), 'accepted then crash');
+      expect(receipt.status).toBe('ACCEPTED');
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      expect(events).toContainEqual(expect.objectContaining({
+        method: 'adapter/error',
+        params: expect.objectContaining({ threadId: receipt.runtimeRef }),
+      }));
+    } finally {
+      delete process.env.FAKE_MODE;
+      adapter.close();
+    }
+  });
+
   it('completes smoke over the real stdio protocol', async () => {
     const adapter = new CodexAppServerAdapter({ command: process.execPath, args: [FAKE] });
     try {
@@ -53,11 +89,14 @@ describe('Codex adapter against a fake app-server (protocol fixture)', () => {
       command: process.execPath,
       args: [FAKE],
     });
+    const dyingEvents: { method: string }[] = [];
+    dying.onEvent((event) => dyingEvents.push(event));
     process.env.FAKE_MODE = 'die-after-thread-start';
     try {
       const receipt = await dying.dispatch('33333333-3333-4333-8333-333333333333', process.cwd(), 'dying');
       expect(receipt.status).toBe('FAILED');
       expect(receipt.message).toContain('exited');
+      expect(dyingEvents.some((event) => event.method === 'adapter/error')).toBe(false);
     } finally {
       delete process.env.FAKE_MODE;
       dying.close();

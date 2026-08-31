@@ -4,6 +4,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { InspectorPane, type InspectorTab } from './components/InspectorPane';
 import { WorkspaceSidebar } from './components/WorkspaceSidebar';
 import { HistoryPanel } from './components/HistoryPanel';
+import { AttentionPanel } from './components/AttentionPanel';
 import { CanvasView } from './views/CanvasView';
 import { SessionSurface } from './views/SessionSurface';
 import { useWorkbench } from './store';
@@ -17,12 +18,14 @@ export default function App() {
   const draftSaveState = useWorkbench((state) => state.draftSaveState);
   const packetValidity = useWorkbench((state) => state.packetValidity);
   const runtimeSessions = useWorkbench((state) => state.runtimeSessions);
+  const attentionItems = useWorkbench((state) => state.attentionItems);
   const initialize = useWorkbench((state) => state.initialize);
   const reloadAndRecheck = useWorkbench((state) => state.reloadAndRecheck);
   const setView = useWorkbench((state) => state.setView);
   const [sessionPickerOpen, setSessionPickerOpen] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [attentionOpen, setAttentionOpen] = useState(false);
 
   useEffect(() => {
     void initialize();
@@ -61,6 +64,12 @@ export default function App() {
     const open = () => setHistoryOpen(true);
     window.addEventListener('workbench:open-history', open);
     return () => window.removeEventListener('workbench:open-history', open);
+  }, []);
+
+  useEffect(() => {
+    const open = () => setAttentionOpen(true);
+    window.addEventListener('workbench:open-attention', open);
+    return () => window.removeEventListener('workbench:open-attention', open);
   }, []);
 
   useEffect(() => {
@@ -121,6 +130,12 @@ export default function App() {
         </div>
 
         <div className="chrome-tools">
+          <button
+            className={attentionItems.length > 0 ? 'attention-trigger has-items' : 'attention-trigger'}
+            aria-label={`Attention, ${attentionItems.length} active item${attentionItems.length === 1 ? '' : 's'}`}
+            aria-expanded={attentionOpen}
+            onClick={() => setAttentionOpen((open) => !open)}
+          >Attention{attentionItems.length > 0 && <span>{attentionItems.length}</span>}</button>
           <button onClick={() => setHistoryOpen(true)}>History</button>
           <button disabled={!projectId} aria-pressed={inspectorTab === 'context'} onClick={() => openInspector('context')}>Context</button>
           <button disabled={!conversation} aria-pressed={inspectorTab === 'packet'} onClick={() => openInspector('packet')}>Packet</button>
@@ -159,6 +174,7 @@ export default function App() {
       </ErrorBoundary>
       <CommandPalette />
       {historyOpen && <HistoryPanel onClose={() => setHistoryOpen(false)} />}
+      {attentionOpen && <AttentionPanel onClose={() => setAttentionOpen(false)} />}
     </div>
   );
 }

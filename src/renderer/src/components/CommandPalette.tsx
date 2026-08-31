@@ -79,6 +79,7 @@ export function CommandPalette() {
       <Command.List>
         <Command.Empty>No matching workspace, session, or command.</Command.Empty>
         <Command.Group heading="Navigate">
+          <Command.Item onSelect={() => run(() => window.dispatchEvent(new CustomEvent('workbench:open-attention')))}>Review Attention</Command.Item>
           <Command.Item onSelect={() => run(() => window.dispatchEvent(new CustomEvent('workbench:open-history')))}>Search History</Command.Item>
           <Command.Item onSelect={() => run(() => window.dispatchEvent(new CustomEvent('workbench:open-session-picker')))}><span>Open Workspace / Switch Session</span><kbd>Ctrl 1</kbd></Command.Item>
           <Command.Item disabled={!projectId} onSelect={() => run(() => setView('canvas'))}><span>Canvas</span><kbd>Ctrl 2</kbd></Command.Item>
