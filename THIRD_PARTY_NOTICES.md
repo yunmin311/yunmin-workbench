@@ -11,6 +11,8 @@ persistence contracts remain its own.
 - Repository: https://github.com/esengine/DeepSeek-Reasonix
 - Tag: `studio-v2.7.0`
 - Commit: `9b7a573ac3a94b0a2313480181374464978e5ae9`
+- Product Rebuild branch: `main-v2`
+- Product Rebuild commit: `47c8121a7cc5f6cdd9489ef447438bf8d88f7e1f`
 - License: MIT
 - Copyright: Copyright (c) 2026 Reasonix Contributors
 - Upstream files reviewed:
@@ -26,12 +28,20 @@ persistence contracts remain its own.
   - `desktop/frontend-next/src/ui/Memory.tsx`
   - `desktop/frontend-next/src/styles/tokens.css`
   - `desktop/frontend-next/src/styles/app.css`
+  - `desktop/frontend/src/components/Composer.tsx` (`main-v2` commit above)
+  - `desktop/frontend/src/components/AppChrome.tsx` (`main-v2` commit above)
+  - `desktop/frontend/src/components/ApprovalModal.tsx` (`main-v2` commit above)
+  - `desktop/frontend/src/components/CommandPalette.tsx` (`main-v2` commit above)
 - Incorporated/adapted code:
   - deterministic rank placement and median crossing minimisation from
     `glayout.ts`, adapted in
     `src/renderer/src/views/reasonixProjectionLayout.ts`
   - pane/chrome/composer/on-demand-panel interaction structure, rewritten
     against existing Yunmin renderer state
+  - Product Rebuild Composer reference chips, attachment menu, multi-Agent
+    selector, running state, IME-safe keyboard behavior, and long-paste capture
+  - Product Rebuild compact app chrome, contextual approval shelf, and grouped
+    keyboard-first command palette, adapted to Yunmin's existing contracts
 - Not incorporated: Reasonix branding, colour tokens, fonts, kernel port,
   queue/memory mutation APIs, or runtime schema.
 
