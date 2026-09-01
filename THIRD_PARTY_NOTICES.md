@@ -188,3 +188,15 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Agent Cockpit — reference only
+
+- Repository: https://github.com/agent-cockpit/agent-cockpit
+- Upstream file reviewed:
+  `packages/ui/src/components/office/InstancePopupHub.tsx`
+- Reference used: contextual Approvals / Chat / Timeline / Diff / Memory /
+  Artifacts organization around one Agent instance.
+- No Agent Cockpit source code, assets, pixel-office interface, runtime, or
+  protocol implementation is incorporated. The file informed information
+  architecture only, so this repository does not rely on a copying license for
+  that reference.
