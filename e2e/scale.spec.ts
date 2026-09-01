@@ -48,6 +48,10 @@ test('measures a 5,000-event Session and Runtime Inspector timeline', async () =
     expect(sessionRows).toBe(200);
     await win.getByRole('button', { name: /Show earlier activity/ }).click();
     await expect(win.locator('.session-timeline > li')).toHaveCount(400);
+    for (const count of [600, 800, 1_000, 1_200]) {
+      await win.getByRole('button', { name: /Show earlier activity/ }).click();
+      await expect(win.locator('.session-timeline > li')).toHaveCount(count);
+    }
 
     const scrollStarted = performance.now();
     await win.locator('.session-timeline > li').last().scrollIntoViewIfNeeded();
@@ -68,6 +72,11 @@ test('measures a 5,000-event Session and Runtime Inspector timeline', async () =
       events: 5_000, launchMs, sessionOpenMs, sessionRows, scrollMs,
       inspectorOpenMs, inspectorRows, rendererHeapBytes: heapBytes,
     }));
+    expect(launchMs).toBeLessThan(2_000);
+    expect(sessionOpenMs).toBeLessThan(2_000);
+    expect(scrollMs).toBeLessThan(1_000);
+    expect(inspectorOpenMs).toBeLessThan(1_000);
+    if (heapBytes !== null) expect(heapBytes).toBeLessThan(80_000_000);
   } finally {
     await app.close();
   }

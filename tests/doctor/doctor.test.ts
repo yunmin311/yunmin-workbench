@@ -58,6 +58,54 @@ describe('bounded read-only Doctor report', () => {
     const serialized = JSON.stringify(report);
     expect(serialized).not.toContain('super-secret');
     expect(serialized).not.toMatch(/[A-Z]:\\/i);
-    expect(doctorSafeEvidence('failed at C:\\Users\\name\\secret ghp-abcdefghijklmnop')).toBe('failed at <path> <secret>');
+    expect(doctorSafeEvidence('Bearer secret JWT eyJhbGciOiJIUzI1NiJ9 C:\\Users\\name\\secret')).toBe('adapter returned evidence; raw external output withheld');
+    expect(doctorSafeEvidence('initialize.userAgent=codex-cli/1.2.3; token=secret')).toBe('userAgent=codex-cli/1.2.3');
+  });
+
+  it('withholds arbitrary external stdout, env, token and path text from harness evidence', () => {
+    const hostile = [
+      'sk-ant-api03-REDACTEDVALUE0000000000',
+      'C:\\Users\\victim\\.codex\\auth.json',
+      '/home/victim/.claude/settings.json',
+      'OPENAI_API_KEY=live-key-0123456789',
+      'stack: Error: EACCES at Object.<anonymous> (/usr/lib/node_modules/x/index.js:12:5)',
+    ].join(' | ');
+    const report = buildDoctorReport({
+      ...base,
+      harnesses: [
+        { harness: 'codex', available: true, evidence: hostile, protocol: hostile },
+        { harness: 'claude', available: true, evidence: `claude --version 1.0.42 ${hostile}`, protocol: hostile },
+        { harness: 'deepseek', available: false, evidence: hostile, protocol: hostile },
+      ],
+    });
+    const serialized = JSON.stringify(report);
+    for (const secret of [
+      'sk-ant-api03-REDACTEDVALUE0000000000', 'victim', 'auth.json', 'settings.json',
+      'live-key-0123456789', 'EACCES', 'node_modules',
+    ]) {
+      expect(serialized).not.toContain(secret);
+    }
+    expect(serialized).not.toMatch(/[A-Za-z]:\\[^"\\]*\\/);
+    // allowlisted capability facts survive
+    expect(report.checks.find((check) => check.id === 'harness.claude')?.reason).toContain('version=1.0.42');
+    for (const harness of ['codex', 'claude', 'deepseek']) {
+      expect(report.checks.find((check) => check.id === `harness.${harness}`)?.reason)
+        .toContain('protocol declared by');
+    }
+  });
+
+  it('warns on a truncated scan without claiming an unreadable state store', () => {
+    const report = buildDoctorReport({
+      ...base,
+      state: { ...base.state, integrityReadable: true, isolatedProblems: 0, scanTruncated: true },
+      projectRootsTruncated: true,
+      profile: { ...base.profile, scanTruncated: true },
+    });
+    const status = Object.fromEntries(report.checks.map((check) => [check.id, check.status]));
+    // capped scans are WARN-level truncation, never a FAIL that implies corruption
+    expect(status['state.integrity']).toBe('WARN');
+    expect(status['project-roots']).toBe('WARN');
+    expect(status['profile.portability']).toBe('WARN');
+    expect(report.checks.find((check) => check.id === 'state.integrity')?.reason).toContain('scan capped');
   });
 });

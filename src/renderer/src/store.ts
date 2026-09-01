@@ -71,6 +71,8 @@ interface WorkbenchState {
   workspaceSession: WorkspaceSessionV1;
   resumeProblem: string | null;
   activity: ActivityEvent[];
+  activityBeforeByte?: number;
+  activityHasEarlier: boolean;
   runtimeSessions: RuntimeSession[];
   activityProblem: string | null;
   liveExecutions: LiveExecutionInfo[];
@@ -103,6 +105,7 @@ interface WorkbenchState {
   addMemoryContext: (hit: MemorySearchHit, pinned?: boolean) => Promise<void>;
   clearDraft: () => Promise<void>;
   loadActivity: () => Promise<void>;
+  loadEarlierActivity: () => Promise<void>;
   ingestActivity: (event: ActivityEvent) => void;
   clearActivity: () => Promise<void>;
   refreshLiveExecutions: () => Promise<void>;
@@ -287,6 +290,8 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   workspaceSession: EMPTY_WORKSPACE_SESSION,
   resumeProblem: null,
   activity: [],
+  activityBeforeByte: undefined,
+  activityHasEarlier: false,
   runtimeSessions: [],
   activityProblem: null,
   liveExecutions: [],
@@ -802,12 +807,36 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   },
 
   loadActivity: async () => {
-    const loaded = await window.wb.loadActivity();
+    const loaded = await window.wb.loadActivity({ limit: 1_000 });
     const activity = orderActivity(loaded.events);
     set((state) => {
       const runtimeSessions = projectRuntimeSessions(activity);
       const next = { ...state, activity, runtimeSessions };
-      return { activity, runtimeSessions, activityProblem: loaded.problem ?? null, attentionItems: projectAttention(next) };
+      return {
+        activity, runtimeSessions, activityProblem: loaded.problem ?? null,
+        activityBeforeByte: loaded.nextBeforeByte, activityHasEarlier: loaded.hasEarlier,
+        attentionItems: projectAttention(next),
+      };
+    });
+    get().syncIslandAttention();
+  },
+
+  loadEarlierActivity: async () => {
+    const beforeByte = get().activityBeforeByte;
+    if (beforeByte === undefined || !get().activityHasEarlier) return;
+    const loaded = await window.wb.loadActivity({ beforeByte, limit: 1_000 });
+    set((state) => {
+      const byId = new Map<string, ActivityEvent>();
+      for (const event of [...loaded.events, ...state.activity]) byId.set(event.id, event);
+      const activity = orderActivity([...byId.values()]);
+      const runtimeSessions = projectRuntimeSessions(activity);
+      const next = { ...state, activity, runtimeSessions };
+      return {
+        activity, runtimeSessions,
+        activityProblem: loaded.problem ?? state.activityProblem,
+        activityBeforeByte: loaded.nextBeforeByte, activityHasEarlier: loaded.hasEarlier,
+        attentionItems: projectAttention(next),
+      };
     });
     get().syncIslandAttention();
   },
@@ -830,6 +859,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     await window.wb.clearActivity();
     set((state) => ({
       activity: [], runtimeSessions: [], activityProblem: null,
+      activityBeforeByte: undefined, activityHasEarlier: false,
       attentionItems: projectAttention({ ...state, activity: [], runtimeSessions: [] }),
     }));
     get().syncIslandAttention();

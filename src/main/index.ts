@@ -25,7 +25,7 @@ import {
 import { readGitFacts } from './adapters/gitFacts';
 import { createProjectFileContext, fingerprintFileAtRoot, fingerprintProjectFile } from './adapters/projectFiles';
 import { CodexAppServerAdapter } from './adapters/codexAppServer';
-import { appendActivity, clearActivity, readActivity } from './activityPersistence';
+import { appendActivity, clearActivity, readActivityPage } from './activityPersistence';
 import { dismissAttention, readAttentionLocalState } from './attentionPersistence';
 import { HandoffDispatchRegistry } from './handoffDispatch';
 import {
@@ -66,6 +66,7 @@ import { HarnessDispatchSchema, HarnessSmokeSchema, workbenchRejectedReceipt } f
 import { canDispatchToHarness } from '../core/project/harnessSelection';
 import { resolveMaterial } from '../core/material/tokens';
 import { buildDoctorReport } from './doctor';
+import { RecoverableSerialQueue } from './recoverableSerialQueue';
 
 // test hook: Playwright E2E redirects Workbench-owned state to a temp dir
 if (process.env.WB_STATE_DIR) app.setPath('userData', process.env.WB_STATE_DIR);
@@ -81,6 +82,20 @@ const windowRoles = new WeakMap<BrowserWindow, { role: 'main' | 'island' }>();
 /** Workbench-owned state: frozen packets live here, never in the overlay. */
 function stateDir(): string {
   return join(app.getPath('userData'), 'state');
+}
+
+function boundedRecordEntries<T>(record: Record<string, T>, limit: number): {
+  entries: [string, T][];
+  truncated: boolean;
+} {
+  const entries: [string, T][] = [];
+  let truncated = false;
+  for (const key in record) {
+    if (!Object.prototype.hasOwnProperty.call(record, key)) continue;
+    if (entries.length >= limit) { truncated = true; break; }
+    entries.push([key, record[key]]);
+  }
+  return { entries, truncated };
 }
 
 async function probeCommandVersion(command: string, args: string[]): Promise<string | undefined> {
@@ -126,7 +141,7 @@ function emptySnapshot(message: string): OverlaySnapshot {
 function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
   let cache: { snapshot: OverlaySnapshot; at: number } | null = null;
   let refreshing: Promise<OverlaySnapshot> | null = null;
-  let activityWrite: Promise<void> = Promise.resolve();
+  const activityWrites = new RecoverableSerialQueue();
   const liveExecutions = new LiveExecutionRegistry();
   const runtimeContexts = new RuntimeContextRegistry<{
     projectId: string;
@@ -179,13 +194,12 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
   };
 
   const recordActivity = (event: ActivityEvent): Promise<void> => {
-    activityWrite = activityWrite.then(async () => {
+    return activityWrites.run(async () => {
       await appendActivity(stateDir(), event);
       for (const win of BrowserWindow.getAllWindows()) {
         if (!win.isDestroyed()) win.webContents.send('activity:changed', event);
       }
     });
-    return activityWrite;
   };
 
   const observed = (sourceRef: string, verification: 'VERIFIED' | 'OBSERVED' = 'VERIFIED') => ({
@@ -581,16 +595,21 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     return withProfileStateLock(async () => ({ path: await writeWorkspaceSessionAtomic(stateDir(), session) }));
   });
 
-  ipcMain.handle('activity:load', async () => {
-    await activityWrite;
-    return readActivity(stateDir());
+  ipcMain.handle('activity:load', async (_event, rawOptions?: unknown) => {
+    const options = z.object({
+      beforeByte: z.number().int().nonnegative().optional(),
+      limit: z.number().int().min(1).max(1_000).optional(),
+    }).strict().parse(rawOptions ?? {});
+    await activityWrites.idle();
+    return readActivityPage(stateDir(), options);
   });
   ipcMain.handle('activity:clear', async () => {
-    await activityWrite;
-    await clearActivity(stateDir());
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send('activity:cleared');
-    }
+    await activityWrites.run(async () => {
+      await clearActivity(stateDir());
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) win.webContents.send('activity:cleared');
+      }
+    });
   });
 
   ipcMain.handle('portability:export-preview', async () => {
@@ -1016,7 +1035,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     const [node, pnpm, harnesses, activityState, workspaceState, materialPreference] = await Promise.all([
       probeNodeVersion(), probePnpmVersion(),
       Promise.all([codexAdapter.capabilities(), claudeAdapter.capabilities(), deepseekAdapter.capabilities()]),
-      readActivity(stateRoot),
+      readActivityPage(stateRoot, { limit: 1_000 }),
       readWorkspaceSession(stateRoot),
       readMaterialPreference(stateRoot),
     ]);
@@ -1024,30 +1043,41 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     let profileValid = true;
     let bindings: Awaited<ReturnType<typeof readProjectRootBindings>> = { schemaVersion: 1, bindings: {}, unresolved: {} };
     try { bindings = await readProjectRootBindings(stateRoot); } catch { profileValid = false; }
-    const declaredRoots = {
-      ...(snap.machine?.projectRoots ?? {}),
-      ...Object.fromEntries(Object.entries(bindings.bindings).map(([projectId, binding]) => [projectId, binding.root])),
-    };
-    const projectRoots = await Promise.all(Object.entries(declaredRoots).slice(0, 100).map(async ([projectId, root]) => ({
+    const machineRootScan = boundedRecordEntries(snap.machine?.projectRoots ?? {}, 101);
+    const bindingScan = boundedRecordEntries(bindings.bindings, 101);
+    const declaredRoots = new Map<string, string>(machineRootScan.entries.slice(0, 100));
+    for (const [projectId, binding] of bindingScan.entries) {
+      if (declaredRoots.size >= 100 && !declaredRoots.has(projectId)) break;
+      declaredRoots.set(projectId, binding.root);
+    }
+    const projectRootsTruncated = machineRootScan.truncated || bindingScan.truncated
+      || machineRootScan.entries.length > 100 || bindingScan.entries.length > 100;
+    const projectRoots = await Promise.all([...declaredRoots.entries()].map(async ([projectId, root]) => ({
       projectId,
       rootLabel: 'configured local root',
       exists: await stat(root).then((entry) => entry.isDirectory()).catch(() => false),
     })));
-    const missingBoundRoots = (await Promise.all(Object.values(bindings.bindings).map((binding) =>
+    const boundedBindings = bindingScan.entries.slice(0, 100);
+    const unresolvedScan = boundedRecordEntries(bindings.unresolved, 101);
+    const missingBoundRoots = (await Promise.all(boundedBindings.map(([, binding]) =>
       stat(binding.root).then((entry) => !entry.isDirectory()).catch(() => true)))).filter(Boolean).length;
 
-    const frozenScopes = [...new Map(snap.conversations.map((conversation) => [
+    const frozenScopeScan = snap.conversations.slice(0, 21);
+    const frozenScopes = [...new Map(frozenScopeScan.map((conversation) => [
       `${conversation.project}\0${conversation.key}`,
       { projectId: conversation.project, conversationKey: conversation.key },
     ])).values()];
+    const frozenScanTruncated = snap.conversations.length > 20 || frozenScopes.length > 20;
     let frozenProblems = 0;
-    let integrityReadable = true;
+    // A capped page scan is reported as truncation (WARN); only a reader that could
+    // not open or read its store at all is treated as unreadable (FAIL).
+    let integrityReadable = !activityState.ioFailed;
     for (const scope of frozenScopes.slice(0, 20)) {
       try {
         frozenProblems += (await listFrozenPackets(stateRoot, scope.projectId, scope.conversationKey)).problems.length;
       } catch { integrityReadable = false; }
     }
-    const isolatedProblems = (activityState.rejectedLines ?? 0)
+    const isolatedProblems = activityState.rejectedLines
       + (workspaceState.problem ? 1 : 0)
       + frozenProblems;
     const writableTarget = existsSync(stateRoot) ? stateRoot : dirname(stateRoot);
@@ -1069,6 +1099,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
         nodeOptions: Boolean(process.env.NODE_OPTIONS),
       },
       projectRoots,
+      projectRootsTruncated,
       harnesses: harnesses.map((item) => ({
         harness: item.harness,
         available: item.canDispatch || item.canObserveRuntime,
@@ -1081,13 +1112,15 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
         integrityReadable,
         isolatedProblems,
         inspectedFrozenScopes: Math.min(frozenScopes.length, 20),
-        scanTruncated: frozenScopes.length > 20,
+        scanTruncated: frozenScanTruncated || Boolean(activityState.scanCapped),
       },
       profile: {
         valid: profileValid,
-        bindings: Object.keys(bindings.bindings).length,
-        unresolved: Object.keys(bindings.unresolved).length,
+        bindings: boundedBindings.length,
+        unresolved: unresolvedScan.entries.slice(0, 100).length,
         missingRoots: missingBoundRoots,
+        scanTruncated: bindingScan.truncated || bindingScan.entries.length > 100
+          || unresolvedScan.truncated || unresolvedScan.entries.length > 100,
       },
       material: {
         requested: material.requested,

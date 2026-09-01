@@ -102,6 +102,8 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
   const liveExecutions = useWorkbench((state) => state.liveExecutions);
   const openRuntimeInspector = useWorkbench((state) => state.openRuntimeInspector);
   const activityProblem = useWorkbench((state) => state.activityProblem);
+  const activityHasEarlier = useWorkbench((state) => state.activityHasEarlier);
+  const loadEarlierActivity = useWorkbench((state) => state.loadEarlierActivity);
   const taskSummary = useWorkbench((state) => state.taskSummary);
   const draftSaveState = useWorkbench((state) => state.draftSaveState);
   const staging = useWorkbench((state) => state.staging);
@@ -171,7 +173,9 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
   const sessionAttention = attentionItems.filter(
     (item) => item.conversationKey === conversation.key || (!item.conversationKey && item.projectId === projectId),
   );
-  const runtimeLabel = runtime?.binding ? `${runtime.binding.harness} · ${runtime.binding.cwd ? runtime.binding.cwd.split(/[\\/]/).pop() : runtime.binding.machine}` : null;
+  const runtimeLabel = runtime
+    ? `${runtime.harness} · ${runtime.binding ? (runtime.binding.cwd ? runtime.binding.cwd.split(/[\\/]/).pop() : runtime.binding.machine) : 'binding UNKNOWN'}`
+    : null;
 
   return (
     <div className="session-surface">
@@ -197,18 +201,24 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
       <section className="session-activity" aria-label="Structured runtime activity">
         {activityProblem && <p className="surface-alert">{activityProblem}</p>}
         {events.length === 0 ? (
-          <p className="activity-hint">
-            <span className={`runtime-pulse runtime-${runtime?.state ?? 'unknown'}`} />
-            No observed activity yet. Runtime boundaries appear here only when the adapter reports them; nothing is invented.
-          </p>
+          <>
+            <p className="activity-hint">
+              <span className={`runtime-pulse runtime-${runtime?.state ?? 'unknown'}`} />
+              No activity in the loaded window. Runtime boundaries appear only when the adapter reports them; nothing is invented.
+            </p>
+            {activityHasEarlier && <button className="timeline-load-earlier" onClick={() => void loadEarlierActivity()}>Search earlier activity</button>}
+          </>
         ) : (
           <>
-            {visibleEvents.length < events.length && (
+            {(visibleEvents.length < events.length || activityHasEarlier) && (
               <button
                 className="timeline-load-earlier"
-                onClick={() => setVisibleEventCount((count) => count + TIMELINE_PAGE_SIZE)}
+                onClick={() => void (async () => {
+                  if (visibleEvents.length >= events.length && activityHasEarlier) await loadEarlierActivity();
+                  setVisibleEventCount((count) => count + TIMELINE_PAGE_SIZE);
+                })()}
               >
-                Show earlier activity · {events.length - visibleEvents.length} hidden
+                Show earlier activity{visibleEvents.length < events.length ? ` · ${events.length - visibleEvents.length} hidden` : ''}
               </button>
             )}
             <ol className="session-timeline">

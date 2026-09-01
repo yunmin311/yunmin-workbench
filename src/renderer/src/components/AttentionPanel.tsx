@@ -18,6 +18,8 @@ export function AttentionPanel({ onClose }: { onClose: () => void }) {
   const problem = useWorkbench((state) => state.attentionProblem);
   const snapshot = useWorkbench((state) => state.snapshot);
   const activity = useWorkbench((state) => state.activity);
+  const activityHasEarlier = useWorkbench((state) => state.activityHasEarlier);
+  const loadEarlierActivity = useWorkbench((state) => state.loadEarlierActivity);
   const projectId = useWorkbench((state) => state.projectId);
   const selectProject = useWorkbench((state) => state.selectProject);
   const selectConversation = useWorkbench((state) => state.selectConversation);
@@ -78,6 +80,12 @@ export function AttentionPanel({ onClose }: { onClose: () => void }) {
         aria-label="Attention requiring review"
         onMouseDown={(event) => event.stopPropagation()}
       >
+        {activityHasEarlier && (
+          <p className="surface-alert">
+            Attention covers the loaded Activity window. Earlier records remain on disk.
+            <button onClick={() => void loadEarlierActivity()}>Load earlier Activity</button>
+          </p>
+        )}
         <header className="attention-heading">
           <div><p className="eyebrow">Projection</p><h2>Attention</h2></div>
           <button className="icon-action" aria-label="Close Attention" onClick={onClose}>×</button>

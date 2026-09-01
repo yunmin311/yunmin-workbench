@@ -189,7 +189,8 @@ export function projectRuntimeExecutions(
       binding,
       state: withState?.runtimeState ?? 'unknown',
       live: live.has(bucket.executionId),
-      startedAt: identityEvent?.observed.observedAt ?? null,
+      startedAt: bucket.events.find((event) =>
+        event.kind === 'handoff-accepted' || event.kind === 'session-started')?.observed.observedAt ?? null,
       endedAt: endedEvent?.observed.observedAt ?? null,
       intentId: latestIntent ? intentIdOf(latestIntent) : null,
       intentState: latestIntent ? INTENT_STATE_BY_KIND[latestIntent.kind] : 'unknown',
@@ -207,5 +208,9 @@ export function projectRuntimeExecutions(
       observed: identityEvent?.observed ?? null,
       events: bucket.events,
     } satisfies RuntimeExecutionView;
-  }).sort((a, b) => (b.startedAt ?? '').localeCompare(a.startedAt ?? ''));
+  }).sort((a, b) => {
+    const aLatest = a.events.at(-1)?.observed.observedAt ?? a.startedAt ?? '';
+    const bLatest = b.events.at(-1)?.observed.observedAt ?? b.startedAt ?? '';
+    return bLatest.localeCompare(aLatest);
+  });
 }

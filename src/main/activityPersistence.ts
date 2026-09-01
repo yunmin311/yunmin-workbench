@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readFile, rm } from 'node:fs/promises';
+import { appendFile, mkdir, open, readFile, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import type { ActivityEvent } from '../core/types';
@@ -46,6 +46,18 @@ const ActivityEventSchema = z.object({
 });
 
 const ActivityLineSchema = z.object({ schemaVersion: z.literal(1), event: ActivityEventSchema });
+
+export interface ActivityPage {
+  events: ActivityEvent[];
+  problem?: string;
+  rejectedLines: number;
+  nextBeforeByte?: number;
+  hasEarlier: boolean;
+  /** True when the file itself could not be opened or read — never a healthy empty page. */
+  ioFailed?: boolean;
+  /** True when the 8MB page budget stopped the scan before the requested window was covered. */
+  scanCapped?: boolean;
+}
 
 function historyPath(stateDir: string): string {
   return join(stateDir, 'activity', 'history.jsonl');
@@ -105,6 +117,143 @@ export async function readActivity(stateDir: string): Promise<{ events: Activity
     ? `Activity history isolated ${rejectedLines} malformed line(s); first: ${firstProblem}`
     : undefined;
   return { events: [...eventsById.values()] as ActivityEvent[], problem, rejectedLines };
+}
+
+/**
+ * Reads a bounded byte window from the end of Activity JSONL. The cursor is a
+ * physical byte boundary, so paging never needs to load or split the whole
+ * append-only file. Malformed records remain isolated inside each page.
+ */
+export async function readActivityPage(
+  stateDir: string,
+  options: { beforeByte?: number; limit?: number } = {},
+): Promise<ActivityPage> {
+  const limit = z.number().int().min(1).max(1_000).parse(options.limit ?? 1_000);
+  const requestedBefore = options.beforeByte === undefined
+    ? undefined
+    : z.number().int().nonnegative().parse(options.beforeByte);
+  const path = historyPath(stateDir);
+  let handle;
+  try { handle = await open(path, 'r'); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { events: [], rejectedLines: 0, hasEarlier: false };
+    }
+    return {
+      events: [], rejectedLines: 0, hasEarlier: false, ioFailed: true,
+      problem: `Activity history rejected: ${String(error)}`,
+    };
+  }
+
+  // 1MB reads keep a full 8MB page at eight syscalls. The scratch buffer is already
+  // allocated, so a larger chunk costs nothing and removes the per-read I/O latency
+  // that dominated the capped-scan path at 64KB.
+  const CHUNK_BYTES = 1024 * 1024;
+  const MAX_PAGE_BYTES = 8 * 1024 * 1024;
+  try {
+    const info = await handle.stat();
+    // A directory or device at the history path reads as zero bytes on Windows;
+    // treating that as an empty history would silently hide a real I/O failure.
+    if (!info.isFile()) {
+      return {
+        events: [], rejectedLines: 0, hasEarlier: false, ioFailed: true,
+        problem: 'Activity history rejected: path is not a regular file',
+      };
+    }
+    const size = info.size;
+    const end = Math.min(requestedBefore ?? size, size);
+    let start = end;
+    // The window is filled from the tail backwards into one pre-allocated scratch
+    // buffer. Data lives in scratch[dataStart, MAX_PAGE_BYTES) and mirrors file
+    // bytes [start, end), so growing the window backwards never copies or shifts
+    // anything — a full 8MB page costs one allocation, not one per 64KB chunk.
+    const scratch = Buffer.alloc(MAX_PAGE_BYTES);
+    let dataStart = MAX_PAGE_BYTES;
+    // scratch index of the oldest complete record seen so far; -1 until the first
+    // newline is found. Scratch coordinates never move, so this needs no adjusting.
+    let boundary = -1;
+    // Newest-first. Newly read bytes are always older, so appending in reverse
+    // keeps the whole list ordered and each line is parsed exactly once.
+    const accepted: { event: ActivityEvent; offset: number }[] = [];
+    const seen = new Set<string>();
+    let rejectedLines = 0;
+    let firstProblem: string | undefined;
+
+    while (start > 0 && dataStart > 0) {
+      const length = Math.min(CHUNK_BYTES, start, dataStart);
+      const nextStart = start - length;
+      dataStart -= length;
+      await handle.read(scratch, dataStart, length, nextStart);
+      start = nextStart;
+
+      let newBoundary: number;
+      if (start === 0) newBoundary = dataStart;
+      else {
+        const newline = scratch.subarray(dataStart, dataStart + length).indexOf(0x0a);
+        if (newline >= 0) newBoundary = dataStart + newline + 1;
+        else newBoundary = boundary;
+      }
+      // No complete record in the window yet: keep accumulating until the budget runs out.
+      if (newBoundary < 0) continue;
+
+      const regionEnd = boundary >= 0 ? boundary : MAX_PAGE_BYTES;
+      const found: { offset: number; text: string }[] = [];
+      let lineStart = newBoundary;
+      for (let index = newBoundary; index <= regionEnd; index += 1) {
+        if (index !== regionEnd && scratch[index] !== 0x0a) continue;
+        let lineEnd = index;
+        if (lineEnd > lineStart && scratch[lineEnd - 1] === 0x0d) lineEnd -= 1;
+        found.push({
+          offset: start + (lineStart - dataStart),
+          text: scratch.subarray(lineStart, lineEnd).toString('utf8'),
+        });
+        lineStart = index + 1;
+      }
+      boundary = newBoundary;
+
+      // Oldest-to-newest would break duplicate resolution, so walk the new region
+      // backwards: every id already in `seen` is strictly newer and wins.
+      for (let index = found.length - 1; index >= 0; index -= 1) {
+        const record = found[index];
+        if (!record.text.trim()) continue;
+        let event: ActivityEvent;
+        try {
+          event = ActivityLineSchema.parse(JSON.parse(record.text)).event;
+        } catch (error) {
+          rejectedLines += 1;
+          firstProblem ??= `byte ${record.offset}: ${String(error)}`;
+          continue;
+        }
+        if (seen.has(event.id)) continue;
+        seen.add(event.id);
+        if (accepted.length < limit) accepted.push({ event, offset: record.offset });
+      }
+      if (accepted.length >= limit || start === 0) break;
+    }
+    // Exiting with start > 0 means the 8MB budget, not the file, ended the scan.
+    const scanCapped = start > 0 && accepted.length < limit;
+    const chronological = accepted.slice().reverse();
+    const nextBeforeByte = chronological[0]?.offset ?? start;
+    const problemParts = [
+      rejectedLines > 0 ? `isolated ${rejectedLines} malformed line(s); first: ${firstProblem}` : '',
+      scanCapped ? `page scan capped at ${MAX_PAGE_BYTES} bytes` : '',
+    ].filter(Boolean);
+    return {
+      events: chronological.map((item) => item.event),
+      rejectedLines,
+      hasEarlier: nextBeforeByte > 0,
+      nextBeforeByte: nextBeforeByte > 0 ? nextBeforeByte : undefined,
+      scanCapped,
+      problem: problemParts.length ? `Activity history ${problemParts.join('; ')}` : undefined,
+    };
+  } catch (error) {
+    return {
+      events: [], rejectedLines: 0, hasEarlier: false, ioFailed: true,
+      problem: `Activity history rejected: ${String(error)}`,
+    };
+  } finally {
+    await handle.close();
+  }
 }
 
 export async function clearActivity(stateDir: string): Promise<void> {

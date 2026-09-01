@@ -10,7 +10,7 @@ const overlay = useOverlayFixture();
 const OVERLAY = overlay.overlayRoot;
 
 test.describe('reliability gate (P0 containment)', () => {
-  test('missing Codex executable keeps the app alive with structured unavailable capability', async () => {
+  test('missing Codex and Claude executables keep the app alive with structured unavailable capabilities', async () => {
     const stateDir = mkdtempSync(join(tmpdir(), 'wb-e2e-nocodex-'));
     const emptyPath = join(stateDir, 'empty-path');
     mkdirSync(emptyPath);
@@ -22,6 +22,11 @@ test.describe('reliability gate (P0 containment)', () => {
     const evidence = await win.evaluate(() => window.wb.loadHarnessCapabilities());
     expect(evidence.canDispatch).toBe(false);
     expect(evidence.evidence).toContain('unavailable');
+    const all = await win.evaluate(() => window.wb.loadAllHarnessCapabilities());
+    expect(all.codex.canDispatch).toBe(false);
+    expect(all.claude.canDispatch).toBe(false);
+    expect(all.codex.evidence).toContain('unavailable');
+    expect(all.claude.evidence).toContain('unavailable');
 
     await expect(win.locator('.prototype-chrome')).toBeVisible();
     await app.close();

@@ -47,36 +47,42 @@ Governance Kernel + Personal Overlay / Profile + Project / Git / Harness
 2. **Execution Binding**：`RuntimeSession`/`RuntimeBinding` 带
    harness/machine/cwd/worktree/branch/HEAD/externalSessionRef；Binding 属于一次
    Runtime Session/Execution，不永久绑 Conversation，同一 Conversation 可先后或并行
-   对应不同 Harness session。Codex app-server adapter 是当前唯一写入方。
+   对应不同 Harness session。Codex app-server 与 Claude stream-json adapter 只从各自
+   原生 session ref 写入；不以 cwd/provider/time 猜 identity。
 3. **State Separation**：`TaskState` / `RuntimeState` / `AttentionState` 三个枚举
    永久分开。没有 canonical `task_source`，因此不生成假 Task、不做 Task Board；
    Conversation lifecycle 只表示 Conversation lifecycle。
 4. **Frozen Packet Validity**：依赖全部可核验且一致 → CURRENT；fingerprint 改变 →
    STALE；声明依赖但来源消失/无法确认 → INVALID。本地确定性比较，不调用模型、
    不自动重建。Frozen body 不可变，变化只产生新版本。
-5. **Intent/Receipt**：`DRAFT → DISPATCHED → ACCEPTED|REJECTED|FAILED`；Codex
+5. **Intent/Receipt**：`DRAFT → DISPATCHED → ACCEPTED|REJECTED|FAILED|CANCELLED`；Codex / Claude
    dispatch/receipt 已实现，**external session Resume adapter 未实现**（workbench
    workspace restore/resume 与之无关）。Dispatch receipt 不等于 Task completion。
 6. **Write-surface collision**：不实现；未来只做纯 projection warning，无
    lock/scheduler/orchestrator。
 
-## Codex adapter 当前能力
+## Runtime adapter 当前能力
 
-| Dispatch | Observe | Receipt | external session Resume |
-|---|---|---|---|
-| YES | YES | YES | **NO** |
+| Harness | Dispatch | Observe | Receipt | Cancel | external session Resume |
+|---|---|---|---|---|---|
+| Codex | YES | YES | YES | adapter path 未声明 | **NO** |
+| Claude | YES | YES | YES | live child only | **NO** |
+| DeepSeek | **NO** | **NO** | **NO** | **NO** | **NO** |
 
-已有 app-server handoff、receipt、double-send 防护、structured
-lifecycle/tool/file events、Activity Timeline 与 Canvas execution evidence。
-Claude/DeepSeek 结构化 live adapter 尚未完成。
+Codex 使用 app-server；Claude 使用 `stream-json`，并以原生 `session_id` 投影 identity。
+DeepSeek 当前没有经验证的稳定 structured runtime，因此明确降级，不做 heuristic live。
+Receipt 只表示 intent 被 Harness 接受，不表示 execution 完成。
 
 ## R0 Reliability（不可回退）
 
 已覆盖并保持：Frozen store 的 Zod per-file validation、单文件 corruption isolation、
 atomic temp+rename、per-conversation serialization、max(valid)+1 versioning、
 summary-only list + lazy detail；renderer root+view ErrorBoundary、single instance
-+focus、Copy/Freeze/Dispatch 失败可见、5MB precheck、pending disabled、bounded
-concurrency 8。损坏历史不能吞合法版本，损坏后仍能 freeze 新版本。
+focus、Copy/Freeze/Dispatch 失败可见、5MB precheck、pending disabled、bounded
+concurrency 8。Activity JSONL 对 crash partial tail、malformed line 与 duplicate id
+确定性隔离，mutation 串行（单次失败不 poison 后续写入）；IPC 读取按物理字节分页
+（≤1000 条 / 8MB，线性扫描），可继续向前加载且不切坏 JSONL；损坏历史不能吞合法版本，
+损坏后仍能 freeze 新版本。
 
 ## 架构边界
 
@@ -85,9 +91,9 @@ concurrency 8。损坏历史不能吞合法版本，损坏后仍能 freeze 新�
 | `src/core` | 纯函数零 IO：parse（对话登记/项目适配/INBOX/记忆索引/机器档案/Harness Manifest）、project（Canvas+dagre / Staging / Packet 编译·Freeze·Validity / Activity / Binding / Draft）、attention（显式事件/状态 → bounded projection）；Canvas 区分 membership/mount 结构关系与 execution/handoff/data-context 真实流 | Vitest 直测 |
 | `src/core/history` | Claude Code / Codex parser、Harness 原生 identity 命名空间、bounded message excerpt 与 lexical Search 合同；cwd / filename / title 只作 observed metadata | Vitest 直测 |
 | `src/core/memory` | History 上的显式、确定性 Event/Fact 派生；source-first provenance、currentness、supersedes/conflicts 与 bounded evidence gate；retrieved 与 used 分离 | Vitest 直测 |
-| `src/main/adapters` | `overlaySource.ts`（只读 Overlay + 发现规则 + 文件指纹 + 记忆正文懒加载）、`gitFacts.ts`（simple-git 只读 remote/branch/HEAD/status）、`projectFiles.ts`（containment/traversal 保护）、`codexAppServer.ts` | 只读外部事实 / Harness 协议 |
-| `src/main` | IPC；chokidar 监听 Overlay canonical 文件 → `overlay:changed` 失效通知；History 按文件 byte watermark 增量读取，变化文件先核对旧长度范围的完整 hash，截断/替换/删除后失效重建；History/Memory index、显式 Memory use、Frozen Packet / Draft / Workspace / Activity / Window / Attention dismissal / Portability binding state 落 `userData` | 只写 Workbench 自有状态 |
-| `src/renderer` | React + @xyflow/react + zustand；Session Spine + 按需 Context/Packet/Changes/Evidence drawer | 投影渲染，拖动不改外部事实 |
+| `src/main/adapters` | `overlaySource.ts`（只读 Overlay + 发现规则 + 文件指纹 + 记忆正文懒加载）、`gitFacts.ts`（simple-git 只读 remote/branch/HEAD/status）、`projectFiles.ts`（containment/traversal 保护）、Codex app-server / Claude stream-json / DeepSeek fail-closed adapter | 只读外部事实 / Harness 协议 |
+| `src/main` | IPC；chokidar 监听 Overlay canonical 文件 → `overlay:changed` 失效通知；History 按文件 byte watermark 增量读取，变化文件先核对旧长度范围的完整 hash，截断/替换/删除后失效重建；History/Memory index、显式 Memory use、Frozen Packet / Draft / Workspace / Activity / Window / Attention dismissal / Portability binding state 落 `userData`；Doctor 按需只读检查环境 seam | 只写 Workbench 自有状态 |
+| `src/renderer` | React + @xyflow/react + zustand；Session Spine + 按需 Context/Packet/Changes/Evidence/Runtime/Doctor surface；长 Activity/Runtime chronology 有界加载 | 投影渲染，拖动不改外部事实 |
 
 ## 环境
 
@@ -139,7 +145,9 @@ profile 的 `paths.governance_repo` 与 `project_roots` 按实际生成的路径
 4. **Portability Phase 1（已完成）** — versioned + digest-locked Workbench Profile Bundle；强制 import preview、冲突 fail-closed、事务回滚；只迁移 Workspace session、Draft/Manual Context、Project File locator/fingerprint metadata 与非权威历史 root locator。项目根只能显式重绑，并复核 containment 与项目 identity；外部 SOT、Runtime、Git、History raw/index、Attention projection 与 secret 不进入 bundle
 5. **Memory Phase 1（已完成）** — History 上的 source-first Event/Fact projection、lexical retrieval、原始证据按需展开、SUFFICIENT/PARTIAL/WRONG evidence gate，以及用户显式 Add to Context / Pin / Inspect Source；索引与显式 use 记录仅在 Electron `userData/state/memory`，不自动注入 Context 或 Packet
 
-其后才是 activity durability、换机 Doctor GUI、真实大数据量后的 virtualization / SQLite WAL，以及任何云同步或跨客户端同步能力。
+6. **Runtime / Inspector（已完成）** — 同一 Conversation 多 execution 投影、harness-scoped native identity、历史/live 区分、精确来源跳转与仅在 adapter 真实支持时开放的 Cancel。
+7. **Final Hardening / Scale（当前收口）** — Activity crash recovery、实测后长 timeline bounded loading、按需只读 Doctor 与 clean-room 门禁。
 
-明确的延后项：视觉系统（用户拍板域）、Inspector 完整 Machine/Harness 视图、
-实时 Runtime 控制、云同步、Git sync、CRDT 与 Runtime resume。
+明确的延后项：Canvas/Trajectory 扩展、Task system、scheduler/orchestration、vector/RAG、
+云/Git sync、CRDT、DeepSeek heuristic live、新 Provider 与 Runtime resume。它们是独立演进，
+不是当前核心路线的未完成项。

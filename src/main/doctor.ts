@@ -13,6 +13,7 @@ export interface DoctorInput {
   runtime: { node?: string; electron?: string; pnpm?: string; electronLaunched: boolean };
   environment: { electronRunAsNode: boolean; wbElectronArgs: boolean; nodeOptions: boolean };
   projectRoots: { projectId: string; rootLabel: string; exists: boolean }[];
+  projectRootsTruncated?: boolean;
   harnesses: { harness: string; available: boolean; evidence: string; protocol: string }[];
   state: {
     writable: boolean;
@@ -22,7 +23,7 @@ export interface DoctorInput {
     inspectedFrozenScopes: number;
     scanTruncated: boolean;
   };
-  profile: { valid: boolean; bindings: number; unresolved: number; missingRoots: number };
+  profile: { valid: boolean; bindings: number; unresolved: number; missingRoots: number; scanTruncated?: boolean };
   material: { requested: string; effective: string; fallbackReason: string | null };
   singleInstance: boolean;
 }
@@ -43,11 +44,16 @@ const check = (
 ): DoctorCheck => ({ id, label, status, reason, provenance });
 
 export function doctorSafeEvidence(value: string): string {
-  return value
-    .replace(/[A-Za-z]:\\[^\s;,]+/g, '<path>')
-    .replace(/\/(?:Users|home)\/[^\s;,]+/g, '<path>')
-    .replace(/\b(?:sk|ghp|github_pat)-?[A-Za-z0-9_-]{12,}\b/g, '<secret>')
-    .slice(0, 500);
+  const facts: string[] = [];
+  const userAgent = /initialize\.userAgent=([A-Za-z0-9._/-]{1,80})/.exec(value)?.[1];
+  const claudeVersion = /claude --version\s+([A-Za-z0-9._-]{1,40})/i.exec(value)?.[1];
+  const streamJson = /stream-json=(yes|no)/i.exec(value)?.[1];
+  if (userAgent) facts.push(`userAgent=${userAgent}`);
+  if (claudeVersion) facts.push(`version=${claudeVersion}`);
+  if (streamJson) facts.push(`stream-json=${streamJson.toLowerCase()}`);
+  if (/unavailable|not found|spawn error/i.test(value)) facts.push('adapter reported unavailable');
+  if (/no stable structured interface/i.test(value)) facts.push('no stable structured interface');
+  return facts.join('; ') || 'adapter returned evidence; raw external output withheld';
 }
 
 function atLeast(version: string | undefined, expected: [number, number]): boolean | null {
@@ -103,12 +109,12 @@ export function buildDoctorReport(input: DoctorInput): DoctorReport {
   const missingRoots = input.projectRoots.filter((root) => !root.exists);
   checks.push(check(
     'project-roots', 'Project root resolution',
-    input.projectRoots.length === 0 ? 'UNKNOWN' : missingRoots.length ? 'FAIL' : 'PASS',
+    input.projectRoots.length === 0 ? 'UNKNOWN' : missingRoots.length ? 'FAIL' : input.projectRootsTruncated ? 'WARN' : 'PASS',
     input.projectRoots.length === 0
       ? 'No project root bindings were declared'
       : missingRoots.length
         ? `${missingRoots.length}/${input.projectRoots.length} configured roots are unavailable: ${missingRoots.map((root) => root.projectId).join(', ')}`
-        : `${input.projectRoots.length} configured roots resolve to directories`,
+        : `${input.projectRoots.length} configured roots resolve to directories${input.projectRootsTruncated ? '; scan capped' : ''}`,
     'external machine profile + Workbench-local verified rebind projection; paths withheld',
   ));
 
@@ -117,7 +123,7 @@ export function buildDoctorReport(input: DoctorInput): DoctorReport {
     checks.push(check(
       `harness.${harness}`, `${harness} executable and capability`,
       !observed ? 'UNKNOWN' : observed.available ? 'PASS' : 'WARN',
-      observed ? `${doctorSafeEvidence(observed.evidence)}; protocol=${doctorSafeEvidence(observed.protocol)}` : 'Capability probe did not return a result',
+      observed ? `${doctorSafeEvidence(observed.evidence)}; protocol declared by ${harness} adapter` : 'Capability probe did not return a result',
       'bounded adapter capability probe; no dispatch and no configuration write',
     ));
   }
@@ -137,10 +143,10 @@ export function buildDoctorReport(input: DoctorInput): DoctorReport {
   ));
   checks.push(check(
     'profile.portability', 'Profile Bundle and rebind health',
-    !input.profile.valid ? 'FAIL' : input.profile.unresolved || input.profile.missingRoots ? 'WARN' : 'PASS',
+    !input.profile.valid ? 'FAIL' : input.profile.unresolved || input.profile.missingRoots || input.profile.scanTruncated ? 'WARN' : 'PASS',
     !input.profile.valid
       ? 'Local portability binding state was rejected'
-      : `${input.profile.bindings} binding(s), ${input.profile.unresolved} unresolved, ${input.profile.missingRoots} bound roots unavailable`,
+      : `${input.profile.bindings} binding(s), ${input.profile.unresolved} unresolved, ${input.profile.missingRoots} bound roots unavailable${input.profile.scanTruncated ? '; scan capped' : ''}`,
     'Workbench-owned portability binding state; external profiles remain read-only',
   ));
   checks.push(check(

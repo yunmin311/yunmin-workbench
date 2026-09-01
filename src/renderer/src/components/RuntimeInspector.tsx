@@ -218,6 +218,8 @@ export function RuntimeInspector({ onClose }: { onClose: () => void }) {
   const conversation = useWorkbench((s) => s.conversation);
   const refreshLiveExecutions = useWorkbench((s) => s.refreshLiveExecutions);
   const setView = useWorkbench((s) => s.setView);
+  const activityHasEarlier = useWorkbench((s) => s.activityHasEarlier);
+  const loadEarlierActivity = useWorkbench((s) => s.loadEarlierActivity);
 
   const [matrix, setMatrix] = useState<CapabilityMatrix | null>(null);
   const [probedAt, setProbedAt] = useState<string | null>(null);
@@ -308,6 +310,11 @@ export function RuntimeInspector({ onClose }: { onClose: () => void }) {
           <p className="runtime-target-unavailable" data-testid="runtime-target-unavailable">
             Requested execution unavailable. Its exact harness + native ref is not present in current Activity; no recent runtime was substituted.
           </p>
+        )}
+        {activityHasEarlier && (
+          <button className="timeline-load-earlier" onClick={() => void loadEarlierActivity()}>
+            Load earlier Activity executions
+          </button>
         )}
       </section>
 
@@ -406,12 +413,15 @@ export function RuntimeInspector({ onClose }: { onClose: () => void }) {
           {cancelMessage && <p className="runtime-cancel-message">{cancelMessage}</p>}
 
           <h3 className="runtime-chronology-title">Execution chronology</h3>
-          {visibleChronology.length < selected.events.length && (
+          {(visibleChronology.length < selected.events.length || activityHasEarlier) && (
             <button
               className="timeline-load-earlier"
-              onClick={() => setVisibleChronologyCount((count) => count + TIMELINE_PAGE_SIZE)}
+              onClick={() => void (async () => {
+                if (visibleChronology.length >= selected.events.length && activityHasEarlier) await loadEarlierActivity();
+                setVisibleChronologyCount((count) => count + TIMELINE_PAGE_SIZE);
+              })()}
             >
-              Show earlier events · {selected.events.length - visibleChronology.length} hidden
+              Show earlier events{visibleChronology.length < selected.events.length ? ` · ${selected.events.length - visibleChronology.length} hidden` : ''}
             </button>
           )}
           <ol className="runtime-chronology" aria-label="Execution chronology">

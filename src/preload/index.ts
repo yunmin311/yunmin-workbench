@@ -77,8 +77,9 @@ const api = {
     ipcRenderer.invoke('runtime:live'),
   cancelExecution: (executionId: string): Promise<{ delivered: boolean; reason?: string }> =>
     ipcRenderer.invoke('harness:cancel', { executionId }),
-  loadActivity: (): Promise<{ events: ActivityEvent[]; problem?: string }> =>
-    ipcRenderer.invoke('activity:load'),
+  loadActivity: (options?: { beforeByte?: number; limit?: number }): Promise<{
+    events: ActivityEvent[]; problem?: string; rejectedLines: number; nextBeforeByte?: number; hasEarlier: boolean;
+  }> => ipcRenderer.invoke('activity:load', options),
   clearActivity: (): Promise<void> => ipcRenderer.invoke('activity:clear'),
   loadAttentionLocal: (): Promise<AttentionLocalState> => ipcRenderer.invoke('attention:local:load'),
   dismissAttention: (itemId: string, observedAt: string): Promise<void> =>
