@@ -99,10 +99,10 @@ test.describe('real Runtime adapter → Activity → Inspector smoke', () => {
       await win.getByRole('menuitemcheckbox', { name: /codex/i }).click();
       await win.getByRole('textbox', { name: 'Task for Agent' }).fill('Use the Bash tool once to run pwd (read-only), then reply exactly: YUNMIN_CLAUDE_RUNTIME_SMOKE_OK. Do not modify files.');
       await win.getByRole('button', { name: 'Send to claude' }).click();
-      await expect(win.locator('.activity-kind-handoff-accepted')).toBeVisible();
-      await expect(win.locator('.activity-kind-tool-started')).toBeVisible();
-      await expect(win.locator('.activity-kind-tool-completed')).toBeVisible();
-      await expect(win.locator('.activity-kind-agent-response')).toContainText('YUNMIN_CLAUDE_RUNTIME_SMOKE_OK');
+      await expect(win.locator('.activity-kind-handoff-accepted')).toBeVisible({ timeout: 60_000 });
+      await expect(win.locator('.activity-kind-tool-started')).toBeVisible({ timeout: 120_000 });
+      await expect(win.locator('.activity-kind-tool-completed')).toBeVisible({ timeout: 120_000 });
+      await expect(win.locator('.activity-kind-agent-response')).toContainText('YUNMIN_CLAUDE_RUNTIME_SMOKE_OK', { timeout: 120_000 });
       await win.getByTestId('session-runtime-badge').click();
       await expect(win.getByTestId('runtime-detail')).toHaveAttribute('data-execution-id', /^claude::[0-9a-f-]{36}$/i);
       await expect(win.getByTestId('runtime-detail')).toContainText('Assistant result');
