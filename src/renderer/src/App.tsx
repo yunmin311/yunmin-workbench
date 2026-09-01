@@ -9,6 +9,7 @@ import { PortabilityPanel } from './components/PortabilityPanel';
 import { MemoryPanel } from './components/MemoryPanel';
 import { MaterialSettings } from './components/MaterialSettings';
 import { DoctorPanel } from './components/DoctorPanel';
+import { CollaborationPanel } from './components/CollaborationPanel';
 import { CanvasView } from './views/CanvasView';
 import { SessionSurface } from './views/SessionSurface';
 import { useWorkbench } from './store';
@@ -39,6 +40,7 @@ export default function App() {
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [materialOpen, setMaterialOpen] = useState(false);
   const [doctorOpen, setDoctorOpen] = useState(false);
+  const [collabOpen, setCollabOpen] = useState(false);
   const [historySourceSessionId, setHistorySourceSessionId] = useState<string | undefined>();
   const material = useMaterial();
 
@@ -169,6 +171,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const open = () => setCollabOpen(true);
+    window.addEventListener('workbench:open-collaboration', open);
+    return () => window.removeEventListener('workbench:open-collaboration', open);
+  }, []);
+
+  useEffect(() => {
     const open = () => setSessionPickerOpen(true);
     window.addEventListener('workbench:open-session-picker', open);
     return () => window.removeEventListener('workbench:open-session-picker', open);
@@ -246,6 +254,7 @@ export default function App() {
             aria-expanded={attentionOpen}
             onClick={() => setAttentionOpen((open) => !open)}
           >Attention{attentionItems.length > 0 && <span>{attentionItems.length}</span>}</button>
+          <button onClick={() => setCollabOpen(true)}>Collaborate</button>
           <button onClick={() => setHistoryOpen(true)}>History</button>
           <button onClick={() => setMemoryOpen(true)}>Memory</button>
           <button disabled={!projectId} aria-pressed={inspectorTab === 'context'} onClick={() => openInspector('context')}>Context</button>
@@ -304,6 +313,7 @@ export default function App() {
       {portabilityOpen && <PortabilityPanel onClose={() => setPortabilityOpen(false)} />}
       {materialOpen && <MaterialSettings onClose={() => setMaterialOpen(false)} />}
       {doctorOpen && <DoctorPanel onClose={() => setDoctorOpen(false)} />}
+      {collabOpen && <CollaborationPanel onClose={() => setCollabOpen(false)} />}
     </div>
   );
 }

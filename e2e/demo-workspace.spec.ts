@@ -71,3 +71,25 @@ test('composer is a working dispatch entry point (agent select + send, not a dis
     await app.close();
   }
 });
+
+test('collaboration: handoff run shows agent cards and an explicit relation in Demo', async () => {
+  test.setTimeout(90_000);
+  const { app, win } = await launchEmpty();
+  try {
+    await win.getByRole('button', { name: 'Try Demo' }).click();
+    await expect(win.locator('.session-surface')).toBeVisible();
+    await win.getByRole('button', { name: 'Collaborate' }).click();
+    await expect(win.locator('.collaboration-panel')).toBeVisible();
+    // Two demo agents are available, so a Handoff run can start.
+    await win.getByRole('button', { name: 'Handoff · A → B' }).click();
+    await expect(win.locator('.collaboration-agent').first()).toBeVisible();
+    // Simulate a completion; this creates an explicit source->target relation,
+    // never an auto-inferred one.
+    await win.getByRole('button', { name: 'Simulate a completion in Demo' }).click();
+    const inbound = win.locator('.agent-inbound');
+    await expect(inbound).toBeVisible();
+    await expect(inbound.first()).toContainText(':result');
+  } finally {
+    await app.close();
+  }
+});

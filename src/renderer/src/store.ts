@@ -46,6 +46,14 @@ import {
   DEMO_HARNESS_CAPABILITIES,
 } from './demo/demoData';
 import { runDemoDispatch } from './demo/demoRuntime';
+import {
+  createCollaborationRun,
+  setAgentStatus as updateRunAgentStatus,
+  addHandoffRelation as runAddRelation,
+  type CollaborationRun,
+  type CollaborationMode,
+  type CollaborationAgent,
+} from '../../core/project/collaboration';
 
 export type View = 'projects' | 'control' | 'canvas' | 'context' | 'packet';
 export type DraftSaveState = 'clean' | 'dirty' | 'saving' | 'saved' | 'error';
@@ -99,6 +107,8 @@ interface WorkbenchState {
   draftSaveState: DraftSaveState;
   packetValidity: 'CURRENT' | 'STALE' | 'INVALID' | 'UNKNOWN';
   handoffStatus: string;
+  collaborationRuns: CollaborationRun[];
+  activeRunId: string | null;
   syncIslandAttention: () => void;
   initialize: () => Promise<void>;
   resumeWorkspace: (target?: WorkspaceTargetV1) => void;
@@ -139,6 +149,14 @@ interface WorkbenchState {
   dismissAttention: (item: AttentionItem) => Promise<void>;
   setPacketValidity: (validity: WorkbenchState['packetValidity']) => void;
   setHandoffStatus: (status: string) => void;
+  createCollaborationRun: (input: {
+    projectId: string; conversationKey: string; mode: CollaborationMode;
+    agents: { agentId: string; harness: string; role: string; goal: string }[];
+  }) => void;
+  setCollaborationAgentStatus: (runId: string, agentId: string, status: CollaborationAgent['status'], executionId?: string) => void;
+  addCollaborationRelation: (runId: string, relation: { id: string; source: string; target: string; usedResultRef: string }) => void;
+  setActiveRunId: (runId: string | null) => void;
+  resetCollaboration: () => void;
 }
 
 const draftTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -329,6 +347,8 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   draftSaveState: 'clean',
   packetValidity: 'UNKNOWN',
   handoffStatus: 'IDLE',
+  collaborationRuns: [],
+  activeRunId: null,
   syncIslandAttention: () => {
     const items = get().attentionItems;
     if (window.wb?.syncIslandAttention) {
@@ -1151,4 +1171,24 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
 
   setPacketValidity: (packetValidity) => set({ packetValidity }),
   setHandoffStatus: (handoffStatus) => set({ handoffStatus }),
+  createCollaborationRun: (input) => {
+    const run = createCollaborationRun({ id: globalThis.crypto.randomUUID(), ...input });
+    set((state) => ({ collaborationRuns: [...state.collaborationRuns, run], activeRunId: run.id }));
+  },
+  setCollaborationAgentStatus: (runId, agentId, status, executionId) => {
+    set((state) => ({
+      collaborationRuns: state.collaborationRuns.map((run) =>
+        run.id === runId ? updateRunAgentStatus(run, agentId, status, executionId) : run,
+      ),
+    }));
+  },
+  addCollaborationRelation: (runId, relation) => {
+    set((state) => ({
+      collaborationRuns: state.collaborationRuns.map((run) =>
+        run.id === runId ? runAddRelation(run, relation) : run,
+      ),
+    }));
+  },
+  setActiveRunId: (runId) => set({ activeRunId: runId }),
+  resetCollaboration: () => set({ collaborationRuns: [], activeRunId: null }),
 }));

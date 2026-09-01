@@ -837,3 +837,31 @@ html, body, #root { width: 100%; height: 100%; overflow: hidden; }
 .composer-dispatch-accepted { color: #78c49b; }
 .composer-dispatch-failed { color: #ef7d7d; }
 .composer-dispatch-pending { color: #e0af68; }
+
+/* ---- Multi-Agent Collaboration (projection surface) ---- */
+.collaboration-panel { width: min(860px, 94vw); max-height: min(760px, calc(100vh - 64px)); overflow: auto; }
+.collaboration-runs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.collaboration-run-tab { padding: 4px 10px; border-radius: 6px; font-size: 11px; border: 1px solid var(--border, #2a2f36); background: var(--wb-surface-raised, #171b21); color: var(--wb-text-contrast, #e6e8eb); }
+.collaboration-run-tab.active { border-color: var(--accent, #4c8bf5); color: var(--accent, #4c8bf5); }
+.collaboration-new { padding: 4px 10px; border-radius: 6px; font-size: 11px; border: 1px solid var(--border, #2a2f36); background: transparent; }
+.collaboration-agents { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.collaboration-agent { padding: 12px; border-radius: 10px; border: 1px solid var(--border, #2a2f36); background: var(--wb-surface-raised, #171b21); }
+.collaboration-agent header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.collaboration-agent header strong { flex: 1; }
+.collaboration-agent p { font-size: 12px; color: var(--muted, #98a5b3); margin: 4px 0; }
+.agent-status { font: 700 9px/1.4 ui-monospace, monospace; padding: 1px 6px; border-radius: 999px; }
+.agent-status-completed { color: #78c49b; }
+.agent-status-failed { color: #ef7d7d; }
+.agent-status-running { color: #e0af68; }
+.agent-status-pending { color: var(--muted, #98a5b3); }
+.agent-status-awaiting-input { color: #e0af68; }
+.agent-execution { font: 9px/1.4 ui-monospace, monospace; color: var(--prototype-faint, #6b7480); }
+.agent-inbound, .agent-outbound { margin-top: 8px; font-size: 10px; color: var(--muted, #98a5b3); display: grid; gap: 2px; }
+.agent-inbound span, .agent-outbound span { font-family: ui-monospace, monospace; }
+.collaboration-actions { display: flex; gap: 10px; margin: 14px 0; }
+.collaboration-actions button { padding: 6px 14px; border-radius: 7px; font-size: 12px; border: 1px solid var(--accent, #4c8bf5); background: rgba(76,139,245,.12); color: var(--accent, #4c8bf5); }
+.collaboration-actions button:disabled { opacity: .45; }
+.collaboration-empty p { color: var(--muted, #98a5b3); font-size: 13px; line-height: 1.55; }
+.collaboration-hint { font-size: 11px !important; opacity: .7; margin-top: 12px; }
+.collaboration-empty-actions { margin-top: 14px; }
+.collaboration-empty-actions button { padding: 6px 14px; border-radius: 7px; font-size: 12px; border: 1px solid var(--border, #2a2f36); background: transparent; }
