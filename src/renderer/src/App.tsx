@@ -13,6 +13,7 @@ import { CanvasView } from './views/CanvasView';
 import { SessionSurface } from './views/SessionSurface';
 import { useWorkbench } from './store';
 import { useMaterial } from './material/MaterialProvider';
+import { DemoWelcomeScreen } from './demo/DemoWelcomeScreen';
 
 export default function App() {
   const snapshot = useWorkbench((state) => state.snapshot);
@@ -28,6 +29,8 @@ export default function App() {
   const reloadAndRecheck = useWorkbench((state) => state.reloadAndRecheck);
   const setView = useWorkbench((state) => state.setView);
   const syncIslandAttention = useWorkbench((state) => state.syncIslandAttention);
+  const demoMode = useWorkbench((state) => state.demoMode);
+  const exitDemo = useWorkbench((state) => state.exitDemo);
   const [sessionPickerOpen, setSessionPickerOpen] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -171,8 +174,20 @@ export default function App() {
     return () => window.removeEventListener('workbench:open-session-picker', open);
   }, []);
 
-  if (loading && !snapshot) return <div className="center">Loading workspace truth…</div>;
-  if (!snapshot) return <div className="center">No overlay snapshot.</div>;
+  if (loading) return <div className="center">Loading workspace truth…</div>;
+  // First-run choice: show the Demo entry when there is no real content to work
+  // with (null snapshot, or an empty overlay with no projects/conversations).
+  // DEMO mode carries its own data and never needs this gate.
+  const isEmptyReal = !snapshot || (snapshot.projects.length === 0 && snapshot.conversations.length === 0);
+  if (!demoMode && isEmptyReal) {
+    return (
+      <DemoWelcomeScreen
+        onOpenReal={() => void useWorkbench.getState().initialize()}
+        note={snapshot?.problems?.[0]?.message}
+      />
+    );
+  }
+  if (!snapshot) return <DemoWelcomeScreen onOpenReal={() => void useWorkbench.getState().initialize()} />;
 
   const canvasMode = view === 'canvas';
   const project = snapshot.projects.find((item) => item.projectId === projectId);
@@ -209,6 +224,8 @@ export default function App() {
           <button aria-current={!canvasMode ? 'page' : undefined} onClick={() => setView('control')}>Session</button>
           <button disabled={!projectId} aria-current={canvasMode ? 'page' : undefined} onClick={() => setView('canvas')}>Canvas</button>
         </nav>
+
+        {demoMode && <span className="demo-live-badge" data-testid="demo-live-badge">DEMO</span>}
 
         <div className="chrome-status" aria-label="Actionable session status">
           {conversation && currentRuntime?.state === 'error' && (
@@ -248,6 +265,11 @@ export default function App() {
             onClick={() => window.dispatchEvent(new CustomEvent('workbench:open-command-palette'))}
           >⌘</button>
           <button className="icon-action" aria-label="Reload external truth" onClick={() => void reloadAndRecheck()}>↻</button>
+          {demoMode && (
+            <button className="demo-exit" aria-label="Exit demo workspace" onClick={() => void exitDemo()}>
+              Exit demo
+            </button>
+          )}
         </div>
       </header>
 

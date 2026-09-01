@@ -29,9 +29,22 @@ import type {
   RuntimeSession,
   AttentionItem,
   AttentionLocalState,
+  HandoffReceipt,
 } from '../../core/types';
 import type { MemorySearchHit } from '../../core/memory/types';
 import { probeLiveExecutions } from './runtimeInspectorModel';
+import {
+  DEMO_SNAPSHOT,
+  DEMO_PROJECTS,
+  DEMO_CONVERSATIONS,
+  DEMO_CONTEXT,
+  DEMO_FROZEN,
+  DEMO_ACTIVITY,
+  DEMO_ATTENTION,
+  DEMO_RUNTIME_SESSIONS,
+  DEMO_HARNESS_CAPABILITIES,
+} from './demo/demoData';
+import { runDemoDispatch } from './demo/demoRuntime';
 
 export type View = 'projects' | 'control' | 'canvas' | 'context' | 'packet';
 export type DraftSaveState = 'clean' | 'dirty' | 'saving' | 'saved' | 'error';
@@ -55,6 +68,7 @@ interface WorkbenchState {
   view: View;
   projectId: string | null;
   conversation: Conversation | null;
+  demoMode: boolean;
   staging: ContextItem[];
   taskSummary: string;
   frozen: FrozenPacketSummary[];
@@ -86,6 +100,13 @@ interface WorkbenchState {
   syncIslandAttention: () => void;
   initialize: () => Promise<void>;
   resumeWorkspace: (target?: WorkspaceTargetV1) => void;
+  enterDemo: () => void;
+  exitDemo: () => Promise<void>;
+  resetDemo: () => void;
+  demoDispatch: (request: {
+    intentId: string; projectId: string; conversationKey: string;
+    harness: 'codex' | 'claude' | 'deepseek'; text: string;
+  }) => Promise<HandoffReceipt>;
   load: (refresh?: boolean) => Promise<void>;
   reloadAndRecheck: () => Promise<void>;
   selectProject: (projectId: string) => void;
@@ -274,6 +295,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   view: 'projects',
   projectId: null,
   conversation: null,
+  demoMode: false,
   staging: [],
   taskSummary: '',
   frozen: [],
@@ -320,6 +342,113 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       resumeProblem: loaded.problem ?? null,
     });
     if (loaded.session?.last) get().resumeWorkspace(loaded.session.last);
+  },
+
+  enterDemo: () => {
+    const firstProject = DEMO_PROJECTS[0];
+    const firstConversation = DEMO_CONVERSATIONS[0];
+    set({
+      demoMode: true,
+      loading: false,
+      snapshot: DEMO_SNAPSHOT,
+      view: 'control',
+      projectId: firstProject.projectId,
+      conversation: firstConversation,
+      staging: DEMO_CONTEXT,
+      taskSummary: '',
+      frozen: DEMO_FROZEN,
+      frozenProblems: [],
+      frozenDetails: {},
+      git: null,
+      memoryBodies: {},
+      projectFingerprints: DEMO_SNAPSHOT.sourceFingerprints,
+      recheckedSourceRefs: [],
+      recheckedFingerprints: [],
+      orphanedDraftDecisionIds: [],
+      sourceChanges: [],
+      contextMessage: null,
+      draftSaveState: 'clean',
+      packetValidity: 'CURRENT',
+      handoffStatus: 'IDLE',
+      activity: DEMO_ACTIVITY,
+      activityBeforeByte: undefined,
+      activityHasEarlier: false,
+      runtimeSessions: DEMO_RUNTIME_SESSIONS,
+      activityProblem: null,
+      liveExecutions: [],
+      attentionItems: [...DEMO_ATTENTION],
+    });
+    get().syncIslandAttention();
+  },
+
+  exitDemo: async () => {
+    // Leave demo mode and reload the real workspace. Demo state is recreated on
+    // the next enterDemo(); nothing was persisted, so real truth is untouched.
+    set({
+      demoMode: false,
+      snapshot: null,
+      projectId: null,
+      conversation: null,
+      view: 'projects',
+      staging: [],
+      activity: [],
+      runtimeSessions: [],
+      attentionItems: [],
+    });
+    await get().initialize();
+  },
+
+  resetDemo: () => {
+    if (!get().demoMode) return;
+    const firstProject = DEMO_PROJECTS[0];
+    set({
+      snapshot: DEMO_SNAPSHOT,
+      projectId: firstProject.projectId,
+      conversation: DEMO_CONVERSATIONS[0],
+      staging: DEMO_CONTEXT,
+      taskSummary: '',
+      frozen: DEMO_FROZEN,
+      activity: DEMO_ACTIVITY,
+      runtimeSessions: DEMO_RUNTIME_SESSIONS,
+      attentionItems: [...DEMO_ATTENTION],
+      packetValidity: 'CURRENT',
+      draftSaveState: 'clean',
+      contextMessage: null,
+      handoffStatus: 'IDLE',
+    });
+    get().syncIslandAttention();
+  },
+
+  demoDispatch: async (request) => {
+    // Simulate dispatch in-memory. It never calls a real harness, writes a file,
+    // or reads/touches external truth. The receipt + activity stream are local
+    // and update the renderer projection directly (bypassing ingestActivity,
+    // which would otherwise hit the live-execution IPC refresh path).
+    const { receipt, events } = runDemoDispatch(request);
+    const session = events.find((event) => event.kind === 'handoff-accepted');
+    const rs: RuntimeSession | null = session?.runtimeRef ? {
+      id: session.runtimeRef,
+      conversationKey: request.conversationKey,
+      binding: session.binding ?? { harness: request.harness, machine: 'demo-machine', externalSessionRef: session.runtimeRef },
+      state: receipt.status === 'ACCEPTED' ? 'working' : 'error',
+      observed: session.observed,
+      startedAt: receipt.at,
+    } : null;
+    set((state) => {
+      const byId = new Map<string, ActivityEvent>();
+      for (const event of events) byId.set(event.id, event);
+      for (const existing of state.activity) byId.set(existing.id, existing);
+      const activity = orderActivity([...byId.values()]);
+      const runtimeSessions = rs
+        ? [...state.runtimeSessions.filter((item) => item.id !== rs.id), rs]
+        : projectRuntimeSessions(activity);
+      return {
+        activity,
+        runtimeSessions,
+        attentionItems: projectAttention({ ...state, activity, runtimeSessions }),
+      };
+    });
+    return receipt;
   },
 
   resumeWorkspace: (requested) => {
