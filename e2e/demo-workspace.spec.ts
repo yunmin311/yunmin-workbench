@@ -89,6 +89,11 @@ test('collaboration: handoff run shows agent cards and an explicit relation in D
     const inbound = win.locator('.agent-inbound');
     await expect(inbound).toBeVisible();
     await expect(inbound.first()).toContainText(':result');
+    // Compare results shows each agent's outcome side-by-side, without judging.
+    await win.getByRole('button', { name: 'Compare results' }).click();
+    await expect(win.locator('.collaboration-compare')).toBeVisible();
+    await expect(win.locator('.collaboration-compare-card').first()).toBeVisible();
+    await expect(win.getByText('Side-by-side only; the Workbench does not judge')).toBeVisible();
   } finally {
     await app.close();
   }

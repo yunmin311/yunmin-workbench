@@ -865,3 +865,12 @@ html, body, #root { width: 100%; height: 100%; overflow: hidden; }
 .collaboration-hint { font-size: 11px !important; opacity: .7; margin-top: 12px; }
 .collaboration-empty-actions { margin-top: 14px; }
 .collaboration-empty-actions button { padding: 6px 14px; border-radius: 7px; font-size: 12px; border: 1px solid var(--border, #2a2f36); background: transparent; }
+
+/* ---- Collaboration compare ---- */
+.collaboration-compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 16px; }
+.collaboration-compare-card { padding: 12px; border-radius: 10px; border: 1px solid var(--border, #2a2f36); background: var(--wb-surface-raised, #171b21); }
+.collaboration-compare-card header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.compare-result { font-size: 12px; line-height: 1.5; color: var(--muted, #98a5b3); }
+.compare-result-completed { color: #78c49b; }
+.compare-result-failed { color: #ef7d7d; }
+.compare-hint { font-size: 10px; color: var(--prototype-faint, #6b7480); margin-top: 10px; grid-column: 1 / -1; }

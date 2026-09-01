@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useWorkbench } from '../store';
 
 /**
@@ -23,6 +24,7 @@ export function CollaborationPanel({ onClose }: { onClose: () => void }) {
   const availableAgents = Object.entries(harnessCapabilities)
     .filter(([, caps]) => caps.canDispatch)
     .map(([name]) => name);
+  const [compareOpen, setCompareOpen] = useState(false);
 
   const startParallel = () => {
     if (!projectId || !conversation || availableAgents.length < 2) return;
@@ -133,7 +135,28 @@ export function CollaborationPanel({ onClose }: { onClose: () => void }) {
             </div>
             <div className="collaboration-empty-actions">
               {demoMode && <button onClick={simulateRun}>Simulate a completion in Demo</button>}
+              <button onClick={() => setCompareOpen((o) => !o)}>{compareOpen ? 'Hide compare' : 'Compare results'}</button>
             </div>
+            {compareOpen && (
+              <div className="collaboration-compare" aria-label="Compare agent results">
+                {run.agents.map((agent) => (
+                  <article key={agent.agentId} className="collaboration-compare-card">
+                    <header><strong>{agent.role}</strong><span className="harness-badge">{agent.harness}</span></header>
+                    <p className={`compare-result compare-result-${agent.status}`}>
+                      {agent.status === 'completed'
+                        ? `Result from ${agent.harness} (${agent.executionId ?? 'no execution id'}): produced an outcome.`
+                        : agent.status === 'failed'
+                          ? `${agent.harness} failed — this does not affect the other agents.`
+                          : agent.status === 'awaiting-input'
+                            ? `${agent.harness} is waiting for your input.`
+                            : `${agent.harness} is ${agent.status}.`}
+                    </p>
+                    <small className="agent-execution">execution {agent.executionId ?? 'not started'}</small>
+                  </article>
+                ))}
+                <p className="compare-hint">Side-by-side only; the Workbench does not judge which is correct unless you run a judge execution.</p>
+              </div>
+            )}
           </>
         )}
       </section>
