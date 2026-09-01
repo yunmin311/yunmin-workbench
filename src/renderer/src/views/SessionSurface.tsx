@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ActivityEvent } from '../../../core/types';
 import { executionIdForEvent, projectRuntimeExecutions } from '../../../core/project/runtimeInspector';
 import { latestRuntimeExecutionForConversation } from '../runtimeInspectorModel';
+import { boundedTimeline, TIMELINE_PAGE_SIZE, visibleCountForTarget } from '../boundedTimeline';
 import { useWorkbench } from '../store';
 
 const ACTIVITY_LABEL: Record<ActivityEvent['kind'], string> = {
@@ -110,9 +111,20 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
   const setView = useWorkbench((state) => state.setView);
   const clearActivity = useWorkbench((state) => state.clearActivity);
 
+  const events = useMemo(() => activity.filter((event) =>
+    event.projectId === projectId && event.conversationKey === conversation?.key,
+  ), [activity, projectId, conversation?.key]);
+  const [visibleEventCount, setVisibleEventCount] = useState(TIMELINE_PAGE_SIZE);
+
+  useEffect(() => setVisibleEventCount(TIMELINE_PAGE_SIZE), [conversation?.key]);
+
   useEffect(() => {
     const focusSource = (rawEvent: Event) => {
       const detail = (rawEvent as CustomEvent<{ eventRef?: string; sessionRef?: string; sourceRef: string }>).detail;
+      setVisibleEventCount((current) => visibleCountForTarget(events, current, (event) =>
+        (Boolean(detail.eventRef) && event.id === detail.eventRef)
+          || (Boolean(detail.sessionRef) && event.runtimeRef === detail.sessionRef)
+          || event.observed.sourceRef === detail.sourceRef));
       setTimeout(() => {
         const candidates = [...document.querySelectorAll<HTMLElement>('[data-event-ref], [data-session-ref], [data-source-ref]')];
         const target = candidates.find((node) => Boolean(detail.eventRef) && node.dataset.eventRef === detail.eventRef)
@@ -126,7 +138,7 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
     };
     window.addEventListener('workbench:focus-attention-source', focusSource);
     return () => window.removeEventListener('workbench:focus-attention-source', focusSource);
-  }, []);
+  }, [events]);
 
   if (!projectId) {
     return (
@@ -153,9 +165,7 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
 
   const runtimeExecutions = projectRuntimeExecutions(activity, liveExecutions.map((item) => item.executionId));
   const runtime = latestRuntimeExecutionForConversation(runtimeExecutions, conversation.key);
-  const events = activity.filter((event) =>
-    event.projectId === projectId && event.conversationKey === conversation.key,
-  );
+  const visibleEvents = boundedTimeline(events, visibleEventCount);
   const included = staging.filter((item) => item.state === 'included').length;
   const pinned = staging.filter((item) => item.state === 'included' && item.pinned).length;
   const sessionAttention = attentionItems.filter(
@@ -192,9 +202,19 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
             No observed activity yet. Runtime boundaries appear here only when the adapter reports them; nothing is invented.
           </p>
         ) : (
-          <ol className="session-timeline">
-            {events.map((event) => <ActivityCard key={event.id} event={event} />)}
-          </ol>
+          <>
+            {visibleEvents.length < events.length && (
+              <button
+                className="timeline-load-earlier"
+                onClick={() => setVisibleEventCount((count) => count + TIMELINE_PAGE_SIZE)}
+              >
+                Show earlier activity · {events.length - visibleEvents.length} hidden
+              </button>
+            )}
+            <ol className="session-timeline">
+              {visibleEvents.map((event) => <ActivityCard key={event.id} event={event} />)}
+            </ol>
+          </>
         )}
       </section>
 

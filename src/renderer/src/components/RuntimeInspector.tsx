@@ -3,6 +3,7 @@ import type { ActivityEvent, HarnessCapabilities, RuntimeState } from '../../../
 import { projectRuntimeExecutions, type RuntimeExecutionView } from '../../../core/project/runtimeInspector';
 import type { LiveExecutionInfo } from '../store';
 import { resolveRuntimeInspectorScope, runtimeCancelAvailability } from '../runtimeInspectorModel';
+import { boundedTimeline, TIMELINE_PAGE_SIZE } from '../boundedTimeline';
 import { useWorkbench } from '../store';
 
 type CapabilityMatrix = Record<string, HarnessCapabilities>;
@@ -222,6 +223,7 @@ export function RuntimeInspector({ onClose }: { onClose: () => void }) {
   const [probedAt, setProbedAt] = useState<string | null>(null);
   const [cancelMessage, setCancelMessage] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [visibleChronologyCount, setVisibleChronologyCount] = useState(TIMELINE_PAGE_SIZE);
 
   useEffect(() => {
     let cancelled = false;
@@ -254,6 +256,8 @@ export function RuntimeInspector({ onClose }: { onClose: () => void }) {
     });
   }, [executions, projectId, conversation, runtimeTarget, selectedId]);
   const selected = scoped.selected;
+  const visibleChronology = boundedTimeline(selected?.events ?? [], visibleChronologyCount);
+  useEffect(() => setVisibleChronologyCount(TIMELINE_PAGE_SIZE), [selected?.executionId]);
   const cancelAvailability = selected
     ? runtimeCancelAvailability(selected, liveExecutions)
     : { enabled: false, reason: 'not-live' as const };
@@ -402,8 +406,16 @@ export function RuntimeInspector({ onClose }: { onClose: () => void }) {
           {cancelMessage && <p className="runtime-cancel-message">{cancelMessage}</p>}
 
           <h3 className="runtime-chronology-title">Execution chronology</h3>
+          {visibleChronology.length < selected.events.length && (
+            <button
+              className="timeline-load-earlier"
+              onClick={() => setVisibleChronologyCount((count) => count + TIMELINE_PAGE_SIZE)}
+            >
+              Show earlier events · {selected.events.length - visibleChronology.length} hidden
+            </button>
+          )}
           <ol className="runtime-chronology" aria-label="Execution chronology">
-            {selected.events.map((event) => <ChronologyRow key={event.id} event={event} />)}
+            {visibleChronology.map((event) => <ChronologyRow key={event.id} event={event} />)}
           </ol>
         </section>
       )}
