@@ -107,4 +107,47 @@ describe('runtime observation history', () => {
     expect(loaded.rejectedLines).toBe(2);
     expect(loaded.problem).toContain('isolated 2 malformed line(s)');
   });
+
+  it('keeps a crash-truncated tail isolated while preserving the next valid append', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'wb-activity-tail-recovery-'));
+    const first = event('first', 'session-started', '2026-08-26T01:00:00.000Z', {
+      harness: 'codex', runtimeRef: 'thread-1',
+      binding: { harness: 'codex', machine: 'machine-1', externalSessionRef: 'thread-1' },
+    });
+    const recovered = event('recovered', 'turn-started', '2026-08-26T01:00:01.000Z', {
+      harness: 'codex', runtimeRef: 'thread-1', runtimeState: 'working',
+    });
+    await appendActivity(root, first);
+    await appendFile(join(root, 'activity', 'history.jsonl'), '{"schemaVersion":1,"event":', 'utf8');
+    await appendActivity(root, recovered);
+
+    const loaded = await readActivity(root);
+    expect(loaded.events).toEqual([first, recovered]);
+    expect(loaded.rejectedLines).toBe(1);
+  });
+
+  it('projects duplicate event ids deterministically using the last appended record', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'wb-activity-duplicate-'));
+    const first = event('same-id', 'turn-started', '2026-08-26T01:00:00.000Z', { summary: 'old observation' });
+    const corrected = event('same-id', 'turn-completed', '2026-08-26T01:00:01.000Z', { summary: 'new observation' });
+    await appendActivity(root, first);
+    await appendActivity(root, corrected);
+
+    expect((await readActivity(root)).events).toEqual([corrected]);
+  });
+
+  it('serializes concurrent appends and clear in invocation order', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'wb-activity-serialization-'));
+    await Promise.all(Array.from({ length: 100 }, (_, index) => appendActivity(
+      root,
+      event(`event-${index}`, 'tool-completed', `2026-08-26T01:00:${String(index % 60).padStart(2, '0')}.000Z`),
+    )));
+    expect((await readActivity(root)).events).toHaveLength(100);
+
+    const beforeClear = appendActivity(root, event('before-clear', 'turn-started', '2026-08-26T02:00:00.000Z'));
+    const clearing = clearActivity(root);
+    const afterClear = appendActivity(root, event('after-clear', 'turn-started', '2026-08-26T02:00:01.000Z'));
+    await Promise.all([beforeClear, clearing, afterClear]);
+    expect((await readActivity(root)).events.map((item) => item.id)).toEqual(['after-clear']);
+  });
 });

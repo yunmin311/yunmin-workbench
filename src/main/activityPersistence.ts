@@ -51,10 +51,27 @@ function historyPath(stateDir: string): string {
   return join(stateDir, 'activity', 'history.jsonl');
 }
 
+const mutations = new Map<string, Promise<void>>();
+
+function mutateHistory(path: string, mutation: () => Promise<void>): Promise<void> {
+  const prior = mutations.get(path) ?? Promise.resolve();
+  const next = prior.catch(() => undefined).then(mutation);
+  const queued = next.finally(() => {
+    if (mutations.get(path) === queued) mutations.delete(path);
+  });
+  mutations.set(path, queued);
+  return queued;
+}
+
 export async function appendActivity(stateDir: string, event: ActivityEvent): Promise<void> {
   const path = historyPath(stateDir);
-  await mkdir(dirname(path), { recursive: true });
-  await appendFile(path, `${JSON.stringify({ schemaVersion: 1, event })}\n`, 'utf8');
+  return mutateHistory(path, async () => {
+    await mkdir(dirname(path), { recursive: true });
+    // A leading blank line is an explicit recovery boundary. If a crash left a
+    // partial JSON tail, the next valid record can never be glued to it; blank
+    // lines are ignored by readActivity and cost one byte per append.
+    await appendFile(path, `\n${JSON.stringify({ schemaVersion: 1, event })}\n`, 'utf8');
+  });
 }
 
 export async function readActivity(stateDir: string): Promise<{ events: ActivityEvent[]; problem?: string; rejectedLines?: number }> {
@@ -68,13 +85,17 @@ export async function readActivity(stateDir: string): Promise<{ events: Activity
   // Bad-line isolation: one malformed/corrupt line is skipped and reported;
   // valid events around it still project. A partial trailing write is the
   // common case (append interrupted) and must not erase live history.
-  const events: ActivityEvent[] = [];
+  const eventsById = new Map<string, ActivityEvent>();
   let rejectedLines = 0;
   let firstProblem: string | undefined;
   for (const [index, line] of text.split(/\r?\n/).entries()) {
     if (!line.trim()) continue;
     try {
-      events.push(ActivityLineSchema.parse(JSON.parse(line)).event);
+      const event = ActivityLineSchema.parse(JSON.parse(line)).event;
+      // Event ids are idempotency keys. A repeated append deterministically
+      // replaces the older projection while the append-only evidence remains.
+      eventsById.delete(event.id);
+      eventsById.set(event.id, event);
     } catch (error) {
       rejectedLines += 1;
       firstProblem ??= `line ${index + 1}: ${String(error)}`;
@@ -83,9 +104,10 @@ export async function readActivity(stateDir: string): Promise<{ events: Activity
   const problem = rejectedLines > 0
     ? `Activity history isolated ${rejectedLines} malformed line(s); first: ${firstProblem}`
     : undefined;
-  return { events: events as ActivityEvent[], problem, rejectedLines };
+  return { events: [...eventsById.values()] as ActivityEvent[], problem, rejectedLines };
 }
 
 export async function clearActivity(stateDir: string): Promise<void> {
-  await rm(historyPath(stateDir), { force: true });
+  const path = historyPath(stateDir);
+  return mutateHistory(path, () => rm(path, { force: true }));
 }
