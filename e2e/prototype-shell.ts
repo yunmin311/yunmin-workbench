@@ -13,7 +13,7 @@ export async function openSessionPacket(win: Page, projectName: string): Promise
   const projectValue = await projectOption.getAttribute('value');
   await win.locator('.project-switcher select').selectOption(projectValue!);
   await win.locator('.sidebar-conversations button').first().click();
-  await win.getByRole('button', { name: 'Packet', exact: true }).click();
+  await win.keyboard.press('Control+4');
   await expect(win.locator('.inspector-pane h2', { hasText: 'Task Packet' })).toBeVisible();
 }
 

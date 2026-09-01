@@ -1,9 +1,9 @@
 // Yunmin Workbench Demo Workspace — Workbench-owned fixture data.
 //
-// This is a RENDERER-ONLY sandbox. None of it flows through IPC or the main
-// process, and none of it is written to real History / Memory / Governance /
-// Harness config. It exists purely so a first-run user can see the full
-// product without configuring a real Overlay or a Harness binary.
+// This fixture describes only the isolated demo workspace and its initial
+// Context. Executions still travel through the production dispatch pipeline;
+// the main process selects a scoped deterministic adapter from the explicit
+// demo session identity and never persists those events into real SOT.
 //
 // Everything here is a local constant: immutable, reset by re-instantiating,
 // and visibly labelled DEMO. It shares the production type shapes so the
@@ -13,14 +13,10 @@
 // fictional and derived solely from this file.
 
 import type {
-  ActivityEvent,
-  AttentionItem,
   ContextItem,
   Conversation,
   FrozenPacket,
-  HarnessCapabilities,
   OverlaySnapshot,
-  RuntimeSession,
 } from '../../../core/types';
 
 export const DEMO_MODE = 'demo' as const;
@@ -146,132 +142,6 @@ export const DEMO_FROZEN: FrozenPacket[] = [
     roughTokens: 120,
   },
 ];
-
-// ---- Runtime sessions (success / failure / waiting-input) -----------------
-
-export const DEMO_RUNTIME_SESSIONS: RuntimeSession[] = [
-  {
-    id: 'demo-runtime-001',
-    conversationKey: 'creative-os::claude::Creative OS 主对话',
-    binding: { harness: 'claude', machine: 'demo-machine', cwd: 'demo/projects/creative-os', branch: 'main', head: 'demo-head-001', externalSessionRef: 'demo-claude-session-001' },
-    state: 'idle',
-    observed: obs('protocol', 'demo:protocol:claude:001', 'VERIFIED'),
-    startedAt: now(),
-  },
-];
-
-// ---- Activity timeline (success / failure / waiting-input boundaries) -----
-
-export const DEMO_ACTIVITY: ActivityEvent[] = [
-  {
-    id: 'demoact-001',
-    projectId: 'creative-os',
-    conversationKey: 'creative-os::claude::Creative OS 主对话',
-    harness: 'claude',
-    adapter: 'claude-code-stream-json',
-    capability: 'observe',
-    kind: 'handoff-accepted',
-    summary: 'Demo intent accepted',
-    runtimeRef: 'demo-claude-session-001',
-    runtimeState: 'idle',
-    binding: { harness: 'claude', machine: 'demo-machine', cwd: 'demo/projects/creative-os', externalSessionRef: 'demo-claude-session-001' },
-    observed: obs('protocol', 'demo:protocol:claude:001', 'VERIFIED'),
-  },
-  {
-    id: 'demoact-002',
-    projectId: 'creative-os',
-    conversationKey: 'creative-os::claude::Creative OS 主对话',
-    harness: 'claude',
-    adapter: 'claude-code-stream-json',
-    capability: 'observe',
-    kind: 'turn-started',
-    summary: 'Demo turn started',
-    runtimeRef: 'demo-claude-session-001',
-    runtimeState: 'working',
-    observed: obs('protocol', 'demo:protocol:claude:001', 'VERIFIED'),
-  },
-  {
-    id: 'demoact-003',
-    projectId: 'creative-os',
-    conversationKey: 'creative-os::claude::Creative OS 主对话',
-    harness: 'claude',
-    adapter: 'claude-code-stream-json',
-    capability: 'toolEvents',
-    kind: 'tool-completed',
-    summary: 'Demo tool call finished',
-    runtimeRef: 'demo-claude-session-001',
-    runtimeState: 'working',
-    observed: obs('protocol', 'demo:protocol:claude:001', 'VERIFIED'),
-  },
-  {
-    id: 'demoact-004',
-    projectId: 'creative-os',
-    conversationKey: 'creative-os::claude::Creative OS 主对话',
-    harness: 'claude',
-    adapter: 'claude-code-stream-json',
-    capability: 'observe',
-    kind: 'turn-completed',
-    summary: 'Demo turn completed',
-    runtimeRef: 'demo-claude-session-001',
-    runtimeState: 'idle',
-    observed: obs('protocol', 'demo:protocol:claude:001', 'VERIFIED'),
-  },
-];
-
-// ---- Attention items (approval example) -----------------------------------
-
-export const DEMO_ATTENTION: AttentionItem[] = [
-  {
-    id: 'demo-attention-001',
-    kind: 'approval-required',
-    level: 'alert',
-    projectId: 'creative-os',
-    conversationKey: 'creative-os::claude::Creative OS 主对话',
-    title: 'Demo approval needed before a file write',
-    summary: 'Demo agent wants to edit doc/landing.md. Approve or defer.',
-    sourceRef: 'demo:protocol:claude:001',
-    observedAt: now(),
-    verification: 'OBSERVED',
-  },
-];
-
-// ---- Harness capability truth (agent picker) -------------------------------
-
-export const DEMO_HARNESS_CAPABILITIES: Record<string, HarnessCapabilities> = {
-  codex: {
-    harness: 'codex',
-    support: { dispatch: 'YES', observe: 'YES', receipt: 'YES', approval: 'YES', needsInput: 'YES', toolEvents: 'YES', fileEvents: 'YES', externalSessionRef: 'YES', resume: 'NO' },
-    canDispatch: true,
-    canCreateSession: true,
-    canResumeSession: false,
-    canObserveRuntime: true,
-    canReceiveReceipt: true,
-    protocol: 'Codex app-server JSONL v2',
-    evidence: 'demo: capabilities',
-  },
-  claude: {
-    harness: 'claude',
-    support: { dispatch: 'YES', observe: 'YES', receipt: 'YES', approval: 'YES', needsInput: 'YES', toolEvents: 'YES', fileEvents: 'YES', externalSessionRef: 'YES', resume: 'NO' },
-    canDispatch: true,
-    canCreateSession: true,
-    canResumeSession: false,
-    canObserveRuntime: true,
-    canReceiveReceipt: true,
-    protocol: 'Claude stream-json',
-    evidence: 'demo: capabilities',
-  },
-  deepseek: {
-    harness: 'deepseek',
-    support: { dispatch: 'NO', observe: 'NO', receipt: 'NO', approval: 'NO', needsInput: 'NO', toolEvents: 'NO', fileEvents: 'NO', externalSessionRef: 'NO', resume: 'NO' },
-    canDispatch: false,
-    canCreateSession: false,
-    canResumeSession: false,
-    canObserveRuntime: false,
-    canReceiveReceipt: false,
-    protocol: 'DeepSeek (no stable structured runtime)',
-    evidence: 'demo: unavailable',
-  },
-};
 
 // ---- Overlay snapshot ------------------------------------------------------
 

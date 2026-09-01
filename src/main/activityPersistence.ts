@@ -22,6 +22,12 @@ const ActivityEventSchema = z.object({
   ]).optional(),
   runtimeRef: z.string().min(1).max(1024).regex(/^[^\u0000\r\n]+$/).optional(),
   turnRef: z.string().min(1).max(1024).regex(/^[^\u0000\r\n]+$/).optional(),
+  intentId: z.string().min(1).max(1024).optional(),
+  groupId: z.string().min(1).max(1024).optional(),
+  parentSourceRef: z.string().min(1).max(4096).optional(),
+  content: z.string().max(5_000_000).optional(),
+  evidenceRef: z.string().min(1).max(4096).optional(),
+  simulated: z.boolean().optional(),
   binding: z.object({
     harness: z.enum(['codex', 'claude', 'deepseek']), machine: z.string(), cwd: z.string().optional(),
     worktree: z.string().optional(), branch: z.string().optional(), head: z.string().optional(),

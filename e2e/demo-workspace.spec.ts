@@ -4,45 +4,43 @@ import { join } from 'node:path';
 import { _electron, expect, test, type Page, type ElectronApplication } from '@playwright/test';
 import { electronArgs, workbenchEnv } from './prototype-shell';
 
-// A truly empty discovery root with NO GOV_OVERLAY makes `discoverOverlayRoot`
-// return no root -> `emptySnapshot` (no projects/conversations). That is the
-// real first-run condition that must offer Try Demo / Open real workspace.
 function emptySearchRoot(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'wb-empty-search-'));
-  return dir; // no overlay.yaml anywhere under it
+  return mkdtempSync(join(tmpdir(), 'wb-empty-search-'));
 }
 
 async function launchEmpty(): Promise<{ app: ElectronApplication; win: Page }> {
   const env = workbenchEnv({ WB_OVERLAY_SEARCH_ROOT: emptySearchRoot(), WB_STATE_DIR: mkdtempSync(join(tmpdir(), 'wb-fr-')) });
-  delete env.GOV_OVERLAY; // ensure we exercise discovery, not an explicit overlay
+  delete env.GOV_OVERLAY;
   const app = await _electron.launch({ args: [...electronArgs(), 'out/main/index.js'], env });
-  const win = await app.firstWindow();
-  return { app, win };
+  return { app, win: await app.firstWindow() };
 }
 
-test('first-run offers Try Demo / Open real workspace when there is no real content', async () => {
-  test.setTimeout(90_000);
+test('first-run enters an explicit isolated Demo workspace', async () => {
   const { app, win } = await launchEmpty();
   try {
+    await expect(win.getByRole('button', { name: 'Try Demo' })).toBeVisible();
+    await expect(win.getByRole('button', { name: 'Open real workspace' })).toBeVisible();
     await win.getByRole('button', { name: 'Try Demo' }).click();
     await expect(win.locator('.session-surface')).toBeVisible();
-    await expect(win.getByTestId('demo-live-badge')).toHaveText('DEMO');
-    await expect(win.getByTestId('session-runtime-badge')).toBeVisible();
-    await win.getByRole('button', { name: 'Context', exact: true }).click();
+    await expect(win.getByTestId('demo-live-badge')).toHaveText('DEMO · SIMULATED');
+    await expect(win.getByTestId('session-runtime-badge')).toHaveCount(0);
+    await win.locator('.context-summary').click();
     await expect(win.locator('.inspector-pane h2', { hasText: 'Context Staging' })).toBeVisible();
-    // Demo Context data is present in the staging inspector (Included items exist).
     await expect(win.locator('button.state-included').first()).toBeAttached();
   } finally {
     await app.close();
   }
 });
 
-test('demo exit returns to the first-run choice and never echoes demo data back', async () => {
-  test.setTimeout(90_000);
+test('Demo resets and exits without leaking simulated history', async () => {
   const { app, win } = await launchEmpty();
   try {
     await win.getByRole('button', { name: 'Try Demo' }).click();
-    await expect(win.getByTestId('demo-live-badge')).toBeVisible();
+    await win.getByRole('textbox', { name: 'Task for Agent' }).fill('One isolated demo run');
+    await win.getByRole('button', { name: /Send to/ }).click();
+    await expect(win.locator('.activity-kind-agent-response')).toContainText('[DEMO/SIMULATED');
+    await win.getByRole('button', { name: 'Reset' }).click();
+    await expect(win.locator('.activity-kind-agent-response')).toHaveCount(0);
     await win.getByRole('button', { name: 'Exit demo workspace' }).click();
     await expect(win.getByRole('button', { name: 'Try Demo' })).toBeVisible();
     await expect(win.getByTestId('demo-live-badge')).toHaveCount(0);
@@ -51,49 +49,42 @@ test('demo exit returns to the first-run choice and never echoes demo data back'
   }
 });
 
-test('composer is a working dispatch entry point (agent select + send, not a disabled button)', async () => {
+test('Demo completes Single → Parallel → Handoff → Compare through real dispatch UI', async () => {
   test.setTimeout(90_000);
   const { app, win } = await launchEmpty();
   try {
     await win.getByRole('button', { name: 'Try Demo' }).click();
-    await expect(win.locator('.session-surface')).toBeVisible();
-    // The composer now offers a real agent selector and an enabled Send action.
-    await expect(win.locator('.composer-agent')).toBeVisible();
-    const sendByRole = win.getByRole('button', { name: /Send to/ });
-    await expect(sendByRole).toBeEnabled();
-    // Write a task and send it in demo mode.
-    await win.locator('.session-composer textarea').fill('Demo: produce a short landing page summary');
-    await sendByRole.click();
-    await expect(win.locator('.composer-dispatch-accepted')).toBeVisible();
-    // The demo runtime now reports a working activity boundary in the timeline.
-    await expect(win.locator('.activity-kind-turn-started').first()).toBeVisible();
-  } finally {
-    await app.close();
-  }
-});
 
-test('collaboration: handoff run shows agent cards and an explicit relation in Demo', async () => {
-  test.setTimeout(90_000);
-  const { app, win } = await launchEmpty();
-  try {
-    await win.getByRole('button', { name: 'Try Demo' }).click();
-    await expect(win.locator('.session-surface')).toBeVisible();
-    await win.getByRole('button', { name: 'Collaborate' }).click();
-    await expect(win.locator('.collaboration-panel')).toBeVisible();
-    // Two demo agents are available, so a Handoff run can start.
-    await win.getByRole('button', { name: 'Handoff · A → B' }).click();
-    await expect(win.locator('.collaboration-agent').first()).toBeVisible();
-    // Simulate a completion; this creates an explicit source->target relation,
-    // never an auto-inferred one.
-    await win.getByRole('button', { name: 'Simulate a completion in Demo' }).click();
-    const inbound = win.locator('.agent-inbound');
-    await expect(inbound).toBeVisible();
-    await expect(inbound.first()).toContainText(':result');
-    // Compare results shows each agent's outcome side-by-side, without judging.
-    await win.getByRole('button', { name: 'Compare results' }).click();
-    await expect(win.locator('.collaboration-compare')).toBeVisible();
-    await expect(win.locator('.collaboration-compare-card').first()).toBeVisible();
-    await expect(win.getByText('Side-by-side only; the Workbench does not judge')).toBeVisible();
+    await win.getByRole('textbox', { name: 'Task for Agent' }).fill('Summarize the launch goal');
+    await win.getByRole('button', { name: /Send to/ }).click();
+    await expect(win.locator('.activity-kind-agent-response')).toHaveCount(1);
+    await expect(win.locator('.activity-kind-agent-response')).toContainText('[DEMO/SIMULATED');
+
+    await win.locator('.agent-selector').click();
+    await win.getByRole('menuitemcheckbox', { name: /claude/i }).click();
+    await win.getByRole('textbox', { name: 'Task for Agent' }).fill('Compare two launch approaches');
+    await win.getByRole('button', { name: 'Run with 2 agents' }).click();
+    await expect(win.getByRole('status')).toContainText('2 Agents started');
+
+    await win.getByRole('button', { name: 'Compare', exact: true }).click();
+    const parallelGroup = win.locator('.compare-group').first();
+    await expect(parallelGroup.locator('.compare-card')).toHaveCount(2);
+    await expect(parallelGroup.locator('.compare-card').nth(0)).toContainText('[DEMO/SIMULATED');
+    await expect(parallelGroup.locator('.compare-card').nth(1)).toContainText('[DEMO/SIMULATED');
+    await expect(parallelGroup.locator('.compare-evidence')).toHaveCount(2);
+
+    await parallelGroup.locator('.compare-card').first().getByRole('button', { name: 'Use as context' }).click();
+    await expect(win.locator('.handoff-context-card')).toBeVisible();
+    await win.locator('.agent-selector').click();
+    await win.getByRole('menuitemcheckbox', { name: /claude/i }).click();
+    await win.getByRole('menuitemcheckbox', { name: /codex/i }).click();
+    await win.getByRole('textbox', { name: 'Task for Agent' }).fill('Continue from the selected result');
+    await win.getByRole('button', { name: 'Send to claude' }).click();
+    await expect(win.getByRole('status')).toContainText('1 Agent started');
+
+    await win.getByRole('button', { name: 'Compare', exact: true }).click();
+    await expect(win.locator('.compare-group')).toHaveCount(1);
+    await win.screenshot({ path: join('test-results', 'product-rebuild-walkthrough.png'), fullPage: true });
   } finally {
     await app.close();
   }

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
-import type { ActivityEvent, AttentionLocalState, ContextItem, FrozenPacket, FrozenPacketSummary, GitFacts, HandoffReceipt, HarnessCapabilities, OverlaySnapshot, SourceFingerprint, TaskPacket } from '../core/types';
+import type { ActivityEvent, AttentionLocalState, ContextItem, ExecutionEnvironment, FrozenPacket, FrozenPacketSummary, GitFacts, HandoffReceipt, HarnessCapabilities, HarnessDispatchRequest, OverlaySnapshot, SourceFingerprint, TaskPacket } from '../core/types';
 import type { WorkbenchDraftV1 } from '../core/project/draft';
 import type { WorkspaceSessionV1 } from '../core/project/workspaceSession';
 import type { HistoryCatalogResult, HistoryQuery, HistorySearchResult, HistorySessionDetail } from '../core/history/types';
@@ -62,15 +62,10 @@ const api = {
     ipcRenderer.invoke('workspace:save', session),
   loadHarnessCapabilities: (): Promise<HarnessCapabilities> =>
     ipcRenderer.invoke('harness:capabilities'),
-  loadAllHarnessCapabilities: (): Promise<Record<string, HarnessCapabilities>> =>
-    ipcRenderer.invoke('harness:capabilitiesAll'),
-  dispatchToHarness: (request: {
-    intentId: string;
-    projectId: string;
-    conversationKey: string;
-    packetText: string;
-    harness: 'codex' | 'claude' | 'deepseek';
-  }): Promise<HandoffReceipt> => ipcRenderer.invoke('harness:dispatch', request),
+  loadAllHarnessCapabilities: (environment: ExecutionEnvironment = { kind: 'real' }): Promise<Record<string, HarnessCapabilities>> =>
+    ipcRenderer.invoke('harness:capabilitiesAll', environment),
+  dispatchToHarness: (request: HarnessDispatchRequest): Promise<HandoffReceipt> =>
+    ipcRenderer.invoke('harness:dispatch', request),
   smokeHarness: (projectId: string, harness: 'codex' | 'claude' | 'deepseek'): Promise<HandoffReceipt | { userAgent: string; ephemeralThreadId: string }> =>
     ipcRenderer.invoke('harness:smoke', projectId, harness),
   loadLiveExecutions: (): Promise<{ executionId: string; harness: string; externalSessionRef: string; startedAt: string; canCancel: boolean }[]> =>

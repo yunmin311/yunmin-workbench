@@ -150,17 +150,41 @@ file-level provenance and license review.
 Previously frozen reference-only entries in the project's reuse map retain
 their existing status; this notice does not broaden their approved use.
 
-### dsh-synapse — future donor only
+### dsh-synapse
 
 - Repository: https://github.com/liangmianya/dsh-synapse
 - Reviewed commit: `56935dc1862e7791b212f6eb2dd26404def5a575`
 - License: MIT
-- Status: high-priority future donor for Conversation Canvas / Trajectory /
-  DSH integration. No integration or copied implementation in this phase.
-- Semantics retained for a future design review only:
+- Upstream files reviewed: `app.js`, `client.js`, `styles.css`, and architecture
+  documentation.
+- Adapted interaction and projection semantics:
   - DSH session logs remain the conversation and lifecycle source of truth.
   - Canvas metadata is organizational state, not lineage.
-  - Native fork/session relations drive projection.
+  - Explicit `sourceRef` parent relations drive trajectory and handoff edges.
   - Live tool calls and results pair by `callId`.
-  - Projection updates incrementally; visual coordinates never determine
-    conversation truth.
+  - Selected results become explicit follow-up Context.
+  - Native Session and Map select the same execution identity; coordinates
+    never determine conversation truth.
+- No dsh-synapse runtime, storage, or protocol implementation is incorporated.
+
+MIT License
+
+Copyright (c) dsh-synapse contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

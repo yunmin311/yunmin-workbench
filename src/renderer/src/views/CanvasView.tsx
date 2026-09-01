@@ -2,7 +2,8 @@ import { useMemo } from 'react';
 import { Background, Controls, MarkerType, Panel, ReactFlow, type Edge, type Node } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { buildCanvasGraph } from '../../../core/project/canvas';
-import type { WbEdgeKind } from '../../../core/types';
+import { projectCompareGroups, projectTrajectory } from '../../../core/project/executionRelations';
+import type { WbEdge, WbEdgeKind, WbNode } from '../../../core/types';
 import { useWorkbench } from '../store';
 import { layoutProjection } from './reasonixProjectionLayout';
 
@@ -18,13 +19,43 @@ export function CanvasView() {
   const snapshot = useWorkbench((state) => state.snapshot);
   const projectId = useWorkbench((state) => state.projectId);
   const runtimeSessions = useWorkbench((state) => state.runtimeSessions);
+  const activity = useWorkbench((state) => state.activity);
   const selectConversation = useWorkbench((state) => state.selectConversation);
   const setView = useWorkbench((state) => state.setView);
+  const openRuntimeInspector = useWorkbench((state) => state.openRuntimeInspector);
 
   const { nodes, edges, kinds } = useMemo(() => {
     if (!snapshot || !projectId) return { nodes: [] as Node[], edges: [] as Edge[], kinds: [] as WbEdgeKind[] };
-    const graph = buildCanvasGraph(snapshot, projectId, runtimeSessions);
-    const positioned = layoutProjection(graph.nodes, graph.edges);
+    const graph = buildCanvasGraph(snapshot, projectId, []);
+    const projectActivity = activity.filter((event) => event.projectId === projectId);
+    const compareGroups = projectCompareGroups(projectActivity);
+    const executionNodes: WbNode[] = compareGroups.flatMap((group) => group.executions.map((execution) => ({
+      id: `execution:${execution.executionId}`,
+      kind: 'execution' as const,
+      label: `${execution.harness} · ${execution.result ? 'result' : execution.failed ? 'failed' : 'running'}`,
+      trust: 'VERIFIED' as const,
+      x: 0,
+      y: 0,
+    })));
+    const executionEdges: WbEdge[] = executionNodes.map((node) => {
+      const executionId = node.id.slice('execution:'.length);
+      const observedEvent = projectActivity.find((event) => event.harness && event.runtimeRef && `${event.harness}::${event.runtimeRef}` === executionId);
+      return {
+        id: `execution:${observedEvent?.conversationKey ?? 'unknown'}->${executionId}`,
+        source: `conversation:${observedEvent?.conversationKey ?? ''}`,
+        target: node.id,
+        kind: 'execution' as const,
+      };
+    }).filter((edge) => graph.nodes.some((node) => node.id === edge.source));
+    const handoffEdges: WbEdge[] = projectTrajectory(projectActivity).relations.map((relation) => ({
+      id: relation.id,
+      source: `execution:${relation.sourceExecutionId}`,
+      target: `execution:${relation.targetExecutionId}`,
+      kind: 'handoff',
+    }));
+    const semanticNodes = [...graph.nodes, ...executionNodes];
+    const semanticEdges = [...graph.edges, ...executionEdges, ...handoffEdges];
+    const positioned = layoutProjection(semanticNodes, semanticEdges);
     const nodes: Node[] = positioned.map((node) => ({
       id: node.id,
       position: { x: node.x, y: node.y },
@@ -40,7 +71,7 @@ export function CanvasView() {
       },
       className: `wb-node wb-${node.kind} status-${(node.status ?? '').toLowerCase()}`,
     }));
-    const edges: Edge[] = graph.edges.map((edge) => {
+    const edges: Edge[] = semanticEdges.map((edge) => {
       const evidenced = edge.kind === 'execution' || edge.kind === 'handoff' || edge.kind === 'data-context';
       return {
         id: edge.id,
@@ -57,8 +88,8 @@ export function CanvasView() {
         },
       };
     });
-    return { nodes, edges, kinds: [...new Set(graph.edges.map((edge) => edge.kind))] };
-  }, [snapshot, projectId, runtimeSessions]);
+    return { nodes, edges, kinds: [...new Set(semanticEdges.map((edge) => edge.kind))] };
+  }, [snapshot, projectId, runtimeSessions, activity]);
 
   if (!projectId) return null;
 
@@ -74,7 +105,12 @@ export function CanvasView() {
         nodesDraggable
         nodesConnectable={false}
         onNodeClick={(_event, node) => {
-          if (!snapshot || !node.id.startsWith('conversation:')) return;
+          if (!snapshot) return;
+          if (node.id.startsWith('execution:')) {
+            openRuntimeInspector({ executionId: node.id.slice('execution:'.length) });
+            return;
+          }
+          if (!node.id.startsWith('conversation:')) return;
           const conversationKey = node.id.slice('conversation:'.length);
           const next = snapshot.conversations.find((conversation) => conversation.key === conversationKey);
           if (next) {
@@ -86,8 +122,8 @@ export function CanvasView() {
         <Background color="var(--prototype-grid)" gap={22} size={1} />
         <Controls showInteractive={false} />
         <Panel position="top-left" className="canvas-title">
-          <p>Projection graph</p>
-          <span>Structure first. Runtime edges only when observed.</span>
+          <p>Session trajectory</p>
+          <span>Native executions and explicit handoffs. Card position never defines lineage.</span>
         </Panel>
         <Panel position="top-right" className="canvas-legend">
           {kinds.map((kind) => <span key={kind}><i className={`legend-line legend-${kind}`} />{EDGE_LABEL[kind]}</span>)}

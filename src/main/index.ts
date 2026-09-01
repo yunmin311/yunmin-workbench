@@ -59,15 +59,17 @@ import { readMaterialPreference, writeMaterialPreferenceAtomic } from './materia
 import { detectMaterialCapability } from './materialCapability';
 import { ClaudeCodeAdapter } from './adapters/claudeCodeAdapter';
 import { DeepSeekAdapter } from './adapters/deepseekAdapter';
+import { MockHarnessAdapter, type MockHarnessEvent } from './adapters/mockHarnessAdapter';
 import { LiveExecutionRegistry } from './liveExecutions';
 import { handleCancelRequest, handleRuntimeLiveRequest } from './harnessControl';
 import { RuntimeContextRegistry } from './runtimeContextRegistry';
-import { HarnessDispatchSchema, HarnessSmokeSchema, workbenchRejectedReceipt } from './harnessRequest';
+import { HarnessDispatchSchema, HarnessEnvironmentSchema, HarnessSmokeSchema, workbenchRejectedReceipt } from './harnessRequest';
 import { canDispatchToHarness } from '../core/project/harnessSelection';
 import { resolveMaterial } from '../core/material/tokens';
 import { buildDoctorReport } from './doctor';
 import { RecoverableSerialQueue } from './recoverableSerialQueue';
 import { allowlistedVersionToken } from './adapters/evidenceBounds';
+import { codexAgentContent, eventEvidence, packetTaskSummary, protocolText } from './activityEvidence';
 
 // test hook: Playwright E2E redirects Workbench-owned state to a temp dir
 if (process.env.WB_STATE_DIR) app.setPath('userData', process.env.WB_STATE_DIR);
@@ -151,12 +153,17 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     machine: string;
     cwd: string;
     intentId?: string;
+    groupId?: string;
+    parentSourceRef?: string;
   }>();
   const pendingClaudeContexts = new Map<string, {
     projectId: string;
     conversationKey: string;
     machine: string;
     cwd: string;
+    intentId: string;
+    groupId: string;
+    parentSourceRef?: string;
   }>();
   const reviewWorthyTurns = new Set<string>();
   const history = new HistoryService({ stateDir: stateDir(), roots: defaultHistoryRoots() });
@@ -197,7 +204,10 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
 
   const recordActivity = (event: ActivityEvent): Promise<void> => {
     return activityWrites.run(async () => {
-      await appendActivity(stateDir(), event);
+      // Demo uses the identical Activity/Runtime channel but never enters the
+      // persisted real-workspace history. The explicit simulated bit comes
+      // only from a scoped Mock Harness adapter.
+      if (!event.simulated) await appendActivity(stateDir(), event);
       for (const win of BrowserWindow.getAllWindows()) {
         if (!win.isDestroyed()) win.webContents.send('activity:changed', event);
       }
@@ -231,6 +241,9 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       capability: 'observe' as const,
       runtimeRef: threadId,
       turnRef: turnId,
+      intentId: context.intentId,
+      groupId: context.groupId,
+      parentSourceRef: context.parentSourceRef,
       observed: observed(`codex-app-server:${event.method}`),
     };
     if (event.method === 'adapter/error') {
@@ -310,18 +323,19 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     if ((event.method === 'item/started' || event.method === 'item/completed') && item) {
       const itemType = typeof item.type === 'string' ? item.type : 'unknown';
       if (itemType === 'agentMessage' && event.method === 'item/completed') {
-        void recordActivity({ ...base, kind: 'agent-response', summary: 'Agent response completed' });
+        void recordActivity({ ...base, kind: 'agent-response', summary: 'Agent response completed', content: codexAgentContent(item) });
       } else if (itemType === 'fileChange') {
         if (isReviewWorthyCodexFileChange(event.method, item) && turnId) {
           reviewWorthyTurns.add(`${threadId}:${turnId}`);
         }
-        void recordActivity({ ...base, capability: 'fileEvents', kind: 'file-change', summary: `File change ${event.method === 'item/started' ? 'started' : 'completed'}` });
+        void recordActivity({ ...base, capability: 'fileEvents', kind: 'file-change', summary: `File change ${event.method === 'item/started' ? 'started' : 'completed'}`, ...eventEvidence(item) });
       } else if (['commandExecution', 'mcpToolCall', 'dynamicToolCall'].includes(itemType)) {
         void recordActivity({
           ...base,
           capability: 'toolEvents',
           kind: event.method === 'item/started' ? 'tool-started' : 'tool-completed',
           summary: `${itemType} ${event.method === 'item/started' ? 'started' : 'completed'}`,
+          ...eventEvidence(item),
         });
       }
     }
@@ -342,6 +356,9 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       adapter: 'claude-code-stream-json',
       capability: 'observe' as const,
       runtimeRef: threadId,
+      intentId: context.intentId,
+      groupId: context.groupId,
+      parentSourceRef: context.parentSourceRef,
       observed: {
         source: 'protocol' as const,
         sourceRef: event.sourceRef,
@@ -383,12 +400,12 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       return;
     }
     if (event.method === 'tool-started' || event.method === 'tool-completed') {
-      void recordActivity({ ...base, capability: 'toolEvents', kind: event.method === 'tool-started' ? 'tool-started' as const : 'tool-completed' as const, summary: `Claude tool ${event.method === 'tool-started' ? 'started' : 'completed'}` });
+      void recordActivity({ ...base, capability: 'toolEvents', kind: event.method === 'tool-started' ? 'tool-started' as const : 'tool-completed' as const, summary: `Claude tool ${event.method === 'tool-started' ? 'started' : 'completed'}`, ...eventEvidence(params ?? {}) });
       return;
     }
     if (event.method === 'item/completed') {
       const p = params as { type?: string } | undefined;
-      if (p?.type === 'assistant') void recordActivity({ ...base, kind: 'agent-response' as const, summary: 'Claude response completed' });
+      if (p?.type === 'assistant') void recordActivity({ ...base, kind: 'agent-response' as const, summary: 'Claude response completed', content: protocolText(params) });
       return;
     }
   });
@@ -757,7 +774,13 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       };
     }
   });
-  ipcMain.handle('harness:capabilitiesAll', async () => {
+  ipcMain.handle('harness:capabilitiesAll', async (_event, rawEnvironment: unknown = { kind: 'real' }) => {
+    const environment = HarnessEnvironmentSchema.parse(rawEnvironment);
+    if (environment.kind === 'demo') {
+      const [codex, claude, deepseek] = await Promise.all((['codex', 'claude', 'deepseek'] as const)
+        .map((harness) => new MockHarnessAdapter(harness, { sessionId: environment.sessionId }).capabilities()));
+      return { codex, claude, deepseek } as const;
+    }
     const [codex, claude, deepseek] = await Promise.all([
       codexAdapter.capabilities(),
       claudeAdapter.capabilities(),
@@ -769,8 +792,12 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     const request = HarnessDispatchSchema.parse(rawRequest);
     const harness = request.harness;
     return handoffRequests.run(request.intentId, async () => {
-      const snap = cache?.snapshot ?? (await refresh());
-      const cwd = await projectRoot(snap, request.projectId);
+      const demoSessionId = request.environment.kind === 'demo' ? request.environment.sessionId : null;
+      const simulated = demoSessionId !== null;
+      const snap = simulated ? undefined : cache?.snapshot ?? (await refresh());
+      const cwd = simulated
+        ? `demo://${demoSessionId}/${request.projectId}`
+        : await projectRoot(snap!, request.projectId);
       if (!cwd) {
         const receipt = workbenchRejectedReceipt(
           request,
@@ -779,9 +806,10 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
         );
         await recordActivity({
           id: randomUUID(), projectId: request.projectId, conversationKey: request.conversationKey,
-          harness, adapter: `${harness}-adapter`, capability: 'dispatch',
-          kind: 'handoff-failed', summary: receipt.message,
-          attentionKey: request.intentId,
+           harness, adapter: `${harness}-adapter`, capability: 'dispatch',
+           kind: 'handoff-failed', summary: receipt.message,
+           attentionKey: request.intentId,
+           intentId: request.intentId, groupId: request.groupId, parentSourceRef: request.parentSourceRef,
           observed: {
             source: 'process', sourceRef: `workbench-intent:${request.intentId}`,
             observedAt: receipt.at, verification: 'VERIFIED',
@@ -789,7 +817,10 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
         });
         return receipt;
       }
-      const adapter = harness === 'claude' ? claudeAdapter : harness === 'deepseek' ? deepseekAdapter : codexAdapter;
+      const mockAdapter = simulated
+        ? new MockHarnessAdapter(harness, { sessionId: demoSessionId!, completionDelayMs: 650 })
+        : null;
+      const adapter = mockAdapter ?? (harness === 'claude' ? claudeAdapter : harness === 'deepseek' ? deepseekAdapter : codexAdapter);
       const caps = await adapter.capabilities();
       if (!canDispatchToHarness(caps)) {
         const receipt = workbenchRejectedReceipt(
@@ -799,9 +830,11 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
         );
         await recordActivity({
           id: randomUUID(), projectId: request.projectId, conversationKey: request.conversationKey,
-          harness, adapter: `${harness}-adapter`, capability: 'dispatch',
-          kind: 'handoff-failed', summary: receipt.message,
-          attentionKey: request.intentId,
+           harness, adapter: `${harness}-adapter`, capability: 'dispatch',
+           kind: 'handoff-failed', summary: receipt.message,
+           attentionKey: request.intentId,
+           intentId: request.intentId, groupId: request.groupId, parentSourceRef: request.parentSourceRef,
+           simulated,
           observed: {
             source: 'process', sourceRef: `workbench-intent:${request.intentId}`,
             observedAt: receipt.at, verification: 'VERIFIED',
@@ -811,15 +844,18 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       }
       await recordActivity({
         id: randomUUID(), projectId: request.projectId, conversationKey: request.conversationKey,
-        harness, adapter: `${harness}-adapter`, capability: 'dispatch',
-        kind: 'handoff-dispatched', summary: `Packet dispatched to ${harness}`,
-        attentionKey: request.intentId,
+         harness, adapter: `${harness}-adapter`, capability: 'dispatch',
+         kind: 'handoff-dispatched', summary: `Packet dispatched to ${harness}`,
+         content: packetTaskSummary(request.packetText),
+         attentionKey: request.intentId,
+         intentId: request.intentId, groupId: request.groupId, parentSourceRef: request.parentSourceRef,
+         simulated,
         observed: {
           source: 'process', sourceRef: `workbench-intent:${request.intentId}`,
           observedAt: new Date().toISOString(), verification: 'OBSERVED',
         },
       });
-      const machine = snap.machine?.deviceId ?? 'UNKNOWN';
+      const machine = simulated ? `demo:${demoSessionId}` : snap?.machine?.deviceId ?? 'UNKNOWN';
       let receipt: HandoffReceipt;
       try {
         const dispatchText = request.packetText;
@@ -827,9 +863,11 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
           runtimeContexts.set(harness, threadId, {
             projectId: request.projectId,
             conversationKey: request.conversationKey,
-            machine,
-            cwd,
-            intentId: request.intentId,
+           machine,
+           cwd,
+           intentId: request.intentId,
+           groupId: request.groupId,
+           parentSourceRef: request.parentSourceRef,
           });
           liveExecutions.add(harness, threadId, new Date().toISOString(), harness === 'claude');
         };
@@ -846,8 +884,53 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
             observed: observed(`${harness}:${threadId}:session-start`),
           });
         };
-        if (harness === 'claude') {
-          pendingClaudeContexts.set(request.intentId, { projectId: request.projectId, conversationKey: request.conversationKey, machine, cwd });
+        if (mockAdapter) {
+          const observeMock = (event: MockHarnessEvent) => {
+            const runtimeRef = event.runtimeSessionRef;
+            const base = {
+              id: randomUUID(), projectId: request.projectId, conversationKey: request.conversationKey,
+              harness, adapter: 'workbench-mock-harness', capability: 'observe' as const,
+              runtimeRef, intentId: request.intentId, groupId: request.groupId,
+              parentSourceRef: request.parentSourceRef, simulated: true,
+              observed: {
+                source: 'protocol' as const, sourceRef: event.sourceRef,
+                observedAt: event.observedAt, verification: event.verification,
+              },
+            };
+            if (event.method === 'session/started') {
+              rememberRuntime(runtimeRef);
+              void recordActivity({
+                ...base, kind: 'session-started', capability: 'externalSessionRef',
+                summary: `${harness} demo session created`, runtimeState: 'unknown',
+                binding: { harness, machine, cwd, externalSessionRef: runtimeRef },
+              });
+            } else if (event.method === 'turn/started') {
+              void recordActivity({ ...base, kind: 'turn-started', summary: `${harness} demo turn started`, runtimeState: 'working' });
+            } else if (event.method === 'item/completed') {
+              void recordActivity({ ...base, kind: 'agent-response', summary: `${harness} simulated result`, content: protocolText(event.params) });
+            } else if (event.method === 'tool-started' || event.method === 'tool-completed') {
+              void recordActivity({
+                ...base, capability: 'toolEvents',
+                kind: event.method === 'tool-started' ? 'tool-started' : 'tool-completed',
+                summary: `Demo tool ${event.method === 'tool-started' ? 'started' : 'completed'}`,
+                ...(event.params && typeof event.params === 'object' ? eventEvidence(event.params as Record<string, unknown>) : undefined),
+              });
+            } else if (event.method === 'turn/completed') {
+              liveExecutions.remove(harness, runtimeRef);
+              void recordActivity({ ...base, kind: 'turn-completed', summary: `${harness} demo turn completed`, runtimeState: 'idle' });
+            }
+          };
+          const off = mockAdapter.onEvent(observeMock);
+          try {
+            receipt = await mockAdapter.dispatch(request.intentId, cwd, dispatchText);
+          } finally {
+            off();
+          }
+        } else if (harness === 'claude') {
+          pendingClaudeContexts.set(request.intentId, {
+            projectId: request.projectId, conversationKey: request.conversationKey, machine, cwd,
+            intentId: request.intentId, groupId: request.groupId, parentSourceRef: request.parentSourceRef,
+          });
           try {
             const claudeReceipt = await (adapter as typeof claudeAdapter).dispatch(request.intentId, cwd, dispatchText, rememberRuntime);
             receipt = claudeReceipt;
@@ -867,9 +950,11 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       } catch (error) {
         await recordActivity({
           id: randomUUID(), projectId: request.projectId, conversationKey: request.conversationKey,
-          harness, adapter: `${harness}-adapter`, capability: 'dispatch',
-          kind: 'harness-error', summary: `${harness} harness error: ${String(error)}`,
-          attentionKey: request.intentId,
+         harness, adapter: `${harness}-adapter`, capability: 'dispatch',
+         kind: 'harness-error', summary: `${harness} harness error: ${String(error)}`,
+         attentionKey: request.intentId,
+         intentId: request.intentId, groupId: request.groupId, parentSourceRef: request.parentSourceRef,
+         simulated,
           observed: {
             source: 'process', sourceRef: `workbench-intent:${request.intentId}`,
             observedAt: new Date().toISOString(), verification: 'OBSERVED',
@@ -884,8 +969,10 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
           : receipt.status === 'CANCELLED' ? 'handoff-cancelled' : 'handoff-failed',
         summary: receipt.status === 'ACCEPTED' ? `${harness} accepted the packet`
           : receipt.status === 'CANCELLED' ? `${harness} handoff cancelled by user` : `${harness} handoff ${receipt.status.toLowerCase()}`,
-        attentionKey: request.intentId,
-        runtimeRef: receipt.runtimeRef, turnRef: receipt.turnRef,
+         attentionKey: request.intentId,
+         runtimeRef: receipt.runtimeRef, turnRef: receipt.turnRef,
+         intentId: request.intentId, groupId: request.groupId, parentSourceRef: request.parentSourceRef,
+         simulated,
         observed: observed(`${harness}:${receipt.protocolEvidence}`),
       });
       return receipt;

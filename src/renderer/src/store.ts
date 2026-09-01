@@ -29,7 +29,6 @@ import type {
   RuntimeSession,
   AttentionItem,
   AttentionLocalState,
-  HandoffReceipt,
   HarnessCapabilities,
 } from '../../core/types';
 import type { MemorySearchHit } from '../../core/memory/types';
@@ -40,22 +39,11 @@ import {
   DEMO_CONVERSATIONS,
   DEMO_CONTEXT,
   DEMO_FROZEN,
-  DEMO_ACTIVITY,
-  DEMO_ATTENTION,
-  DEMO_RUNTIME_SESSIONS,
-  DEMO_HARNESS_CAPABILITIES,
 } from './demo/demoData';
-import { runDemoDispatch } from './demo/demoRuntime';
-import {
-  createCollaborationRun,
-  setAgentStatus as updateRunAgentStatus,
-  addHandoffRelation as runAddRelation,
-  type CollaborationRun,
-  type CollaborationMode,
-  type CollaborationAgent,
-} from '../../core/project/collaboration';
+import { buildDispatchPlan, settleDispatchPlan, type DispatchOutcome } from '../../core/project/dispatchPipeline';
+import { contextFromAgentResult } from '../../core/project/executionRelations';
 
-export type View = 'projects' | 'control' | 'canvas' | 'context' | 'packet';
+export type View = 'projects' | 'control' | 'canvas' | 'compare' | 'context' | 'packet';
 export type DraftSaveState = 'clean' | 'dirty' | 'saving' | 'saved' | 'error';
 
 /** Exact Runtime Inspector target: one observed `harness::nativeExternalRef` execution id. */
@@ -78,6 +66,7 @@ interface WorkbenchState {
   projectId: string | null;
   conversation: Conversation | null;
   demoMode: boolean;
+  demoSessionId: string | null;
   staging: ContextItem[];
   taskSummary: string;
   frozen: FrozenPacketSummary[];
@@ -107,18 +96,15 @@ interface WorkbenchState {
   draftSaveState: DraftSaveState;
   packetValidity: 'CURRENT' | 'STALE' | 'INVALID' | 'UNKNOWN';
   handoffStatus: string;
-  collaborationRuns: CollaborationRun[];
-  activeRunId: string | null;
+  handoffSourceRef: string | null;
+  lastDispatchGroupId: string | null;
+  lastDispatchOutcomes: DispatchOutcome[];
   syncIslandAttention: () => void;
   initialize: () => Promise<void>;
   resumeWorkspace: (target?: WorkspaceTargetV1) => void;
   enterDemo: () => void;
   exitDemo: () => Promise<void>;
   resetDemo: () => void;
-  demoDispatch: (request: {
-    intentId: string; projectId: string; conversationKey: string;
-    harness: 'codex' | 'claude' | 'deepseek'; text: string;
-  }) => Promise<HandoffReceipt>;
   load: (refresh?: boolean) => Promise<void>;
   reloadAndRecheck: () => Promise<void>;
   selectProject: (projectId: string) => void;
@@ -144,19 +130,13 @@ interface WorkbenchState {
   refreshLiveExecutions: () => Promise<void>;
   openRuntimeInspector: (target: RuntimeInspectorTarget) => void;
   loadHarnessCapabilities: () => Promise<void>;
-  sendTask: (summary: string, harness: 'codex' | 'claude' | 'deepseek') => Promise<HandoffReceipt>;
+  sendTask: (summary: string, harness: 'codex' | 'claude' | 'deepseek' | ('codex' | 'claude' | 'deepseek')[]) => Promise<DispatchOutcome[]>;
+  addResultToContext: (event: ActivityEvent) => void;
+  clearHandoffSource: () => void;
   loadAttentionLocal: () => Promise<void>;
   dismissAttention: (item: AttentionItem) => Promise<void>;
   setPacketValidity: (validity: WorkbenchState['packetValidity']) => void;
   setHandoffStatus: (status: string) => void;
-  createCollaborationRun: (input: {
-    projectId: string; conversationKey: string; mode: CollaborationMode;
-    agents: { agentId: string; harness: string; role: string; goal: string }[];
-  }) => void;
-  setCollaborationAgentStatus: (runId: string, agentId: string, status: CollaborationAgent['status'], executionId?: string) => void;
-  addCollaborationRelation: (runId: string, relation: { id: string; source: string; target: string; usedResultRef: string }) => void;
-  setActiveRunId: (runId: string | null) => void;
-  resetCollaboration: () => void;
 }
 
 const draftTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -220,7 +200,8 @@ function scheduleWorkspaceSave(state: WorkbenchState): void {
           canonicalConversationId: state.conversation.conversationId,
         }
       : undefined,
-    view: state.view,
+    // Compare is a renderer projection, not a persisted Workspace contract.
+    view: state.view === 'compare' ? 'control' : state.view,
     usedAt: new Date().toISOString(),
   };
   const session = updateWorkspaceSession(state.workspaceSession, target);
@@ -318,6 +299,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   projectId: null,
   conversation: null,
   demoMode: false,
+  demoSessionId: null,
   staging: [],
   taskSummary: '',
   frozen: [],
@@ -347,8 +329,9 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   draftSaveState: 'clean',
   packetValidity: 'UNKNOWN',
   handoffStatus: 'IDLE',
-  collaborationRuns: [],
-  activeRunId: null,
+  handoffSourceRef: null,
+  lastDispatchGroupId: null,
+  lastDispatchOutcomes: [],
   syncIslandAttention: () => {
     const items = get().attentionItems;
     if (window.wb?.syncIslandAttention) {
@@ -374,6 +357,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     const firstConversation = DEMO_CONVERSATIONS[0];
     set({
       demoMode: true,
+      demoSessionId: globalThis.crypto.randomUUID(),
       loading: false,
       snapshot: DEMO_SNAPSHOT,
       view: 'control',
@@ -395,13 +379,16 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       draftSaveState: 'clean',
       packetValidity: 'CURRENT',
       handoffStatus: 'IDLE',
-      activity: DEMO_ACTIVITY,
+      activity: [],
       activityBeforeByte: undefined,
       activityHasEarlier: false,
-      runtimeSessions: DEMO_RUNTIME_SESSIONS,
+      runtimeSessions: [],
       activityProblem: null,
       liveExecutions: [],
-      attentionItems: [...DEMO_ATTENTION],
+      attentionItems: [],
+      handoffSourceRef: null,
+      lastDispatchGroupId: null,
+      lastDispatchOutcomes: [],
     });
     get().syncIslandAttention();
   },
@@ -411,6 +398,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     // the next enterDemo(); nothing was persisted, so real truth is untouched.
     set({
       demoMode: false,
+      demoSessionId: null,
       snapshot: null,
       projectId: null,
       conversation: null,
@@ -419,6 +407,9 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       activity: [],
       runtimeSessions: [],
       attentionItems: [],
+      handoffSourceRef: null,
+      lastDispatchGroupId: null,
+      lastDispatchOutcomes: [],
     });
     await get().initialize();
   },
@@ -428,52 +419,24 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     const firstProject = DEMO_PROJECTS[0];
     set({
       snapshot: DEMO_SNAPSHOT,
+      demoSessionId: globalThis.crypto.randomUUID(),
       projectId: firstProject.projectId,
       conversation: DEMO_CONVERSATIONS[0],
       staging: DEMO_CONTEXT,
       taskSummary: '',
       frozen: DEMO_FROZEN,
-      activity: DEMO_ACTIVITY,
-      runtimeSessions: DEMO_RUNTIME_SESSIONS,
-      attentionItems: [...DEMO_ATTENTION],
+      activity: [],
+      runtimeSessions: [],
+      attentionItems: [],
       packetValidity: 'CURRENT',
       draftSaveState: 'clean',
       contextMessage: null,
       handoffStatus: 'IDLE',
+      handoffSourceRef: null,
+      lastDispatchGroupId: null,
+      lastDispatchOutcomes: [],
     });
     get().syncIslandAttention();
-  },
-
-  demoDispatch: async (request) => {
-    // Simulate dispatch in-memory. It never calls a real harness, writes a file,
-    // or reads/touches external truth. The receipt + activity stream are local
-    // and update the renderer projection directly (bypassing ingestActivity,
-    // which would otherwise hit the live-execution IPC refresh path).
-    const { receipt, events } = runDemoDispatch(request);
-    const session = events.find((event) => event.kind === 'handoff-accepted');
-    const rs: RuntimeSession | null = session?.runtimeRef ? {
-      id: session.runtimeRef,
-      conversationKey: request.conversationKey,
-      binding: session.binding ?? { harness: request.harness, machine: 'demo-machine', externalSessionRef: session.runtimeRef },
-      state: receipt.status === 'ACCEPTED' ? 'working' : 'error',
-      observed: session.observed,
-      startedAt: receipt.at,
-    } : null;
-    set((state) => {
-      const byId = new Map<string, ActivityEvent>();
-      for (const event of events) byId.set(event.id, event);
-      for (const existing of state.activity) byId.set(existing.id, existing);
-      const activity = orderActivity([...byId.values()]);
-      const runtimeSessions = rs
-        ? [...state.runtimeSessions.filter((item) => item.id !== rs.id), rs]
-        : projectRuntimeSessions(activity);
-      return {
-        activity,
-        runtimeSessions,
-        attentionItems: projectAttention({ ...state, activity, runtimeSessions }),
-      };
-    });
-    return receipt;
   },
 
   resumeWorkspace: (requested) => {
@@ -518,6 +481,10 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     const refreshedMemory = refresh && priorState.projectId
       ? await verifyMemoryContextItems(priorState.projectId, refreshedMemoryCandidates)
       : { items: refreshedMemoryCandidates, checkedSourceRefs: [], fingerprints: [], errors: [] };
+    const refreshedMemoryIds = new Set(refreshedMemory.items.map((item) => item.id));
+    const removedMemoryIds = refresh
+      ? priorState.staging.filter((item) => item.id.startsWith('memory-projection:') && !refreshedMemoryIds.has(item.id)).map((item) => item.id)
+      : [];
     set((state) => {
       const sameScope = state.projectId === priorState.projectId
         && state.conversation?.key === priorState.conversation?.key;
@@ -534,7 +501,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
             state.staging.filter((item) => item.source === `project-file:${state.projectId}`),
           );
           staging = restored.staging;
-          orphanedDraftDecisionIds = restored.orphanedDecisionIds;
+          orphanedDraftDecisionIds = [...new Set([...restored.orphanedDecisionIds, ...removedMemoryIds])];
         } else {
           staging = fresh;
         }
@@ -550,8 +517,12 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
         orphanedDraftDecisionIds,
         recheckedSourceRefs,
         recheckedFingerprints,
-        contextMessage: applyScopedRefresh && refreshedMemory.errors.length > 0
-          ? messages([state.contextMessage, `Memory source unavailable: ${refreshedMemory.errors.join(', ')}`])
+        contextMessage: applyScopedRefresh
+          ? messages([
+            state.contextMessage,
+            removedMemoryIds.length > 0 ? `Orphaned draft decisions: ${removedMemoryIds.join(', ')}` : null,
+            refreshedMemory.errors.length > 0 ? `Memory source unavailable: ${refreshedMemory.errors.join(', ')}` : null,
+          ])
           : state.contextMessage,
         attentionItems: projectAttention(next),
       };
@@ -829,13 +800,16 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
 
   recheckSources: async () => {
     const before = get();
+    if (before.demoMode) return;
     const { projectId, conversation, snapshot } = before;
     if (!projectId || !conversation || !snapshot) return;
     const adapter = snapshot.projects.find((item) => item.projectId === projectId);
     const refs = new Set<string>([
       overlayFileSourceRef('memory/MEMORY.md'),
       ...(adapter?.canonicalSource?.path ? [projectFileSourceRef(projectId, adapter.canonicalSource.path)] : []),
-      ...before.staging.filter((item) => item.state === 'included').flatMap((item) => item.sourceRefs?.length ? item.sourceRefs : item.sourceRef ? [item.sourceRef] : []),
+      ...before.staging.filter((item) => item.state === 'included').flatMap((item) =>
+        (item.sourceRefs?.length ? item.sourceRefs : item.sourceRef ? [item.sourceRef] : [])
+          .filter((sourceRef) => !sourceRef.startsWith('harness-result:'))),
       ...before.staging.filter((item) => item.source === `project-file:${projectId}`).flatMap((item) => item.sourceRef ? [item.sourceRef] : []),
       ...before.frozen.flatMap((packet) => [
         ...packet.sourceFingerprints.map((item) => item.sourceRef),
@@ -882,13 +856,16 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
         ];
       }
       const projectFingerprints = fileResult.entries.map((entry) => entry.fingerprint);
-      const recheckedSourceRefs = checked.checkedSourceRefs;
+      const localResultRefs = state.recheckedSourceRefs.filter((sourceRef) => sourceRef.startsWith('harness-result:'));
+      const localResultFingerprints = state.recheckedFingerprints.filter((item) => item.sourceRef.startsWith('harness-result:'));
+      const recheckedSourceRefs = [...localResultRefs, ...checked.checkedSourceRefs];
       const recheckedFingerprints = refreshedMemory
         ? [
+          ...localResultFingerprints,
           ...checked.fingerprints.filter((item) => !item.sourceRef.startsWith('history:')),
           ...refreshedMemory.fingerprints,
         ]
-        : checked.fingerprints;
+        : [...localResultFingerprints, ...checked.fingerprints];
       const next = { ...state, staging, projectFingerprints, recheckedSourceRefs, recheckedFingerprints };
       return {
       staging,
@@ -1033,41 +1010,87 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   },
 
   loadHarnessCapabilities: async () => {
-    // In demo mode, the agent matrix is the sandbox fixture (no real probe).
-    if (get().demoMode) {
-      set({ harnessCapabilities: DEMO_HARNESS_CAPABILITIES });
-      return;
-    }
+    const { demoMode, demoSessionId } = get();
+    const environment = demoMode
+      ? { kind: 'demo' as const, sessionId: demoSessionId ?? '' }
+      : { kind: 'real' as const };
+    if (demoMode && !demoSessionId) throw new Error('Demo session identity is unavailable. Reset Demo and try again.');
     const all = window.wb.loadAllHarnessCapabilities
-      ? await window.wb.loadAllHarnessCapabilities()
+      ? await window.wb.loadAllHarnessCapabilities(environment)
       : { codex: await window.wb.loadHarnessCapabilities() };
     set({ harnessCapabilities: all });
   },
 
   sendTask: async (summary, harness) => {
-    const { projectId, conversation, demoMode, harnessCapabilities } = get();
-    if (!projectId || !conversation) {
+    const before = get();
+    const { projectId, conversation, demoMode, demoSessionId, harnessCapabilities, snapshot } = before;
+    if (!projectId || !conversation || !snapshot) {
       throw new Error('Open a project session before sending a task.');
     }
-    const intentId = globalThis.crypto.randomUUID();
-    // Demo tasks use the sandbox dispatch (never a real harness / external write).
-    if (demoMode) {
-      return get().demoDispatch({ intentId, projectId, conversationKey: conversation.key, harness, text: summary });
-    }
-    const caps = harnessCapabilities[harness];
-    if (!caps?.canDispatch) {
-      const error = new Error(`Harness ${harness} dispatch unavailable.`);
+    const agents = Array.isArray(harness) ? harness : [harness];
+    const merged = new Map(snapshot.sourceFingerprints.map((item) => [item.sourceRef, item.sha256]));
+    for (const sourceRef of before.recheckedSourceRefs) merged.delete(sourceRef);
+    for (const item of before.recheckedFingerprints) merged.set(item.sourceRef, item.sha256);
+    for (const item of before.projectFingerprints) merged.set(item.sourceRef, item.sha256);
+    const adapter = snapshot.projects.find((item) => item.projectId === projectId);
+    const governanceRefs = demoMode ? [] : [
+      adapter?.canonicalSource?.path ? projectFileSourceRef(projectId, adapter.canonicalSource.path) : null,
+      overlayFileSourceRef('memory/MEMORY.md'),
+    ].filter((item): item is string => Boolean(item));
+    try {
+      const plan = buildDispatchPlan({
+        projectId,
+        conversationKey: conversation.key,
+        conversationId: conversation.conversationId,
+        taskSummary: summary,
+        governanceRefs,
+        staging: before.staging,
+        fingerprints: [...merged].map(([sourceRef, sha256]) => ({ sourceRef, sha256 })),
+        agents,
+        capabilities: harnessCapabilities,
+        environment: demoMode
+          ? { kind: 'demo', sessionId: demoSessionId ?? '' }
+          : { kind: 'real' },
+        parentSourceRef: before.handoffSourceRef ?? undefined,
+      });
+      set({
+        packetValidity: 'CURRENT', handoffStatus: 'DISPATCHED',
+        lastDispatchGroupId: plan.groupId, lastDispatchOutcomes: [],
+      });
+      const outcomes = await settleDispatchPlan(plan, window.wb.dispatchToHarness);
+      const accepted = outcomes.some((outcome) => outcome.status === 'accepted');
+      set({
+        lastDispatchOutcomes: outcomes,
+        handoffStatus: outcomes.every((outcome) => outcome.status === 'accepted') ? 'ACCEPTED' : 'PARTIAL_OR_FAILED',
+        handoffSourceRef: accepted ? null : before.handoffSourceRef,
+      });
+      return outcomes;
+    } catch (error) {
+      if (/packet INVALID/i.test(String(error))) {
+        set({ packetValidity: 'INVALID', handoffStatus: 'INVALID' });
+        window.dispatchEvent(new CustomEvent('workbench:open-inspector', { detail: 'packet' }));
+      }
       throw error;
     }
-    const receipt = await window.wb.dispatchToHarness({
-      intentId,
-      projectId,
-      conversationKey: conversation.key,
-      packetText: summary,
-      harness,
-    });
-    return receipt;
   },
+
+  addResultToContext: (event) => {
+    const item = contextFromAgentResult(event);
+    const hash = bytesToHex(sha256(new TextEncoder().encode(item.body)));
+    set((state) => ({
+      staging: [...state.staging.filter((current) => current.id !== item.id), item],
+      recheckedSourceRefs: [...new Set([...state.recheckedSourceRefs, item.sourceRef!])],
+      recheckedFingerprints: [
+        ...state.recheckedFingerprints.filter((fingerprint) => fingerprint.sourceRef !== item.sourceRef),
+        { sourceRef: item.sourceRef!, sha256: hash },
+      ],
+      handoffSourceRef: item.sourceRef!,
+      contextMessage: `${event.harness ?? 'Agent'} result added to the next handoff Context.`,
+    }));
+    scheduleDraftSave(get());
+  },
+
+  clearHandoffSource: () => set({ handoffSourceRef: null }),
 
   addMemoryContext: async (hit, pinned = false) => {
     const { projectId, conversation } = get();
@@ -1171,24 +1194,4 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
 
   setPacketValidity: (packetValidity) => set({ packetValidity }),
   setHandoffStatus: (handoffStatus) => set({ handoffStatus }),
-  createCollaborationRun: (input) => {
-    const run = createCollaborationRun({ id: globalThis.crypto.randomUUID(), ...input });
-    set((state) => ({ collaborationRuns: [...state.collaborationRuns, run], activeRunId: run.id }));
-  },
-  setCollaborationAgentStatus: (runId, agentId, status, executionId) => {
-    set((state) => ({
-      collaborationRuns: state.collaborationRuns.map((run) =>
-        run.id === runId ? updateRunAgentStatus(run, agentId, status, executionId) : run,
-      ),
-    }));
-  },
-  addCollaborationRelation: (runId, relation) => {
-    set((state) => ({
-      collaborationRuns: state.collaborationRuns.map((run) =>
-        run.id === runId ? runAddRelation(run, relation) : run,
-      ),
-    }));
-  },
-  setActiveRunId: (runId) => set({ activeRunId: runId }),
-  resetCollaboration: () => set({ collaborationRuns: [], activeRunId: null }),
 }));

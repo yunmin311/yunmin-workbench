@@ -9,12 +9,14 @@ import { PortabilityPanel } from './components/PortabilityPanel';
 import { MemoryPanel } from './components/MemoryPanel';
 import { MaterialSettings } from './components/MaterialSettings';
 import { DoctorPanel } from './components/DoctorPanel';
-import { CollaborationPanel } from './components/CollaborationPanel';
 import { CanvasView } from './views/CanvasView';
 import { SessionSurface } from './views/SessionSurface';
 import { useWorkbench } from './store';
-import { useMaterial } from './material/MaterialProvider';
 import { DemoWelcomeScreen } from './demo/DemoWelcomeScreen';
+import { AppChrome } from './components/AppChrome';
+import { CompareView } from './views/CompareView';
+import { ApprovalModal } from './components/ApprovalModal';
+import type { ActivityEvent } from '../../core/types';
 
 export default function App() {
   const snapshot = useWorkbench((state) => state.snapshot);
@@ -22,16 +24,13 @@ export default function App() {
   const view = useWorkbench((state) => state.view);
   const projectId = useWorkbench((state) => state.projectId);
   const conversation = useWorkbench((state) => state.conversation);
-  const draftSaveState = useWorkbench((state) => state.draftSaveState);
-  const packetValidity = useWorkbench((state) => state.packetValidity);
-  const runtimeSessions = useWorkbench((state) => state.runtimeSessions);
   const attentionItems = useWorkbench((state) => state.attentionItems);
   const initialize = useWorkbench((state) => state.initialize);
-  const reloadAndRecheck = useWorkbench((state) => state.reloadAndRecheck);
   const setView = useWorkbench((state) => state.setView);
   const syncIslandAttention = useWorkbench((state) => state.syncIslandAttention);
   const demoMode = useWorkbench((state) => state.demoMode);
   const exitDemo = useWorkbench((state) => state.exitDemo);
+  const resetDemo = useWorkbench((state) => state.resetDemo);
   const [sessionPickerOpen, setSessionPickerOpen] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -40,9 +39,8 @@ export default function App() {
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [materialOpen, setMaterialOpen] = useState(false);
   const [doctorOpen, setDoctorOpen] = useState(false);
-  const [collabOpen, setCollabOpen] = useState(false);
   const [historySourceSessionId, setHistorySourceSessionId] = useState<string | undefined>();
-  const material = useMaterial();
+  const [approvalEvent, setApprovalEvent] = useState<ActivityEvent | null>(null);
 
   useEffect(() => {
     void initialize();
@@ -52,7 +50,12 @@ export default function App() {
       if (focusTimer) clearTimeout(focusTimer);
       focusTimer = setTimeout(() => void useWorkbench.getState().recheckSources(), 300);
     });
-    const offActivity = window.wb.onActivityChanged((event) => useWorkbench.getState().ingestActivity(event));
+    const offActivity = window.wb.onActivityChanged((event) => {
+      useWorkbench.getState().ingestActivity(event);
+      if ((event.kind === 'approval-required' || event.kind === 'needs-user-input') && event.attentionStatus !== 'resolved') {
+        setApprovalEvent(event);
+      }
+    });
     const offActivityCleared = window.wb.onActivityCleared(() => void useWorkbench.getState().loadActivity());
     const offIslandSourceSelected = window.wb.onIslandSourceSelected((target) => {
       const state = useWorkbench.getState();
@@ -132,6 +135,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const returnSession = () => setView('control');
+    window.addEventListener('workbench:return-session', returnSession);
+    return () => window.removeEventListener('workbench:return-session', returnSession);
+  }, [setView]);
+
+  useEffect(() => {
     const open = () => setHistoryOpen(true);
     window.addEventListener('workbench:open-history', open);
     return () => window.removeEventListener('workbench:open-history', open);
@@ -171,9 +180,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const open = () => setCollabOpen(true);
-    window.addEventListener('workbench:open-collaboration', open);
-    return () => window.removeEventListener('workbench:open-collaboration', open);
+    const open = () => setMaterialOpen(true);
+    window.addEventListener('workbench:open-material', open);
+    return () => window.removeEventListener('workbench:open-material', open);
   }, []);
 
   useEffect(() => {
@@ -197,11 +206,7 @@ export default function App() {
   }
   if (!snapshot) return <DemoWelcomeScreen onOpenReal={() => void useWorkbench.getState().initialize()} />;
 
-  const canvasMode = view === 'canvas';
   const project = snapshot.projects.find((item) => item.projectId === projectId);
-  const currentRuntime = conversation
-    ? runtimeSessions.filter((session) => session.conversationKey === conversation.key).at(-1)
-    : undefined;
   const openInspector = (tab: InspectorTab) => {
     setInspectorTab(tab);
     if (tab === 'context' || tab === 'packet') setView(tab);
@@ -213,74 +218,19 @@ export default function App() {
 
   return (
     <div className="prototype-app">
-      <header className="prototype-chrome">
-        <button
-          className="workspace-trigger"
-          aria-label="Open workspace and session switcher"
-          aria-expanded={sessionPickerOpen}
-          onClick={() => setSessionPickerOpen((open) => !open)}
-        >
-          <span className="brand-mark">YW</span>
-          <span className="workspace-trigger-copy">
-            <strong>{project?.displayName ?? 'Open workspace'}</strong>
-            <small>{conversation?.role ?? 'Choose a session'}</small>
-          </span>
-          <span aria-hidden="true">⌄</span>
-        </button>
-
-        <nav className="surface-tabs" aria-label="Session surface mode">
-          <button aria-current={!canvasMode ? 'page' : undefined} onClick={() => setView('control')}>Session</button>
-          <button disabled={!projectId} aria-current={canvasMode ? 'page' : undefined} onClick={() => setView('canvas')}>Canvas</button>
-        </nav>
-
-        {demoMode && <span className="demo-live-badge" data-testid="demo-live-badge">DEMO</span>}
-
-        <div className="chrome-status" aria-label="Actionable session status">
-          {conversation && currentRuntime?.state === 'error' && (
-            <span className="runtime-inline runtime-error"><i />runtime error</span>
-          )}
-          {conversation && (packetValidity === 'STALE' || packetValidity === 'INVALID') && (
-            <button className={`validity-inline validity-${packetValidity.toLowerCase()}`} onClick={() => openInspector('packet')}>
-              Packet {packetValidity}
-            </button>
-          )}
-          {conversation && draftSaveState === 'error' && <span className="draft-inline draft-error">Draft save failed</span>}
-        </div>
-
-        <div className="chrome-tools">
-          <button
-            className={attentionItems.length > 0 ? 'attention-trigger has-items' : 'attention-trigger'}
-            aria-label={`Attention, ${attentionItems.length} active item${attentionItems.length === 1 ? '' : 's'}`}
-            aria-expanded={attentionOpen}
-            onClick={() => setAttentionOpen((open) => !open)}
-          >Attention{attentionItems.length > 0 && <span>{attentionItems.length}</span>}</button>
-          <button onClick={() => setCollabOpen(true)}>Collaborate</button>
-          <button onClick={() => setHistoryOpen(true)}>History</button>
-          <button onClick={() => setMemoryOpen(true)}>Memory</button>
-          <button disabled={!projectId} aria-pressed={inspectorTab === 'context'} onClick={() => openInspector('context')}>Context</button>
-          <button disabled={!conversation} aria-pressed={inspectorTab === 'packet'} onClick={() => openInspector('packet')}>Packet</button>
-          <button
-            aria-label={`Material ${material.effective}${material.fallbackReason ? ' fallback' : ''}`}
-            aria-expanded={materialOpen}
-            onClick={() => setMaterialOpen((o) => !o)}
-            title={material.fallbackReason ? `Requested ${material.preference} → ${material.effective}: ${material.fallbackReason}` : `Material ${material.effective}`}
-            style={{ borderColor: material.fallbackReason ? '#e0af68' : undefined }}
-          >
-            Material: {material.effective}{material.fallbackReason ? ' ↻' : ''}
-          </button>
-          <button
-            className="icon-action"
-            aria-label="Open command palette"
-            onClick={() => window.dispatchEvent(new CustomEvent('workbench:open-command-palette'))}
-          >⌘</button>
-          <button className="icon-action" aria-label="Reload external truth" onClick={() => void reloadAndRecheck()}>↻</button>
-          {demoMode && (
-            <button className="demo-exit" aria-label="Exit demo workspace" onClick={() => void exitDemo()}>
-              Exit demo
-            </button>
-          )}
-        </div>
-      </header>
+      <AppChrome
+        workspaceName={project?.displayName ?? 'Open workspace'}
+        sessionName={conversation?.role ?? 'Choose a session'}
+        view={view}
+        demo={demoMode}
+        attentionCount={attentionItems.length}
+        onOpenSessions={() => setSessionPickerOpen(true)}
+        onView={setView}
+        onOpenCommands={() => window.dispatchEvent(new CustomEvent('workbench:open-command-palette'))}
+        onOpenAttention={() => setAttentionOpen(true)}
+        onResetDemo={resetDemo}
+        onExitDemo={() => void exitDemo()}
+      />
 
       {snapshot.problems.length > 0 && (
         <details className="prototype-problems">
@@ -289,9 +239,9 @@ export default function App() {
         </details>
       )}
 
-      <main className={`prototype-surface ${canvasMode ? 'is-canvas' : 'is-session'}`}>
-        <ErrorBoundary key={`surface:${canvasMode}:${projectId ?? ''}:${conversation?.key ?? ''}`}>
-          {canvasMode ? <CanvasView /> : <SessionSurface onOpenSessions={() => setSessionPickerOpen(true)} />}
+      <main className={`prototype-surface ${view === 'canvas' ? 'is-canvas' : view === 'compare' ? 'is-compare' : 'is-session'}`}>
+        <ErrorBoundary key={`surface:${view}:${projectId ?? ''}:${conversation?.key ?? ''}`}>
+          {view === 'canvas' ? <CanvasView /> : view === 'compare' ? <CompareView /> : <SessionSurface onOpenSessions={() => setSessionPickerOpen(true)} />}
         </ErrorBoundary>
       </main>
 
@@ -313,7 +263,7 @@ export default function App() {
       {portabilityOpen && <PortabilityPanel onClose={() => setPortabilityOpen(false)} />}
       {materialOpen && <MaterialSettings onClose={() => setMaterialOpen(false)} />}
       {doctorOpen && <DoctorPanel onClose={() => setDoctorOpen(false)} />}
-      {collabOpen && <CollaborationPanel onClose={() => setCollabOpen(false)} />}
+      {approvalEvent && <ApprovalModal event={approvalEvent} onClose={() => setApprovalEvent(null)} />}
     </div>
   );
 }

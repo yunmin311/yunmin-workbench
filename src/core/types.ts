@@ -216,7 +216,7 @@ export interface OverlaySnapshot {
 
 // --- Canvas projection (Workbench node/edge semantics; engine is React Flow) ---
 
-export type WbNodeKind = 'project' | 'conversation' | 'memory' | 'gate';
+export type WbNodeKind = 'project' | 'conversation' | 'memory' | 'gate' | 'execution';
 /** Structure/mount edges are not evidence that execution or context flow occurred. */
 export type WbEdgeKind = 'membership' | 'mount' | 'execution' | 'handoff' | 'data-context';
 
@@ -301,6 +301,22 @@ export interface HandoffReceipt {
   message?: string;
 }
 
+/** Explicit dispatch boundary. Demo routing is scoped to one session; it is never a process-global switch. */
+export type ExecutionEnvironment =
+  | { kind: 'real' }
+  | { kind: 'demo'; sessionId: string };
+
+export interface HarnessDispatchRequest {
+  intentId: string;
+  projectId: string;
+  conversationKey: string;
+  packetText: string;
+  harness: HarnessCapabilities['harness'];
+  environment: ExecutionEnvironment;
+  groupId: string;
+  parentSourceRef?: string;
+}
+
 export type ActivityKind =
   | 'handoff-dispatched'
   | 'handoff-accepted'
@@ -334,6 +350,17 @@ export interface ActivityEvent {
   capability?: keyof HarnessCapabilityTruth;
   runtimeRef?: string;
   turnRef?: string;
+  /** Workbench intent lineage. It is recorded at dispatch and never inferred from layout or time. */
+  intentId?: string;
+  groupId?: string;
+  /** Exact selected result source used by an explicit handoff. */
+  parentSourceRef?: string;
+  /** User-visible protocol payload. Summary remains a short label, never a result placeholder. */
+  content?: string;
+  /** Exact tool/file evidence locator supplied by the adapter. */
+  evidenceRef?: string;
+  /** Visibly marks deterministic Demo output. */
+  simulated?: boolean;
   binding?: RuntimeBinding;
   runtimeState?: RuntimeState;
   /** Stable key supplied by the source for repeated/resolved attention facts. */

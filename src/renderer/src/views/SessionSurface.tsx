@@ -4,6 +4,7 @@ import { executionIdForEvent, projectRuntimeExecutions } from '../../../core/pro
 import { latestRuntimeExecutionForConversation } from '../runtimeInspectorModel';
 import { boundedTimeline, TIMELINE_PAGE_SIZE, visibleCountForTarget } from '../boundedTimeline';
 import { useWorkbench } from '../store';
+import { SessionComposer } from '../components/SessionComposer';
 
 const ACTIVITY_LABEL: Record<ActivityEvent['kind'], string> = {
   'handoff-dispatched': 'Handoff dispatched',
@@ -36,6 +37,7 @@ function ActivityCard({ event }: { event: ActivityEvent }) {
   const isResponse = event.kind === 'agent-response';
   const isBoundary = boundaryKinds.has(event.kind);
   const openRuntimeInspector = useWorkbench((s) => s.openRuntimeInspector);
+  const addResultToContext = useWorkbench((s) => s.addResultToContext);
   // Only events that explicitly name harness + native ref can target an exact execution.
   const executionId = executionIdForEvent(event);
   const inspectTarget = executionId ? { executionId } : null;
@@ -49,6 +51,15 @@ function ActivityCard({ event }: { event: ActivityEvent }) {
       Inspect
     </button>
   );
+
+  if (event.kind === 'handoff-dispatched' && event.content) {
+    return (
+      <li className="transcript-turn transcript-user" data-event-ref={event.id}>
+        <div className="transcript-avatar">Y</div>
+        <article><header><strong>You</strong><time>{new Date(event.observed.observedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></header><p>{event.content}</p></article>
+      </li>
+    );
+  }
 
   if (isBoundary) {
     return (
@@ -78,7 +89,10 @@ function ActivityCard({ event }: { event: ActivityEvent }) {
         {inspectButton}
         <time>{new Date(event.observed.observedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
       </header>
-      <p>{event.summary}</p>
+      <p>{event.content ?? event.summary}</p>
+      {isResponse && event.content && (
+        <button className="use-result" onClick={() => addResultToContext(event)}>Use as context</button>
+      )}
       {(event.runtimeRef || event.turnRef) && (
         <details className="activity-detail">
           <summary>Observed detail</summary>
@@ -104,45 +118,12 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
   const activityProblem = useWorkbench((state) => state.activityProblem);
   const activityHasEarlier = useWorkbench((state) => state.activityHasEarlier);
   const loadEarlierActivity = useWorkbench((state) => state.loadEarlierActivity);
-  const taskSummary = useWorkbench((state) => state.taskSummary);
-  const draftSaveState = useWorkbench((state) => state.draftSaveState);
-  const staging = useWorkbench((state) => state.staging);
-  const packetValidity = useWorkbench((state) => state.packetValidity);
   const attentionItems = useWorkbench((s) => s.attentionItems);
-  const setTaskSummary = useWorkbench((state) => state.setTaskSummary);
-  const setView = useWorkbench((state) => state.setView);
   const clearActivity = useWorkbench((state) => state.clearActivity);
-  const harnessCapabilities = useWorkbench((state) => state.harnessCapabilities);
   const loadHarnessCapabilities = useWorkbench((state) => state.loadHarnessCapabilities);
-  const sendTask = useWorkbench((state) => state.sendTask);
   const demoMode = useWorkbench((state) => state.demoMode);
-  const [targetHarness, setTargetHarness] = useState<'codex' | 'claude' | 'deepseek' | null>(null);
-  const [dispatchState, setDispatchState] = useState<'idle' | 'pending' | 'accepted' | 'failed'>('idle');
-  const [dispatchMessage, setDispatchMessage] = useState<string | null>(null);
 
   useEffect(() => { void loadHarnessCapabilities(); }, [loadHarnessCapabilities, demoMode]);
-  useEffect(() => {
-    const available = Object.entries(harnessCapabilities)
-      .find(([, caps]) => caps.canDispatch)?.[0];
-    if (!targetHarness && available) setTargetHarness(available as 'codex' | 'claude' | 'deepseek');
-  }, [harnessCapabilities, targetHarness]);
-
-  const dispatch = async () => {
-    const summary = taskSummary.trim();
-    if (!summary) { setDispatchMessage('Write a task first.'); return; }
-    if (!targetHarness) { setDispatchMessage('Pick an available agent.'); return; }
-    setDispatchState('pending');
-    setDispatchMessage(null);
-    try {
-      await sendTask(summary, targetHarness);
-      setDispatchState('accepted');
-      setTaskSummary('');
-      setDispatchMessage(`Sent to ${targetHarness}. Watch the runtime below.`);
-    } catch (error) {
-      setDispatchState('failed');
-      setDispatchMessage(`Send failed: ${String(error)}`);
-    }
-  };
 
   const events = useMemo(() => activity.filter((event) =>
     event.projectId === projectId && event.conversationKey === conversation?.key,
@@ -199,14 +180,12 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
   const runtimeExecutions = projectRuntimeExecutions(activity, liveExecutions.map((item) => item.executionId));
   const runtime = latestRuntimeExecutionForConversation(runtimeExecutions, conversation.key);
   const visibleEvents = boundedTimeline(events, visibleEventCount);
-  const included = staging.filter((item) => item.state === 'included').length;
-  const pinned = staging.filter((item) => item.state === 'included' && item.pinned).length;
   const sessionAttention = attentionItems.filter(
     (item) => item.conversationKey === conversation.key || (!item.conversationKey && item.projectId === projectId),
   );
-  const runtimeLabel = runtime
-    ? `${runtime.harness} · ${runtime.binding ? (runtime.binding.cwd ? runtime.binding.cwd.split(/[\\/]/).pop() : runtime.binding.machine) : 'binding UNKNOWN'}`
-    : null;
+  const demoGroups = new Set(events.map((event) => event.groupId).filter(Boolean));
+  const hasParallel = [...demoGroups].some((groupId) => new Set(events.filter((event) => event.groupId === groupId).map((event) => event.harness)).size > 1);
+  const hasHandoff = events.some((event) => Boolean(event.parentSourceRef));
 
   return (
     <div className="session-surface">
@@ -216,11 +195,23 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
           <h1>{conversation.role}</h1>
         </div>
         <div className="session-header-actions">
-          <button onClick={() => window.dispatchEvent(new CustomEvent('workbench:open-history'))}>History</button>
-          {events.length > 0 && <button onClick={() => void clearActivity()}>Clear local activity</button>}
-          <button onClick={() => window.dispatchEvent(new CustomEvent('workbench:open-inspector', { detail: 'evidence' }))}>Evidence</button>
+          {runtime && <button data-testid="session-runtime-badge" onClick={() => openRuntimeInspector({ executionId: runtime.executionId })}><i className={`runtime-pulse runtime-${runtime.live ? runtime.state : 'unknown'}`} />{runtime.harness} · {runtime.live ? 'live' : 'historical'}</button>}
+          <button aria-label="Open session commands" onClick={() => window.dispatchEvent(new CustomEvent('workbench:open-command-palette'))}>•••</button>
         </div>
       </header>
+
+      {demoMode && (
+        <aside className="demo-walkthrough" aria-label="Demo walkthrough">
+          <span>DEMO PATH</span>
+          <ol>
+            <li className={events.length > 0 ? 'done' : 'active'}>Single</li>
+            <li className={hasParallel ? 'done' : events.length > 0 ? 'active' : ''}>Parallel</li>
+            <li className={hasHandoff ? 'done' : hasParallel ? 'active' : ''}>Handoff</li>
+            <li className={hasHandoff ? 'active' : ''}>Compare</li>
+          </ol>
+          <p>{events.length === 0 ? 'Send one task to an Agent.' : !hasParallel ? 'Select two Agents and run the same task.' : !hasHandoff ? 'Use a real result as context, then continue with another Agent.' : 'Open Compare to inspect both results and evidence.'}</p>
+        </aside>
+      )}
 
       {sessionAttention.length > 0 && (
         <div className="session-attention-strip" role="status" aria-label={`${sessionAttention.length} attention items`}>
@@ -235,7 +226,7 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
           <>
             <p className="activity-hint">
               <span className={`runtime-pulse runtime-${runtime?.state ?? 'unknown'}`} />
-              No activity in the loaded window. Runtime boundaries appear only when the adapter reports them; nothing is invented.
+               No turns yet. Write the first task below; Runtime appears here only when an Adapter reports it.
             </p>
             {activityHasEarlier && <button className="timeline-load-earlier" onClick={() => void loadEarlierActivity()}>Search earlier activity</button>}
           </>
@@ -259,64 +250,7 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
         )}
       </section>
 
-      <section className="session-composer" aria-label="Persistent session composer">
-        <textarea
-          value={taskSummary}
-          onChange={(event) => setTaskSummary(event.target.value)}
-          rows={2}
-          placeholder="Prepare the next handoff intent… (Add Context → Freeze → Send)"
-        />
-        <div className="composer-row">
-          <div className="composer-context">
-            <button onClick={() => window.dispatchEvent(new CustomEvent('workbench:open-inspector', { detail: 'context' }))} title="Open Context staging drawer">+ Context</button>
-            <button onClick={() => setView('context')} title="Agent will receive these items">
-              {included} included{pinned ? ` · ${pinned} pinned` : ''}
-            </button>
-            <span className="composer-sep" aria-hidden="true" />
-            <button className={`composer-packet-status validity-${packetValidity.toLowerCase()}`} onClick={() => window.dispatchEvent(new CustomEvent('workbench:open-inspector', { detail: 'packet' }))}>
-              Packet {packetValidity}
-            </button>
-            <span>Draft {draftSaveState}</span>
-            {runtimeLabel && (
-              <button
-                className="composer-harness session-runtime-badge"
-                data-testid="session-runtime-badge"
-                title={`Runtime ${runtime?.state ?? 'unknown'} · execution ${runtime?.executionId ?? 'UNKNOWN'}${runtime?.live ? ' · live' : ' · historical'}`}
-                onClick={() => runtime && openRuntimeInspector({ executionId: runtime.executionId })}
-              >
-                <i className={`runtime-pulse runtime-${runtime?.live ? runtime.state : 'unknown'}`} />
-                {runtimeLabel}
-                {runtime?.live ? ' · live' : ' · historical'}
-              </button>
-            )}
-          </div>
-          <div className="composer-actions">
-            <select
-              className="composer-agent"
-              aria-label="Choose agent"
-              value={targetHarness ?? ''}
-              onChange={(event) => setTargetHarness(event.target.value as 'codex' | 'claude' | 'deepseek' | null)}
-            >
-              {Object.entries(harnessCapabilities).map(([name, caps]) => (
-                <option key={name} value={name} disabled={!caps.canDispatch}>
-                  {name}{caps.canDispatch ? '' : ' (unavailable)'}
-                </option>
-              ))}
-            </select>
-            <button
-              className="composer-send"
-              disabled={dispatchState === 'pending'}
-              onClick={() => void dispatch()}
-            >
-              {dispatchState === 'pending' ? 'Sending…' : `Send to ${targetHarness ?? 'agent'}`}
-            </button>
-          </div>
-        </div>
-        {dispatchMessage && <p className={`composer-dispatch composer-dispatch-${dispatchState}`} role="status">{dispatchMessage}</p>}
-        <p style={{ margin: '6px 2px 0', fontSize: 9, color: 'var(--wb-text-contrast)', opacity: 0.45 }}>
-          Included context + your task become the agent input. Review the Packet only when you want to confirm it.
-        </p>
-      </section>
+      <SessionComposer />
     </div>
   );
 }

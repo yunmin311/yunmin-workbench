@@ -5,8 +5,9 @@ import { useWorkbench } from '../store';
  * First-run choice: when no real workspace is open yet, offer a fully isolated
  * Demo Workspace so the product is never a blank shell. `Open real workspace`
  * loads the real Overlay through the normal initialize path; `Try Demo` swaps in
- * the renderer-only sandbox. Both stay fully separate — the demo never writes
- * real History / Memory / Governance / Harness config.
+ * an explicitly scoped demo session. It uses the production renderer and
+ * dispatch controller, while the adapter resolver selects a deterministic
+ * Mock Harness and never writes real History / Memory / Governance state.
  */
 export function DemoWelcomeScreen({ onOpenReal, note }: { onOpenReal: () => void; note?: string }) {
   const enterDemo = useWorkbench((state) => state.enterDemo);

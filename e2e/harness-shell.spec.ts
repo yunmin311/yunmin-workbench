@@ -41,13 +41,13 @@ test.describe('Reasonix harness renderer prototype (GOV_OVERLAY fixture, isolate
     await win.locator('.session-composer textarea').fill('Review the current packet before a structured handoff.');
     await win.screenshot({ path: join(screenshotDir, '01-active-session.png') });
 
-    await win.getByRole('button', { name: 'Context', exact: true }).click();
+    await win.keyboard.press('Control+3');
     await expect(win.locator('.inspector-pane')).toBeVisible();
     await expect(win.locator('.inspector-pane h2', { hasText: 'Context Staging' })).toBeVisible();
     await win.screenshot({ path: join(screenshotDir, '02-context-on-demand.png') });
     await win.getByRole('button', { name: 'Close inspector' }).click();
 
-    await win.getByRole('button', { name: 'Canvas', exact: true }).click();
+    await win.getByRole('button', { name: 'Map', exact: true }).click();
     await expect(win.locator('.prototype-surface.is-canvas .react-flow')).toBeVisible();
     await expect(win.locator('.wb-project')).toBeVisible();
     await win.screenshot({ path: join(screenshotDir, '03-canvas-agent-graph.png') });

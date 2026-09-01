@@ -63,9 +63,11 @@ test.describe('real Runtime adapter → Activity → Inspector smoke', () => {
     try {
       const receipt = await win.evaluate(async ({ intentId, conversation }) => window.wb.dispatchToHarness({
         intentId,
+        groupId: crypto.randomUUID(),
         projectId: 'creative-os',
         conversationKey: conversation,
         harness: 'codex',
+        environment: { kind: 'real' },
         packetText: 'Reply with exactly: YUNMIN_CODEX_RUNTIME_SMOKE_OK. Do not use tools or modify files.',
       }), { intentId: randomUUID(), conversation: conversationKey });
       expect(receipt).toMatchObject({ harness: 'codex', status: 'ACCEPTED', source: 'protocol' });
@@ -85,27 +87,24 @@ test.describe('real Runtime adapter → Activity → Inspector smoke', () => {
     expect(codexHistoryFiles()).toEqual(historyBefore);
   });
 
-  test('Claude returns native UUID with result/tool/receipt Activity and leaves external state unchanged', async () => {
+  test('real Session Composer sends to Claude and renders native result/tool/receipt Activity', async () => {
     test.setTimeout(180_000);
     const sourcesBefore = externalSourceState();
     const claudeBefore = claudeState();
     const { app, win } = await launchWorkbench(mkdtempSync(join(tmpdir(), 'wb-real-claude-')), overlay.overlayRoot);
     try {
-      const receipt = await win.evaluate(async ({ intentId, conversation }) => window.wb.dispatchToHarness({
-        intentId,
-        projectId: 'creative-os',
-        conversationKey: conversation,
-        harness: 'claude',
-        packetText: 'Use the Bash tool once to run pwd (read-only), then reply exactly: YUNMIN_CLAUDE_RUNTIME_SMOKE_OK. Do not modify files.',
-      }), { intentId: randomUUID(), conversation: conversationKey });
-      expect(receipt).toMatchObject({ harness: 'claude', status: 'ACCEPTED', source: 'protocol' });
-      expect(receipt.runtimeRef).toMatch(/^[0-9a-f-]{36}$/i);
       await selectFixtureSession(win);
+      await win.locator('.agent-selector').click();
+      await win.getByRole('menuitemcheckbox', { name: /claude/i }).click();
+      await win.getByRole('menuitemcheckbox', { name: /codex/i }).click();
+      await win.getByRole('textbox', { name: 'Task for Agent' }).fill('Use the Bash tool once to run pwd (read-only), then reply exactly: YUNMIN_CLAUDE_RUNTIME_SMOKE_OK. Do not modify files.');
+      await win.getByRole('button', { name: 'Send to claude' }).click();
       await expect(win.locator('.activity-kind-handoff-accepted')).toBeVisible();
       await expect(win.locator('.activity-kind-tool-started')).toBeVisible();
       await expect(win.locator('.activity-kind-tool-completed')).toBeVisible();
+      await expect(win.locator('.activity-kind-agent-response')).toContainText('YUNMIN_CLAUDE_RUNTIME_SMOKE_OK');
       await win.getByTestId('session-runtime-badge').click();
-      await expect(win.getByTestId('runtime-detail')).toHaveAttribute('data-execution-id', `claude::${receipt.runtimeRef}`);
+      await expect(win.getByTestId('runtime-detail')).toHaveAttribute('data-execution-id', /^claude::[0-9a-f-]{36}$/i);
       await expect(win.getByTestId('runtime-detail')).toContainText('Assistant result');
       await expect(win.getByTestId('runtime-detail')).toContainText('Receipt accepted');
     } finally {
@@ -125,9 +124,11 @@ test.describe('real Runtime adapter → Activity → Inspector smoke', () => {
       await win.evaluate(({ intentId, conversation }) => {
         (window as typeof window & { __runtimeCancelReceipt?: Promise<unknown> }).__runtimeCancelReceipt = window.wb.dispatchToHarness({
           intentId,
+          groupId: crypto.randomUUID(),
           projectId: 'creative-os',
           conversationKey: conversation,
           harness: 'claude',
+          environment: { kind: 'real' },
           packetText: 'Use the Bash tool exactly once to run: sleep 30. Do not modify files. After it finishes, reply with CANCEL_MISSED.',
         });
       }, { intentId: randomUUID(), conversation: conversationKey });

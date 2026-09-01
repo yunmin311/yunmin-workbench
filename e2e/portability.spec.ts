@@ -81,7 +81,7 @@ test('successful import reloads and restores Manual Context without touching ext
   await launched.win.locator('[cmdk-item]', { hasText: `Open Workspace · ${FIXTURE_PROJECT_DISPLAY_NAME}` }).click();
   await launched.win.getByRole('button', { name: 'Open workspace and session switcher' }).click();
   await launched.win.locator('.sidebar-conversations button', { hasText: 'CO 主对话' }).click();
-  await launched.win.getByRole('button', { name: 'Context', exact: true }).click();
+  await launched.win.keyboard.press('Control+3');
   await expect(launched.win.locator('.inspector-pane')).toContainText('Portable decision');
   await launched.win.locator('.context-item .item-title', { hasText: 'Portable decision' }).click();
   await expect(launched.win.locator('.inspector-pane')).toContainText('Restored Workbench-owned Manual Context');

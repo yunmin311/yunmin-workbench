@@ -45,7 +45,7 @@ test.describe('Yunmin Workbench vertical slice (GOV_OVERLAY fixture, read-only)'
     await expect(win.locator('.session-surface')).toBeVisible();
 
     // Canvas: projection nodes render, then the Session tab preserves the selected Session.
-    await win.getByRole('button', { name: 'Canvas', exact: true }).click();
+    await win.getByRole('button', { name: 'Map', exact: true }).click();
     await expect(win.locator('.prototype-surface.is-canvas .react-flow')).toBeVisible();
     await expect(win.locator('.wb-project')).toBeVisible();
     await expect(win.locator('.canvas-title')).toBeVisible();
@@ -55,7 +55,7 @@ test.describe('Yunmin Workbench vertical slice (GOV_OVERLAY fixture, read-only)'
     await expect(win.locator('.session-surface')).toBeVisible();
 
     // Context Inspector: toggle one available item to included.
-    await win.getByRole('button', { name: 'Context', exact: true }).click();
+    await win.keyboard.press('Control+3');
     await expect(win.locator('.inspector-pane h2', { hasText: 'Context Staging' })).toBeVisible();
     const governanceContext = win.locator('details.governance-context');
     await expect(governanceContext).toBeVisible();
@@ -70,7 +70,7 @@ test.describe('Yunmin Workbench vertical slice (GOV_OVERLAY fixture, read-only)'
     await expect(includedGroup.locator('button.state-included').first()).toBeVisible();
 
     // Packet: fill summary, freeze
-    await win.getByRole('button', { name: 'Packet', exact: true }).click();
+    await win.keyboard.press('Control+4');
     await expect(win.locator('h2', { hasText: 'Task Packet' })).toBeVisible();
     await win.locator('.inspector-pane textarea').fill('E2E 冒烟：验证 Freeze 链路');
     await expect(win.locator('.inspector-pane .validity-current')).toBeVisible();
@@ -124,6 +124,7 @@ test.describe('Yunmin Workbench vertical slice (GOV_OVERLAY fixture, read-only)'
     expect(savedWindow.height).toBe(savedBounds.height);
     expect(savedWindow.width).toBeGreaterThanOrEqual(1100);
     expect(savedWindow.height).toBeGreaterThanOrEqual(740);
+    await win.close();
     await app.close();
     const relaunched = await launchWorkbench(stateDir, OVERLAY);
     app = relaunched.app;
@@ -133,9 +134,13 @@ test.describe('Yunmin Workbench vertical slice (GOV_OVERLAY fixture, read-only)'
     const resumedBounds = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds());
     expect(Math.abs(resumedBounds.width - savedWindow.width)).toBeLessThanOrEqual(4);
     expect(Math.abs(resumedBounds.height - savedWindow.height)).toBeLessThanOrEqual(4);
+    await resumed.keyboard.press('Control+4');
     await expect(resumed.locator('.inspector-pane textarea')).toHaveValue('E2E 冒烟：验证 Freeze 链路');
     await expect(resumed.locator('.frozen-row', { hasText: 'v1' })).toBeVisible();
-    await resumed.getByRole('button', { name: 'Reload external truth' }).click();
+    await resumed.keyboard.press('Control+K');
+    await resumed.locator('[cmdk-input]').fill('Reload External Truth');
+    await resumed.locator('[cmdk-item]', { hasText: 'Reload External Truth' }).click();
+    await expect(resumed.locator('[cmdk-input]')).toHaveCount(0);
     await expect(resumed.locator('.inspector-pane .validity-current').first()).toBeVisible();
     const resumedPreview = await resumed.locator('.agent-input-text').textContent();
     await resumed.locator('button', { hasText: 'Copy Agent Input' }).click();

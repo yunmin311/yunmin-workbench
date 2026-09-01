@@ -3,6 +3,12 @@ import { Command } from 'cmdk';
 import { discoverProjects } from '../../../core/project/discovery';
 import { useWorkbench } from '../store';
 
+/*
+ * Interaction and focus behavior adapted from DeepSeek-Reasonix
+ * CommandPalette.tsx (MIT): grouped caller actions, keyboard-first search,
+ * wrap-safe selection via cmdk, and close-before-run semantics.
+ */
+
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const snapshot = useWorkbench((state) => state.snapshot);
@@ -85,8 +91,10 @@ export function CommandPalette() {
           <Command.Item onSelect={() => run(() => window.dispatchEvent(new CustomEvent('workbench:open-doctor')))}>Workbench Doctor</Command.Item>
           <Command.Item onSelect={() => run(() => window.dispatchEvent(new CustomEvent('workbench:open-session-picker')))}><span>Open Workspace / Switch Session</span><kbd>Ctrl 1</kbd></Command.Item>
           <Command.Item disabled={!projectId} onSelect={() => run(() => setView('canvas'))}><span>Canvas</span><kbd>Ctrl 2</kbd></Command.Item>
+          <Command.Item disabled={!conversation} onSelect={() => run(() => setView('compare'))}>Compare Agent Results</Command.Item>
           <Command.Item disabled={!projectId} onSelect={() => run(() => window.dispatchEvent(new CustomEvent('workbench:open-inspector', { detail: 'context' })))}><span>Context Inspector</span><kbd>Ctrl 3</kbd></Command.Item>
           <Command.Item disabled={!conversation} onSelect={() => run(() => window.dispatchEvent(new CustomEvent('workbench:open-inspector', { detail: 'packet' })))}><span>Packet</span><kbd>Ctrl 4</kbd></Command.Item>
+          <Command.Item disabled={!conversation} onSelect={() => run(() => window.dispatchEvent(new CustomEvent('workbench:open-inspector', { detail: 'evidence' })))}>Runtime Evidence</Command.Item>
         </Command.Group>
         <Command.Group heading="Open Workspace">
           {workspaceSession.last && (
@@ -116,7 +124,8 @@ export function CommandPalette() {
         <Command.Group heading="Actions">
           <Command.Item onSelect={() => run(() => window.dispatchEvent(new CustomEvent('workbench:open-portability')))}>Profile Portability</Command.Item>
           <Command.Item disabled={!conversation} onSelect={() => packetAction('copy')}>Copy Agent Input</Command.Item>
-          <Command.Item disabled={!conversation} onSelect={() => packetAction('handoff')}>Dispatch to Codex</Command.Item>
+          <Command.Item disabled={!conversation} onSelect={() => packetAction('handoff')}>Send Current Task to Selected Agent</Command.Item>
+          <Command.Item onSelect={() => run(() => window.dispatchEvent(new CustomEvent('workbench:open-material')))}>Appearance</Command.Item>
           <Command.Item onSelect={() => run(() => void reloadAndRecheck())}>Reload External Truth</Command.Item>
           <Command.Item disabled={!conversation} onSelect={() => run(() => void clearDraft())}>Clear Draft</Command.Item>
         </Command.Group>

@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { checkPacketValidity, compilePacket, renderAgentInput } from '../../../core/project/packet';
-import { applyHandoffReceipt, createHandoffIntent, markHandoffDispatched } from '../../../core/project/handoff';
 import { dispatchableHarnesses, resolveHarnessTarget, type HarnessCapabilityMatrix, type HarnessTarget } from '../../../core/project/harnessSelection';
 import { overlayFileSourceRef, projectFileSourceRef } from '../../../core/project/sourceIdentity';
-import type { FrozenPacketSummary, HandoffReceipt, HarnessCapabilities, SourceFingerprint, UserIntent } from '../../../core/types';
+import type { FrozenPacketSummary, HandoffReceipt, HarnessCapabilities, SourceFingerprint } from '../../../core/types';
 import { useWorkbench } from '../store';
 
 const COPY_CHAR_LIMIT = 5_000_000;
@@ -72,6 +71,8 @@ export function PacketPanel() {
   const snapshot = useWorkbench((s) => s.snapshot);
   const projectId = useWorkbench((s) => s.projectId);
   const conversation = useWorkbench((s) => s.conversation);
+  const demoMode = useWorkbench((s) => s.demoMode);
+  const demoSessionId = useWorkbench((s) => s.demoSessionId);
   const staging = useWorkbench((s) => s.staging);
   const taskSummary = useWorkbench((s) => s.taskSummary);
   const projectFingerprints = useWorkbench((s) => s.projectFingerprints);
@@ -85,6 +86,7 @@ export function PacketPanel() {
   const recheckSources = useWorkbench((s) => s.recheckSources);
   const setPacketValidity = useWorkbench((s) => s.setPacketValidity);
   const setHandoffStatus = useWorkbench((s) => s.setHandoffStatus);
+  const sendTask = useWorkbench((s) => s.sendTask);
 
   const [lastFrozen, setLastFrozen] = useState('');
   const [freezePending, setFreezePending] = useState(false);
@@ -93,7 +95,6 @@ export function PacketPanel() {
   const [capabilities, setCapabilities] = useState<HarnessCapabilities | null>(null);
   const [allCapabilities, setAllCapabilities] = useState<HarnessCapabilityMatrix | null>(null);
   const [selectedHarness, setSelectedHarness] = useState<HarnessTarget | null>(null);
-  const [intent, setIntent] = useState<UserIntent | null>(null);
   const [receipt, setReceipt] = useState<HandoffReceipt | null>(null);
   const [handoffPending, setHandoffPending] = useState(false);
   const [handoffError, setHandoffError] = useState('');
@@ -101,12 +102,15 @@ export function PacketPanel() {
   useEffect(() => {
     void recheckSources();
     void window.wb.loadHarnessCapabilities().then(setCapabilities);
-    void (window.wb.loadAllHarnessCapabilities ? window.wb.loadAllHarnessCapabilities().then((all) => {
+    const environment = demoMode && demoSessionId
+      ? { kind: 'demo' as const, sessionId: demoSessionId }
+      : { kind: 'real' as const };
+    void (window.wb.loadAllHarnessCapabilities ? window.wb.loadAllHarnessCapabilities(environment).then((all) => {
       const matrix = all as HarnessCapabilityMatrix;
       setAllCapabilities(matrix);
       setSelectedHarness((current) => current && dispatchableHarnesses(matrix).includes(current) ? current : null);
     }) : Promise.resolve());
-  }, [projectId, conversation?.key, recheckSources]);
+  }, [projectId, conversation?.key, recheckSources, demoMode, demoSessionId]);
 
   const availableHarnesses = allCapabilities ? dispatchableHarnesses(allCapabilities) : [];
   const targetHarness = allCapabilities
@@ -124,7 +128,7 @@ export function PacketPanel() {
   const packet = useMemo(() => {
     if (!projectId || !conversation || !snapshot) return null;
     const adapter = snapshot.projects.find((p) => p.projectId === projectId);
-    const governanceRefs = [
+    const governanceRefs = demoMode ? [] : [
       adapter?.canonicalSource?.path ? projectFileSourceRef(projectId, adapter.canonicalSource.path) : null,
       overlayFileSourceRef('memory/MEMORY.md'),
     ].filter((x): x is string => Boolean(x));
@@ -137,7 +141,7 @@ export function PacketPanel() {
       staging,
       fingerprints: currentFingerprints,
     });
-  }, [snapshot, projectId, conversation, staging, taskSummary, currentFingerprints]);
+  }, [snapshot, projectId, conversation, staging, taskSummary, currentFingerprints, demoMode]);
 
   const previewValidity = packet ? checkPacketValidity(packet, currentFingerprints) : 'INVALID';
   const compiledText = useMemo(() => (packet ? renderAgentInput(packet) : ''), [packet]);
@@ -177,38 +181,20 @@ export function PacketPanel() {
   const handoff = async () => {
     const effectiveCaps = targetHarness ? allCapabilities?.[targetHarness] : null;
     if (!targetHarness || !projectId || !conversation || !compiledText || handoffPending || previewValidity !== 'CURRENT' || !effectiveCaps?.canDispatch) return;
-    const draftIntent = createHandoffIntent(globalThis.crypto.randomUUID(), {
-      projectId,
-      conversationKey: conversation.key,
-      packetText: compiledText,
-      harness: targetHarness,
-    });
-    const dispatched = markHandoffDispatched(draftIntent);
-    setIntent(dispatched);
     setReceipt(null);
     setHandoffError('');
     setHandoffPending(true);
     setHandoffStatus('DISPATCHED');
     try {
-      const nextReceipt = await window.wb.dispatchToHarness({
-        intentId: draftIntent.id,
-        projectId,
-        conversationKey: conversation.key,
-        packetText: compiledText,
-        harness: targetHarness,
-      });
-      setReceipt(nextReceipt);
-      setIntent(applyHandoffReceipt(dispatched, nextReceipt));
-      setHandoffStatus(nextReceipt.status);
-      if (nextReceipt.status === 'CANCELLED') {
-        setHandoffError(`Dispatch to ${targetHarness} was cancelled by the user.`);
-      } else if (nextReceipt.status !== 'ACCEPTED') {
-        setHandoffError(`Dispatch did not reach ${targetHarness} (${nextReceipt.status}).${nextReceipt.message ? ` ${nextReceipt.message}` : ''}`);
+      const [outcome] = await sendTask(taskSummary, targetHarness);
+      if (outcome.status === 'accepted') {
+        setReceipt(outcome.receipt);
+      } else {
+        setHandoffError(`Dispatch did not reach ${targetHarness}. ${outcome.error}`);
       }
     } catch (error) {
       setHandoffStatus('FAILED');
       setHandoffError(`Dispatch failed: ${String(error)}`);
-      setIntent({ ...dispatched, state: 'failed', receipt: { at: new Date().toISOString(), message: String(error) } });
     } finally {
       setHandoffPending(false);
     }
@@ -317,9 +303,9 @@ export function PacketPanel() {
           {copyMessage && <span className={copyMessage.startsWith('Copied') ? 'ok' : 'packet-alert'}>{copyMessage}</span>}
         </div>
         {handoffError && <p className="packet-alert">{handoffError}</p>}
-        {intent && (
+        {receipt && (
           <p className="hint handoff-status">
-            Handoff intent: {intent.state.toUpperCase()}
+            Dispatch: {receipt.status}
             {receipt?.runtimeRef ? ` · thread ${receipt.runtimeRef}` : ''}
             {receipt?.turnRef ? ` · turn ${receipt.turnRef}` : ''}
             {receipt?.message ? ` · ${receipt.message}` : ''}

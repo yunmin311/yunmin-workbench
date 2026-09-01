@@ -108,7 +108,9 @@ test('Runtime Inspector keeps exact execution identity, navigation, state, contr
   await expect(win.getByTestId('runtime-detail')).toHaveAttribute('data-execution-id', 'codex::thread-2');
   await win.locator('.inspector-close').click();
 
-  await win.locator('.session-header-actions button', { hasText: 'Evidence' }).click();
+  await win.keyboard.press('Control+K');
+  await win.locator('[cmdk-input]').fill('Runtime Evidence');
+  await win.locator('[cmdk-item]', { hasText: 'Runtime Evidence' }).click();
   await win.getByTestId('evidence-open-runtime').click();
   await expect(win.getByTestId('runtime-detail')).toHaveAttribute('data-execution-id', 'claude::same-ref');
   await win.locator('.inspector-close').click();

@@ -61,22 +61,22 @@ test('Memory search expands source and explicitly adds a source-backed reference
     const history = win.getByRole('dialog', { name: 'Read-only History search' });
     await expect(history.locator('.history-detail')).toContainText('[memory fact] The cobalt release requires explicit approval');
     await history.getByRole('button', { name: 'Close History' }).click();
-    await win.getByRole('button', { name: 'Context', exact: true }).click();
+    await win.keyboard.press('Control+3');
     const stagedMemory = win.locator('.context-item', { hasText: 'Memory: The cobalt release requires explicit approval' });
     await expect(stagedMemory).toContainText('included');
     await stagedMemory.locator('button.pin').click();
     await expect(stagedMemory.locator('button.pin')).toHaveClass(/on/);
     expect(readFileSync(join(stateDir, 'state', 'memory', 'use-v1.json'), 'utf8')).toContain('"count":2');
-    await win.getByRole('button', { name: 'Packet', exact: true }).click();
+    await win.keyboard.press('Control+4');
     await expect(win.locator('.inspector-pane .validity-current')).toBeVisible();
 
+    await launched.win.close();
     await launched.app.close();
     launched = await launchWorkbench(stateDir, overlay.overlayRoot, env);
     const resumed = launched.win;
-    await expect(resumed.getByRole('button', { name: 'Context', exact: true })).toBeEnabled();
-    await resumed.getByRole('button', { name: 'Context', exact: true }).click();
+    await resumed.keyboard.press('Control+3');
     await expect(resumed.locator('.context-item', { hasText: 'Memory: The cobalt release requires explicit approval' })).toContainText('included');
-    await resumed.getByRole('button', { name: 'Packet', exact: true }).click();
+    await resumed.keyboard.press('Control+4');
     await expect(resumed.locator('.inspector-pane .validity-current')).toBeVisible();
 
     expect(hash(source)).toBe(before);
@@ -87,11 +87,14 @@ test('Memory search expands source and explicitly adds a source-backed reference
     const future = new Date(Date.now() + 2_000);
     utimesSync(source, future, future);
     expectedSourceHash = hash(source);
-    await resumed.getByRole('button', { name: 'Reload external truth' }).click();
-    await resumed.getByRole('button', { name: 'Context', exact: true }).click();
+    await resumed.keyboard.press('Control+K');
+    await resumed.locator('[cmdk-input]').fill('Reload External Truth');
+    await resumed.locator('[cmdk-item]', { hasText: 'Reload External Truth' }).click();
+    await expect(resumed.locator('[cmdk-input]')).toHaveCount(0);
+    await resumed.getByRole('tab', { name: 'Context', exact: true }).click();
     await expect(resumed.locator('.context-item', { hasText: 'Memory: The cobalt release requires explicit approval' })).toHaveCount(0);
     await expect(resumed.locator('.context-message')).toContainText('Orphaned draft decisions');
-    await resumed.getByRole('button', { name: 'Packet', exact: true }).click();
+    await resumed.keyboard.press('Control+4');
     await expect(resumed.locator('.inspector-pane')).not.toContainText('The cobalt release requires explicit approval');
   } finally {
     await launched.app.close();
