@@ -169,7 +169,7 @@ their existing status; this notice does not broaden their approved use.
 
 MIT License
 
-Copyright (c) dsh-synapse contributors
+Copyright (c) 2026
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
