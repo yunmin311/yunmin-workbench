@@ -30,6 +30,7 @@ import type {
   AttentionItem,
   AttentionLocalState,
   HandoffReceipt,
+  HarnessCapabilities,
 } from '../../core/types';
 import type { MemorySearchHit } from '../../core/memory/types';
 import { probeLiveExecutions } from './runtimeInspectorModel';
@@ -91,6 +92,7 @@ interface WorkbenchState {
   activityProblem: string | null;
   liveExecutions: LiveExecutionInfo[];
   runtimeTarget: RuntimeInspectorTarget | null;
+  harnessCapabilities: Record<string, HarnessCapabilities>;
   attentionItems: AttentionItem[];
   attentionLocal: AttentionLocalState;
   attentionProblem: string | null;
@@ -131,6 +133,8 @@ interface WorkbenchState {
   clearActivity: () => Promise<void>;
   refreshLiveExecutions: () => Promise<void>;
   openRuntimeInspector: (target: RuntimeInspectorTarget) => void;
+  loadHarnessCapabilities: () => Promise<void>;
+  sendTask: (summary: string, harness: 'codex' | 'claude' | 'deepseek') => Promise<HandoffReceipt>;
   loadAttentionLocal: () => Promise<void>;
   dismissAttention: (item: AttentionItem) => Promise<void>;
   setPacketValidity: (validity: WorkbenchState['packetValidity']) => void;
@@ -318,6 +322,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   activityProblem: null,
   liveExecutions: [],
   runtimeTarget: null,
+  harnessCapabilities: {},
   attentionItems: [],
   attentionLocal: EMPTY_ATTENTION_LOCAL,
   attentionProblem: null,
@@ -1005,6 +1010,43 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   openRuntimeInspector: (target) => {
     set({ runtimeTarget: target });
     window.dispatchEvent(new CustomEvent('workbench:open-inspector', { detail: 'runtime' }));
+  },
+
+  loadHarnessCapabilities: async () => {
+    // In demo mode, the agent matrix is the sandbox fixture (no real probe).
+    if (get().demoMode) {
+      set({ harnessCapabilities: DEMO_HARNESS_CAPABILITIES });
+      return;
+    }
+    const all = window.wb.loadAllHarnessCapabilities
+      ? await window.wb.loadAllHarnessCapabilities()
+      : { codex: await window.wb.loadHarnessCapabilities() };
+    set({ harnessCapabilities: all });
+  },
+
+  sendTask: async (summary, harness) => {
+    const { projectId, conversation, demoMode, harnessCapabilities } = get();
+    if (!projectId || !conversation) {
+      throw new Error('Open a project session before sending a task.');
+    }
+    const intentId = globalThis.crypto.randomUUID();
+    // Demo tasks use the sandbox dispatch (never a real harness / external write).
+    if (demoMode) {
+      return get().demoDispatch({ intentId, projectId, conversationKey: conversation.key, harness, text: summary });
+    }
+    const caps = harnessCapabilities[harness];
+    if (!caps?.canDispatch) {
+      const error = new Error(`Harness ${harness} dispatch unavailable.`);
+      throw error;
+    }
+    const receipt = await window.wb.dispatchToHarness({
+      intentId,
+      projectId,
+      conversationKey: conversation.key,
+      packetText: summary,
+      harness,
+    });
+    return receipt;
   },
 
   addMemoryContext: async (hit, pinned = false) => {

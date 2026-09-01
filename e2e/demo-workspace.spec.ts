@@ -50,3 +50,24 @@ test('demo exit returns to the first-run choice and never echoes demo data back'
     await app.close();
   }
 });
+
+test('composer is a working dispatch entry point (agent select + send, not a disabled button)', async () => {
+  test.setTimeout(90_000);
+  const { app, win } = await launchEmpty();
+  try {
+    await win.getByRole('button', { name: 'Try Demo' }).click();
+    await expect(win.locator('.session-surface')).toBeVisible();
+    // The composer now offers a real agent selector and an enabled Send action.
+    await expect(win.locator('.composer-agent')).toBeVisible();
+    const sendByRole = win.getByRole('button', { name: /Send to/ });
+    await expect(sendByRole).toBeEnabled();
+    // Write a task and send it in demo mode.
+    await win.locator('.session-composer textarea').fill('Demo: produce a short landing page summary');
+    await sendByRole.click();
+    await expect(win.locator('.composer-dispatch-accepted')).toBeVisible();
+    // The demo runtime now reports a working activity boundary in the timeline.
+    await expect(win.locator('.activity-kind-turn-started').first()).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});

@@ -112,6 +112,37 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
   const setTaskSummary = useWorkbench((state) => state.setTaskSummary);
   const setView = useWorkbench((state) => state.setView);
   const clearActivity = useWorkbench((state) => state.clearActivity);
+  const harnessCapabilities = useWorkbench((state) => state.harnessCapabilities);
+  const loadHarnessCapabilities = useWorkbench((state) => state.loadHarnessCapabilities);
+  const sendTask = useWorkbench((state) => state.sendTask);
+  const demoMode = useWorkbench((state) => state.demoMode);
+  const [targetHarness, setTargetHarness] = useState<'codex' | 'claude' | 'deepseek' | null>(null);
+  const [dispatchState, setDispatchState] = useState<'idle' | 'pending' | 'accepted' | 'failed'>('idle');
+  const [dispatchMessage, setDispatchMessage] = useState<string | null>(null);
+
+  useEffect(() => { void loadHarnessCapabilities(); }, [loadHarnessCapabilities, demoMode]);
+  useEffect(() => {
+    const available = Object.entries(harnessCapabilities)
+      .find(([, caps]) => caps.canDispatch)?.[0];
+    if (!targetHarness && available) setTargetHarness(available as 'codex' | 'claude' | 'deepseek');
+  }, [harnessCapabilities, targetHarness]);
+
+  const dispatch = async () => {
+    const summary = taskSummary.trim();
+    if (!summary) { setDispatchMessage('Write a task first.'); return; }
+    if (!targetHarness) { setDispatchMessage('Pick an available agent.'); return; }
+    setDispatchState('pending');
+    setDispatchMessage(null);
+    try {
+      await sendTask(summary, targetHarness);
+      setDispatchState('accepted');
+      setTaskSummary('');
+      setDispatchMessage(`Sent to ${targetHarness}. Watch the runtime below.`);
+    } catch (error) {
+      setDispatchState('failed');
+      setDispatchMessage(`Send failed: ${String(error)}`);
+    }
+  };
 
   const events = useMemo(() => activity.filter((event) =>
     event.projectId === projectId && event.conversationKey === conversation?.key,
@@ -259,30 +290,31 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
               </button>
             )}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <button
-              aria-label="Search History"
-              title="Search History (⌘K → History)"
-              onClick={() => window.dispatchEvent(new CustomEvent('workbench:open-history'))}
-              style={{ padding: '2px 6px', fontSize: 10 }}
+          <div className="composer-actions">
+            <select
+              className="composer-agent"
+              aria-label="Choose agent"
+              value={targetHarness ?? ''}
+              onChange={(event) => setTargetHarness(event.target.value as 'codex' | 'claude' | 'deepseek' | null)}
             >
-              History
-            </button>
+              {Object.entries(harnessCapabilities).map(([name, caps]) => (
+                <option key={name} value={name} disabled={!caps.canDispatch}>
+                  {name}{caps.canDispatch ? '' : ' (unavailable)'}
+                </option>
+              ))}
+            </select>
             <button
-              aria-label="Search Memory"
-              title="Search Memory (⌘K → Memory)"
-              onClick={() => window.dispatchEvent(new CustomEvent('workbench:open-memory'))}
-              style={{ padding: '2px 6px', fontSize: 10 }}
+              className="composer-send"
+              disabled={dispatchState === 'pending'}
+              onClick={() => void dispatch()}
             >
-              Memory
-            </button>
-            <button className="composer-send" disabled title="No structured follow-up / steer backend is available">
-              Follow up unavailable
+              {dispatchState === 'pending' ? 'Sending…' : `Send to ${targetHarness ?? 'agent'}`}
             </button>
           </div>
         </div>
+        {dispatchMessage && <p className={`composer-dispatch composer-dispatch-${dispatchState}`} role="status">{dispatchMessage}</p>}
         <p style={{ margin: '6px 2px 0', fontSize: 9, color: 'var(--wb-text-contrast)', opacity: 0.45 }}>
-          Context → Packet: included items + task summary become immutable Agent Input only after Freeze.
+          Included context + your task become the agent input. Review the Packet only when you want to confirm it.
         </p>
       </section>
     </div>

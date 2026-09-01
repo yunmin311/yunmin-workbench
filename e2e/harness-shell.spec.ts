@@ -35,7 +35,9 @@ test.describe('Reasonix harness renderer prototype (GOV_OVERLAY fixture, isolate
 
     await expect(win.locator('.session-header h1')).toBeVisible();
     await expect(win.locator('.session-composer textarea')).toBeEnabled();
-    await expect(win.getByRole('button', { name: 'Follow up unavailable' })).toBeDisabled();
+    // Composer is a real dispatch entry point: agent selector + enabled Send.
+    await expect(win.locator('.composer-agent')).toBeVisible();
+    await expect(win.getByRole('button', { name: /Send to/ })).toBeEnabled();
     await win.locator('.session-composer textarea').fill('Review the current packet before a structured handoff.');
     await win.screenshot({ path: join(screenshotDir, '01-active-session.png') });
 

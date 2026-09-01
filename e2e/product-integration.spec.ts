@@ -35,10 +35,9 @@ test.describe('Product/UI Integration — Session Spine as single working surfac
     // ——— Level 0: Session + composer is primary ———
     await expect(win.locator('.session-composer')).toBeVisible();
     await expect(win.locator('.session-composer textarea')).toBeVisible();
-    // Composer unified entry: Add Context + history/memory shortcuts + packet hint
+    // Composer unified entry: Add Context + agent selector + a working Send.
     await expect(win.locator('.session-composer button', { hasText: '+ Context' })).toBeVisible();
-    await expect(win.locator('.session-composer button', { hasText: 'History' })).toBeVisible();
-    await expect(win.locator('.session-composer button', { hasText: 'Memory' })).toBeVisible();
+    await expect(win.locator('.composer-agent')).toBeVisible();
     // Packet status: CURRENT quiet (hidden), UNKNOWN visible grey, STALE/INVALID colored (product-integration.css)
     const packetStatus = win.locator('.composer-packet-status');
     // At this point packet is UNKNOWN (not yet verified) — should be visible grey, not hidden
@@ -81,8 +80,8 @@ test.describe('Product/UI Integration — Session Spine as single working surfac
     await win.locator('.inspector-close').click();
     await expect(win.locator('.session-surface')).toBeVisible();
 
-    // ——— History as on-demand search (not another app) ———
-    await win.locator('.session-composer button', { hasText: 'History' }).click();
+    // ——— History as on-demand search (chrome-top, not composer noise) ———
+    await win.locator('.chrome-tools button', { hasText: 'History' }).first().click();
     await expect(win.locator('.history-panel')).toBeVisible();
     await expect(win.locator('.history-panel h2', { hasText: 'History / Search' })).toBeVisible();
     // Search stays lexical/local, not SOT-merged with Memory
@@ -93,8 +92,8 @@ test.describe('Product/UI Integration — Session Spine as single working surfac
     await win.locator('.history-panel-header button', { hasText: '×' }).click();
     await expect(win.locator('.session-surface')).toBeVisible();
 
-    // ——— Memory as source-first, Add to Context is explicit ———
-    await win.locator('.session-composer button', { hasText: 'Memory' }).click();
+    // ——— Memory as source-first, Add to Context is explicit (chrome-top) ———
+    await win.locator('.chrome-tools button', { hasText: 'Memory' }).first().click();
     await expect(win.locator('.history-panel.memory-panel')).toBeVisible();
     await expect(win.locator('.history-panel-header h2', { hasText: 'Memory Search' })).toBeVisible();
     await win.locator('.history-search input').fill('workbench');

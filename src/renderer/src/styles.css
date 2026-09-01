@@ -820,3 +820,20 @@ html, body, #root { width: 100%; height: 100%; overflow: hidden; }
   color: #e0af68; border: 1px solid #c99a4e; background: transparent;
 }
 .demo-welcome-error { color: #ef7d7d; font-size: 12px; margin-top: 12px; }
+
+/* ---- Core UX: composer as dispatch entry point ---- */
+.composer-actions { display: flex; align-items: center; gap: 8px; }
+.composer-agent {
+  padding: 4px 8px; border-radius: 6px; font-size: 11px;
+  border: 1px solid var(--border, #2a2f36); background: var(--wb-surface-raised, #171b21);
+  color: var(--wb-text-contrast, #e6e8eb);
+}
+.composer-send {
+  padding: 4px 12px; border-radius: 6px; font-size: 11px; cursor: pointer;
+  border: 1px solid var(--accent, #4c8bf5); background: rgba(76,139,245,.14); color: var(--accent, #4c8bf5);
+}
+.composer-send:disabled { opacity: .5; cursor: default; }
+.composer-dispatch { margin: 6px 2px 0; font-size: 11px; }
+.composer-dispatch-accepted { color: #78c49b; }
+.composer-dispatch-failed { color: #ef7d7d; }
+.composer-dispatch-pending { color: #e0af68; }
