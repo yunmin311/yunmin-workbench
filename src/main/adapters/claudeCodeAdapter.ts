@@ -2,6 +2,7 @@ import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:chil
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import type { HandoffReceipt, HarnessCapabilities } from '../../core/types';
+import { allowlistedVersionToken, boundedProcessError } from './evidenceBounds';
 
 export interface ClaudeProtocolEvent {
   kind: 'session' | 'turn' | 'assistant' | 'result' | 'tool' | 'file' | 'approval' | 'input' | 'error' | 'receipt' | 'lifecycle';
@@ -114,9 +115,12 @@ export class ClaudeCodeAdapter {
         }, 4000);
       });
       if (result.code !== 0) {
-        return unavailableCapabilities(`claude --version exited ${result.code}: ${result.stderr || result.stdout}`.trim());
+        // Withhold raw stderr/stdout: only the exit code and our own static
+        // markers are allowlisted capability facts.
+        const marker = result.stderr === 'spawn error' || result.stderr === 'timeout' ? ` (${result.stderr})` : '';
+        return unavailableCapabilities(`claude --version exited ${result.code}${marker}`);
       }
-      const version = result.stdout.trim().split('\n')[0] ?? 'unknown';
+      const version = allowlistedVersionToken(result.stdout.split(/\r?\n/)[0] ?? '') ?? 'unknown';
       // Probe stream-json support by checking help contains output-format
       const helpChild = spawn(this.command, [...this.commandArgs, '--help'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
       const help = await new Promise<string>((resolve) => {
@@ -143,7 +147,7 @@ export class ClaudeCodeAdapter {
         evidence: `claude --version ${version}; stream-json=${supportsStreamJson ? 'yes' : 'no'}`,
       };
     } catch (error) {
-      return unavailableCapabilities(String(error));
+      return unavailableCapabilities(boundedProcessError(error));
     }
   }
 

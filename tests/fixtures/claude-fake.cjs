@@ -2,6 +2,14 @@ const mode = process.env.FAKE_MODE || 'ok';
 const args = process.argv.slice(2);
 
 if (args.includes('--version')) {
+  if (mode === 'hostile-version') {
+    console.log('sk-ant-api03-SECRETVALUE C:\\Users\\victim auth.json');
+    process.exit(0);
+  }
+  if (mode === 'hostile-version-fail') {
+    console.log('SECRET-STDERR token=abcdef C:\\Users\\victim');
+    process.exit(3);
+  }
   console.log('2.1.207 (Claude Code)');
   process.exit(0);
 }

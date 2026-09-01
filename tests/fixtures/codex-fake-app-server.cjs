@@ -12,7 +12,14 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
   }
   if (message.id === undefined) return;
   if (message.method === 'initialize') {
-    process.stdout.write(`${JSON.stringify({ id: message.id, result: { userAgent: 'codex-fake/1.0' } })}\n`);
+    if (process.env.FAKE_MODE === 'hostile-initialize-error') {
+      process.stdout.write(`${JSON.stringify({ id: message.id, error: { code: 5, message: 'SECRET-RPC C:\\Users\\victim token=abcdef' } })}\n`);
+      return;
+    }
+    const userAgent = process.env.FAKE_MODE === 'hostile-useragent'
+      ? 'sk-ant-api03-SECRETVALUE C:\\Users\\victim auth.json'
+      : 'codex-fake/1.0';
+    process.stdout.write(`${JSON.stringify({ id: message.id, result: { userAgent } })}\n`);
     return;
   }
   if (message.method === 'thread/start') {

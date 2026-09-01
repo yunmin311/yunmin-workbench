@@ -67,6 +67,7 @@ import { canDispatchToHarness } from '../core/project/harnessSelection';
 import { resolveMaterial } from '../core/material/tokens';
 import { buildDoctorReport } from './doctor';
 import { RecoverableSerialQueue } from './recoverableSerialQueue';
+import { allowlistedVersionToken } from './adapters/evidenceBounds';
 
 // test hook: Playwright E2E redirects Workbench-owned state to a temp dir
 if (process.env.WB_STATE_DIR) app.setPath('userData', process.env.WB_STATE_DIR);
@@ -111,7 +112,8 @@ async function probeCommandVersion(command: string, args: string[]): Promise<str
       const child = spawn(command, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
       child.stdout.on('data', (chunk: Buffer) => { output = `${output}${chunk.toString('utf8')}`.slice(0, 100); });
       child.on('error', () => finish());
-      child.on('close', (code) => finish(code === 0 ? output.trim().split(/\r?\n/)[0] : undefined));
+      // Only a version-shaped first line survives; arbitrary external output is withheld.
+      child.on('close', (code) => finish(code === 0 ? allowlistedVersionToken(output) : undefined));
       setTimeout(() => { try { child.kill(); } catch {}; finish(); }, 2_000);
     } catch { finish(); }
   });

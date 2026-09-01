@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import type { HandoffReceipt, HarnessCapabilities } from '../../core/types';
+import { allowlistedUserAgent, boundedProcessError } from './evidenceBounds';
 
 interface RpcResponse {
   id?: number | string;
@@ -79,9 +80,10 @@ export class CodexAppServerAdapter {
     // handler Electron's main process dies with an uncaught-exception dialog.
     child.on('error', (error) => {
       const code = (error as NodeJS.ErrnoException).code ?? 'spawn-failure';
-      this.failAllPending(
-        new Error(`Codex app-server unavailable (${code}): ${error.message}. Is "${this.command}" installed and on PATH?`),
-      );
+      const wrapped = new Error(`Codex app-server unavailable (${code}): ${error.message}. Is "${this.command}" installed and on PATH?`);
+      // Preserve the errno code so capability evidence can carry the allowlisted fact.
+      (wrapped as NodeJS.ErrnoException).code = code;
+      this.failAllPending(wrapped);
     });
     createInterface({ input: child.stdout }).on('line', (line) => this.onLine(line));
     child.stdout.on('error', () => undefined);
@@ -189,8 +191,10 @@ export class CodexAppServerAdapter {
           },
         }) as { userAgent?: string };
         if (!response.userAgent) throw new Error('initialize response omitted userAgent');
+        const userAgent = allowlistedUserAgent(String(response.userAgent));
+        if (!userAgent) throw new Error('initialize response omitted an allowlisted userAgent');
         this.notify('initialized');
-        return response.userAgent;
+        return userAgent;
       })();
     }
     return this.initialized;
@@ -215,7 +219,7 @@ export class CodexAppServerAdapter {
         evidence: `initialize.userAgent=${userAgent}; official thread/start + turn/start and lifecycle notifications`,
       };
     } catch (error) {
-      return unavailableCapabilities(String(error));
+      return unavailableCapabilities(boundedProcessError(error));
     }
   }
 
