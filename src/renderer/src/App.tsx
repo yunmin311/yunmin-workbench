@@ -8,6 +8,7 @@ import { AttentionPanel } from './components/AttentionPanel';
 import { PortabilityPanel } from './components/PortabilityPanel';
 import { MemoryPanel } from './components/MemoryPanel';
 import { MaterialSettings } from './components/MaterialSettings';
+import { DoctorPanel } from './components/DoctorPanel';
 import { CanvasView } from './views/CanvasView';
 import { SessionSurface } from './views/SessionSurface';
 import { useWorkbench } from './store';
@@ -34,6 +35,7 @@ export default function App() {
   const [portabilityOpen, setPortabilityOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [materialOpen, setMaterialOpen] = useState(false);
+  const [doctorOpen, setDoctorOpen] = useState(false);
   const [historySourceSessionId, setHistorySourceSessionId] = useState<string | undefined>();
   const material = useMaterial();
 
@@ -158,6 +160,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const open = () => setDoctorOpen(true);
+    window.addEventListener('workbench:open-doctor', open);
+    return () => window.removeEventListener('workbench:open-doctor', open);
+  }, []);
+
+  useEffect(() => {
     const open = () => setSessionPickerOpen(true);
     window.addEventListener('workbench:open-session-picker', open);
     return () => window.removeEventListener('workbench:open-session-picker', open);
@@ -273,6 +281,7 @@ export default function App() {
       {attentionOpen && <AttentionPanel onClose={() => setAttentionOpen(false)} />}
       {portabilityOpen && <PortabilityPanel onClose={() => setPortabilityOpen(false)} />}
       {materialOpen && <MaterialSettings onClose={() => setMaterialOpen(false)} />}
+      {doctorOpen && <DoctorPanel onClose={() => setDoctorOpen(false)} />}
     </div>
   );
 }

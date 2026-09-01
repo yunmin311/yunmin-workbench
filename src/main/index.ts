@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { constants, existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { join, relative } from 'node:path';
+import { access, stat } from 'node:fs/promises';
+import { dirname, join, relative } from 'node:path';
+import { spawn } from 'node:child_process';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, screen, type OpenDialogOptions } from 'electron';
 import { watch, type FSWatcher } from 'chokidar';
 import { z } from 'zod';
@@ -62,6 +64,8 @@ import { handleCancelRequest, handleRuntimeLiveRequest } from './harnessControl'
 import { RuntimeContextRegistry } from './runtimeContextRegistry';
 import { HarnessDispatchSchema, HarnessSmokeSchema, workbenchRejectedReceipt } from './harnessRequest';
 import { canDispatchToHarness } from '../core/project/harnessSelection';
+import { resolveMaterial } from '../core/material/tokens';
+import { buildDoctorReport } from './doctor';
 
 // test hook: Playwright E2E redirects Workbench-owned state to a temp dir
 if (process.env.WB_STATE_DIR) app.setPath('userData', process.env.WB_STATE_DIR);
@@ -78,6 +82,30 @@ const windowRoles = new WeakMap<BrowserWindow, { role: 'main' | 'island' }>();
 function stateDir(): string {
   return join(app.getPath('userData'), 'state');
 }
+
+async function probeCommandVersion(command: string, args: string[]): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let output = '';
+    const finish = (value?: string) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    try {
+      const child = spawn(command, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+      child.stdout.on('data', (chunk: Buffer) => { output = `${output}${chunk.toString('utf8')}`.slice(0, 100); });
+      child.on('error', () => finish());
+      child.on('close', (code) => finish(code === 0 ? output.trim().split(/\r?\n/)[0] : undefined));
+      setTimeout(() => { try { child.kill(); } catch {}; finish(); }, 2_000);
+    } catch { finish(); }
+  });
+}
+
+const probeNodeVersion = () => probeCommandVersion('node', ['--version']).then((version) => version?.replace(/^v/, ''));
+const probePnpmVersion = () => process.platform === 'win32'
+  ? probeCommandVersion(process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', 'pnpm.cmd', '--version'])
+  : probeCommandVersion('pnpm', ['--version']);
 
 const KeySchema = z.string().min(1).max(1024);
 
@@ -980,6 +1008,94 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
   });
   ipcMain.handle('material:capability', async () => {
     return detectMaterialCapability();
+  });
+
+  ipcMain.handle('doctor:run', async () => {
+    const snap = cache?.snapshot ?? (await refresh());
+    const stateRoot = stateDir();
+    const [node, pnpm, harnesses, activityState, workspaceState, materialPreference] = await Promise.all([
+      probeNodeVersion(), probePnpmVersion(),
+      Promise.all([codexAdapter.capabilities(), claudeAdapter.capabilities(), deepseekAdapter.capabilities()]),
+      readActivity(stateRoot),
+      readWorkspaceSession(stateRoot),
+      readMaterialPreference(stateRoot),
+    ]);
+
+    let profileValid = true;
+    let bindings: Awaited<ReturnType<typeof readProjectRootBindings>> = { schemaVersion: 1, bindings: {}, unresolved: {} };
+    try { bindings = await readProjectRootBindings(stateRoot); } catch { profileValid = false; }
+    const declaredRoots = {
+      ...(snap.machine?.projectRoots ?? {}),
+      ...Object.fromEntries(Object.entries(bindings.bindings).map(([projectId, binding]) => [projectId, binding.root])),
+    };
+    const projectRoots = await Promise.all(Object.entries(declaredRoots).slice(0, 100).map(async ([projectId, root]) => ({
+      projectId,
+      rootLabel: 'configured local root',
+      exists: await stat(root).then((entry) => entry.isDirectory()).catch(() => false),
+    })));
+    const missingBoundRoots = (await Promise.all(Object.values(bindings.bindings).map((binding) =>
+      stat(binding.root).then((entry) => !entry.isDirectory()).catch(() => true)))).filter(Boolean).length;
+
+    const frozenScopes = [...new Map(snap.conversations.map((conversation) => [
+      `${conversation.project}\0${conversation.key}`,
+      { projectId: conversation.project, conversationKey: conversation.key },
+    ])).values()];
+    let frozenProblems = 0;
+    let integrityReadable = true;
+    for (const scope of frozenScopes.slice(0, 20)) {
+      try {
+        frozenProblems += (await listFrozenPackets(stateRoot, scope.projectId, scope.conversationKey)).problems.length;
+      } catch { integrityReadable = false; }
+    }
+    const isolatedProblems = (activityState.rejectedLines ?? 0)
+      + (workspaceState.problem ? 1 : 0)
+      + frozenProblems;
+    const writableTarget = existsSync(stateRoot) ? stateRoot : dirname(stateRoot);
+    const writable = await access(writableTarget, constants.W_OK).then(() => true).catch(() => false);
+    const capability = detectMaterialCapability();
+    const material = resolveMaterial(materialPreference.material, capability);
+
+    return buildDoctorReport({
+      now: new Date().toISOString(),
+      runtime: {
+        node,
+        electron: process.versions.electron,
+        pnpm,
+        electronLaunched: app.isReady(),
+      },
+      environment: {
+        electronRunAsNode: Boolean(process.env.ELECTRON_RUN_AS_NODE),
+        wbElectronArgs: Boolean(process.env.WB_ELECTRON_ARGS),
+        nodeOptions: Boolean(process.env.NODE_OPTIONS),
+      },
+      projectRoots,
+      harnesses: harnesses.map((item) => ({
+        harness: item.harness,
+        available: item.canDispatch || item.canObserveRuntime,
+        evidence: item.evidence,
+        protocol: item.protocol,
+      })),
+      state: {
+        writable,
+        writableReason: writable ? 'Existing state location permits Workbench writes' : 'Workbench state location is not writable',
+        integrityReadable,
+        isolatedProblems,
+        inspectedFrozenScopes: Math.min(frozenScopes.length, 20),
+        scanTruncated: frozenScopes.length > 20,
+      },
+      profile: {
+        valid: profileValid,
+        bindings: Object.keys(bindings.bindings).length,
+        unresolved: Object.keys(bindings.unresolved).length,
+        missingRoots: missingBoundRoots,
+      },
+      material: {
+        requested: material.requested,
+        effective: material.effective,
+        fallbackReason: material.fallbackReason,
+      },
+      singleInstance: gotSingleInstanceLock,
+    });
   });
 
   return { refresh };
