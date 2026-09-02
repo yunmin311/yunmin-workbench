@@ -178,31 +178,34 @@ export function projectGovernanceView(
 
 /**
  * Governance refs for the compiled packet. These are the project's own
- * canonical observations (ProjectAdapter.observed + Conversation.observed),
- * verbatim — they prove where the Governance facts were read from, not the
- * contents the agent will execute on. Demo fixture observations are already
- * namespaced under "demo:" in the snapshot, so the demo path passes them
- * through unchanged; the real path never fabricates a namespaced ref.
+ * canonical observations (ProjectAdapter.observed + the active
+ * Conversation.observed), verbatim — they prove where the Governance facts
+ * were read from, not the contents the agent will execute on. Demo
+ * fixture observations are already namespaced under "demo:" in the
+ * snapshot, so the demo path passes them through unchanged; the real path
+ * never fabricates a namespaced ref.
  *
- * Project canonical source (the file the agent actually needs) and the
- * global MEMORY.md index are NOT Governance provenance; they are project
- * context. Callers that want them as ordinary context refs compose them
- * separately in their own ContextItem list.
+ * The active conversation is required. The caller must pass the
+ * Conversation (or its key) it is dispatching to; this function never
+ * "picks the first" dialogue in the project, because once a project
+ * carries more than one conversation the wrong provenance would silently
+ * land in the packet header. The namespaced demo pass-through is
+ * structural (ref starts with "demo:"), not a flag.
  */
 export function governanceRefsForPacket(
   snapshot: OverlaySnapshot | null,
   projectId: string | null,
+  activeConversationKey: string | null,
   isDemo: boolean,
 ): string[] {
-  if (!projectId) return [];
+  if (!projectId || !activeConversationKey) return [];
   const adapter = snapshot?.projects.find((p) => p.projectId === projectId);
   if (!adapter) return [];
-  const conversation = snapshot?.conversations.find((c) => c.project === projectId);
-  const refs: string[] = [adapter.observed.sourceRef];
-  if (conversation) refs.push(conversation.observed.sourceRef);
-  // The isDemo flag is a defensive seam: the real path is selected by the
-  // absence of a demo-namespaced sourceRef, so the namespace check is
-  // structural rather than a flag.
+  const conversation = snapshot?.conversations.find(
+    (c) => c.project === projectId && c.key === activeConversationKey,
+  );
+  if (!conversation) return [];
+  const refs: string[] = [adapter.observed.sourceRef, conversation.observed.sourceRef];
   if (isDemo) {
     const demoRefs: string[] = [];
     for (const ref of refs) {

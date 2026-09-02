@@ -195,37 +195,95 @@ describe('governanceBinding.agentHints — strictly from dialog registry', () =>
 
 describe('governanceBinding.governanceRefsForPacket', () => {
   it('returns the real adapter.observed.sourceRef + dialogue.observed.sourceRef verbatim', () => {
-    const refs = governanceRefsForPacket(realSnapshot, 'creative-os', false);
+    const refs = governanceRefsForPacket(realSnapshot, 'creative-os', 'creative-os::claude::主对话', false);
     expect(refs).toEqual([ADAPTER_OBSERVED, DIALOG_OBSERVED_MAIN]);
   });
 
   it('does not fabricate canonical source or memory/MEMORY.md as governance refs', () => {
-    const refs = governanceRefsForPacket(realSnapshot, 'creative-os', false);
+    const refs = governanceRefsForPacket(realSnapshot, 'creative-os', 'creative-os::claude::主对话', false);
     expect(refs).not.toContain('project-file:creative-os:CLAUDE.md');
     expect(refs).not.toContain('overlay:memory/MEMORY.md');
   });
 
   it('emits the same set of governance refs regardless of dispatch mode (Single / Parallel / Handoff)', () => {
-    const single = governanceRefsForPacket(realSnapshot, 'creative-os', false);
-    const parallel = governanceRefsForPacket(realSnapshot, 'creative-os', false);
-    const handoff = governanceRefsForPacket(realSnapshot, 'creative-os', false);
+    const single = governanceRefsForPacket(realSnapshot, 'creative-os', 'creative-os::claude::主对话', false);
+    const parallel = governanceRefsForPacket(realSnapshot, 'creative-os', 'creative-os::claude::主对话', false);
+    const handoff = governanceRefsForPacket(realSnapshot, 'creative-os', 'creative-os::claude::主对话', false);
     expect(single).toEqual(parallel);
     expect(parallel).toEqual(handoff);
   });
 
+  it('uses only the active conversation — never picks the first dialogue in the project', () => {
+    // Two distinct conversations on the same project with distinct
+    // observed.sourceRef; the helper must follow the conversationKey the
+    // caller passes, not whichever happens to be first in the array.
+    const secondObserved = 'overlay:creative-os.dialogue#second';
+    const multiConv: OverlaySnapshot = {
+      ...realSnapshot,
+      conversations: [
+        realSnapshot.conversations[0],
+        {
+          ...realSnapshot.conversations[1],
+          key: 'creative-os::claude::主对话-2',
+          observed: { ...realSnapshot.conversations[1].observed, sourceRef: secondObserved },
+        },
+      ],
+    };
+    const mainRefs = governanceRefsForPacket(multiConv, 'creative-os', 'creative-os::claude::主对话', false);
+    const secondRefs = governanceRefsForPacket(multiConv, 'creative-os', 'creative-os::claude::主对话-2', false);
+    expect(mainRefs).toEqual([ADAPTER_OBSERVED, DIALOG_OBSERVED_MAIN]);
+    expect(secondRefs).toEqual([ADAPTER_OBSERVED, secondObserved]);
+    expect(mainRefs).not.toContain(secondObserved);
+    expect(secondRefs).not.toContain(DIALOG_OBSERVED_MAIN);
+  });
+
+  it('returns an empty list when the active conversation key is missing from the project', () => {
+    expect(
+      governanceRefsForPacket(realSnapshot, 'creative-os', 'creative-os::claude::does-not-exist', false),
+    ).toEqual([]);
+  });
+
+  it('returns an empty list when no active conversation key is supplied', () => {
+    expect(governanceRefsForPacket(realSnapshot, 'creative-os', null, false)).toEqual([]);
+  });
+
   it('returns demo-namespaced adapter + dialogue refs and never the real Overlay refs', () => {
-    const refs = governanceRefsForPacket(DEMO_SNAPSHOT, 'creative-os', true);
+    const refs = governanceRefsForPacket(DEMO_SNAPSHOT, 'creative-os', DEMO_CONVERSATIONS[0].key, true);
     expect(refs.length).toBeGreaterThan(0);
     expect(refs.every((ref) => ref.startsWith('demo:'))).toBe(true);
     expect(refs.some((ref) => ref === ADAPTER_OBSERVED || ref === DIALOG_OBSERVED_MAIN)).toBe(false);
   });
 
+  it('returns the demo namespaced ref of the active demo conversation only', () => {
+    // Demo also carries more than one conversation per project; the helper
+    // must scope to the requested conversation key, never the first.
+    const extraDemoObserved = 'demo:conversation:creative-os#secondary';
+    const multiDemo: OverlaySnapshot = {
+      ...DEMO_SNAPSHOT,
+      conversations: [
+        ...DEMO_CONVERSATIONS,
+        {
+          ...DEMO_CONVERSATIONS[0],
+          key: 'creative-os::claude::secondary-dialogue',
+          observed: { ...DEMO_CONVERSATIONS[0].observed, sourceRef: extraDemoObserved },
+        },
+      ],
+    };
+    const primary = governanceRefsForPacket(multiDemo, 'creative-os', DEMO_CONVERSATIONS[0].key, true);
+    const secondary = governanceRefsForPacket(multiDemo, 'creative-os', 'creative-os::claude::secondary-dialogue', true);
+    expect(primary).toContain(extraDemoObserved === primary[1] ? 'demo:project:creative-os' : extraDemoObserved);
+    // Simpler: the two conversations produce different dialogue provenance.
+    const primaryDialogue = primary.find((ref) => ref !== 'demo:project:creative-os');
+    const secondaryDialogue = secondary.find((ref) => ref !== 'demo:project:creative-os');
+    expect(primaryDialogue).not.toBe(secondaryDialogue);
+  });
+
   it('returns an empty list for a real project that is not present in the snapshot', () => {
-    expect(governanceRefsForPacket(realSnapshot, 'ghost-project', false)).toEqual([]);
+    expect(governanceRefsForPacket(realSnapshot, 'ghost-project', 'any-key', false)).toEqual([]);
   });
 
   it('returns an empty list for a demo project that is not present in the demo snapshot', () => {
-    expect(governanceRefsForPacket(DEMO_SNAPSHOT, 'ghost-project', true)).toEqual([]);
+    expect(governanceRefsForPacket(DEMO_SNAPSHOT, 'ghost-project', 'any-key', true)).toEqual([]);
   });
 });
 

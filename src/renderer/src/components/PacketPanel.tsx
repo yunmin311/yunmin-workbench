@@ -128,7 +128,7 @@ export function PacketPanel() {
   const packet = useMemo(() => {
     if (!projectId || !conversation || !snapshot) return null;
     const adapter = snapshot.projects.find((p) => p.projectId === projectId);
-    const governanceRefs = governanceRefsForPacket(snapshot, projectId, demoMode);
+    const governanceRefs = governanceRefsForPacket(snapshot, projectId, conversation.key, demoMode);
     return compilePacket({
       projectId,
       conversationKey: conversation.key,

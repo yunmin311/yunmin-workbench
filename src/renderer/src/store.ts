@@ -1035,7 +1035,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     for (const item of before.recheckedFingerprints) merged.set(item.sourceRef, item.sha256);
     for (const item of before.projectFingerprints) merged.set(item.sourceRef, item.sha256);
     const adapter = snapshot.projects.find((item) => item.projectId === projectId);
-    const governanceRefs = governanceRefsForPacket(snapshot, projectId, demoMode);
+    const governanceRefs = governanceRefsForPacket(snapshot, projectId, conversation.key, demoMode);
     try {
       const plan = buildDispatchPlan({
         projectId,
