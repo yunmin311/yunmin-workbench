@@ -23,7 +23,7 @@
   --wb-highlight-color: transparent;
 }
 
-/* Ensure window shell never becomes transparent穿透 or black-screen on fallback */
+/* Ensure window shell never becomes transparent or black-screen on fallback */
 html, body, #root, .prototype-app {
   background: var(--wb-surface-base);
   color: var(--wb-text-contrast);
@@ -33,16 +33,20 @@ html, body, #root, .prototype-app {
 .prototype-app {
   background: var(--wb-surface-base);
 }
-.prototype-chrome {
+.prototype-chrome,
+.rebuild-chrome {
   background: var(--wb-surface-raised);
-  backdrop-filter: blur(var(--wb-backdrop-blur));
-  -webkit-backdrop-filter: blur(var(--wb-backdrop-blur));
   border-bottom: 1px solid var(--wb-border-color);
   box-shadow: var(--wb-shadow);
   /* subtle highlight for Glass only — controlled via token */
   position: relative;
 }
-.prototype-chrome::after {
+.rebuild-chrome {
+  backdrop-filter: blur(var(--wb-backdrop-blur));
+  -webkit-backdrop-filter: blur(var(--wb-backdrop-blur));
+}
+.prototype-chrome::after,
+.rebuild-chrome::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -65,8 +69,6 @@ html, body, #root, .prototype-app {
 .inspector-pane,
 .prototype-app .inspector-pane {
   background: var(--wb-surface-overlay);
-  backdrop-filter: blur(var(--wb-backdrop-blur));
-  -webkit-backdrop-filter: blur(var(--wb-backdrop-blur));
   border: 1px solid var(--wb-border-color);
   border-radius: var(--wb-radius);
   box-shadow: var(--wb-elevation);
@@ -91,7 +93,7 @@ html, body, #root, .prototype-app {
   box-shadow: var(--wb-elevation);
 }
 .command-backdrop {
-  background: rgba(8, 10, 14, 0.38);
+  background: rgba(8, 10, 14, 0.4);
   backdrop-filter: blur(calc(var(--wb-backdrop-blur) * 0.35));
   -webkit-backdrop-filter: blur(calc(var(--wb-backdrop-blur) * 0.35));
 }
@@ -108,7 +110,8 @@ html, body, #root, .prototype-app {
 button:focus-visible,
 [cmdk-item][data-selected='true'],
 .sidebar-section li > button.selected,
-.prototype-app .inspector-tabs button.active {
+.prototype-app .inspector-tabs button.active,
+.workspace-rail li > button.is-current {
   outline: 2px solid var(--wb-border-color);
   outline-offset: 1px;
   box-shadow: 0 0 0 2px rgba(110,158,255,0.18);
@@ -130,7 +133,19 @@ button:disabled {
 .attention-trigger.has-items,
 .validity-invalid,
 .validity-stale,
-.surface-alert {
+.surface-alert,
+.packet-alert {
   /* these keep their semantic colors, but inherit surface for backdrop — do not lower contrast */
   backdrop-filter: none !important;
+}
+
+/* History / Memory / Attention — full-screen panels share same surface */
+.history-panel,
+.memory-panel,
+.attention-panel,
+.material-panel,
+.portability-panel {
+  background: var(--wb-surface-overlay);
+  border: 1px solid var(--wb-border-color);
+  box-shadow: var(--wb-elevation);
 }

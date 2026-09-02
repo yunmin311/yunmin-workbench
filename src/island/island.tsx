@@ -3,7 +3,6 @@ import { createRoot } from 'react-dom/client';
 import { AmbientIsland } from './components/AmbientIsland';
 import { useIslandMaterial } from './IslandMaterialProvider';
 import '../renderer/src/material/material-surfaces.css';
-import '../renderer/src/material/product-integration.css';
 
 function IslandApp() {
   useIslandMaterial();

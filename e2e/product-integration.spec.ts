@@ -25,7 +25,7 @@ test('Session workspace keeps Context, Packet, evidence and low-frequency tools 
     await expect(win.locator('.session-composer')).toBeVisible();
     await expect(win.getByRole('textbox', { name: 'Task for Agent' })).toBeEnabled();
     await expect(win.locator('.composer-agent')).toBeVisible();
-    await expect(win.getByRole('button', { name: /Send to|Choose Agent/ })).toBeVisible();
+    await expect(win.getByRole('button', { name: 'Choose Agent' })).toBeVisible();
 
     await win.locator('.context-summary').click();
     await expect(win.locator('.inspector-pane h2', { hasText: 'Context Staging' })).toBeVisible();

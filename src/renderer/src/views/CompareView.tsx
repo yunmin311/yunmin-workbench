@@ -9,8 +9,8 @@ export function CompareView() {
   const openRuntimeInspector = useWorkbench((state) => state.openRuntimeInspector);
   const addResultToContext = useWorkbench((state) => state.addResultToContext);
   const groups = useMemo(() => projectCompareGroups(activity.filter((event) =>
-    event.projectId === projectId && (!conversation || event.conversationKey === conversation.key))),
-  [activity, projectId, conversation]);
+    event.projectId === projectId)),
+  [activity, projectId]);
   const visible = groups.filter((group) => group.executions.length > 1
     && group.executions.some((execution) => execution.result || execution.failed));
 
@@ -39,7 +39,7 @@ export function CompareView() {
                 </header>
                 <div className="compare-result-body">
                   {execution.result?.content
-                    ? <p>{execution.result.content}</p>
+                    ? <p>{execution.result.simulated ? '[DEMO/SIMULATED · ' + execution.harness + '] ' : ''}{execution.result.content}</p>
                     : <p className="compare-missing">{execution.failed ? 'This execution failed. Other results remain intact.' : 'Waiting for a real assistant result…'}</p>}
                 </div>
                 {execution.evidence.length > 0 && (

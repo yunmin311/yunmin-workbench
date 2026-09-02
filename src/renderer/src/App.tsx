@@ -16,6 +16,7 @@ import { DemoWelcomeScreen } from './demo/DemoWelcomeScreen';
 import { AppChrome } from './components/AppChrome';
 import { CompareView } from './views/CompareView';
 import { ApprovalModal } from './components/ApprovalModal';
+import { startDemoEnvironmentWatcher } from './demo/demoEnvironment';
 import type { ActivityEvent } from '../../core/types';
 
 export default function App() {
@@ -44,6 +45,7 @@ export default function App() {
 
   useEffect(() => {
     void initialize();
+    startDemoEnvironmentWatcher();
     const offOverlay = window.wb.onOverlayChanged(() => void useWorkbench.getState().reloadAndRecheck());
     let focusTimer: ReturnType<typeof setTimeout> | null = null;
     const offFocus = window.wb.onAppFocus(() => {
@@ -217,7 +219,7 @@ export default function App() {
   };
 
   return (
-    <div className="prototype-app">
+    <div className="prototype-app is-with-sidebar">
       <AppChrome
         workspaceName={project?.displayName ?? 'Open workspace'}
         sessionName={conversation?.role ?? 'Choose a session'}
@@ -239,6 +241,11 @@ export default function App() {
         </details>
       )}
 
+      <WorkspaceSidebar
+        onNavigate={() => setSessionPickerOpen(false)}
+        isModal={false}
+      />
+
       <main className={`prototype-surface ${view === 'canvas' ? 'is-canvas' : view === 'compare' ? 'is-compare' : 'is-session'}`}>
         <ErrorBoundary key={`surface:${view}:${projectId ?? ''}:${conversation?.key ?? ''}`}>
           {view === 'canvas' ? <CanvasView /> : view === 'compare' ? <CompareView /> : <SessionSurface onOpenSessions={() => setSessionPickerOpen(true)} />}
@@ -248,7 +255,7 @@ export default function App() {
       {sessionPickerOpen && (
         <div className="session-picker-layer" role="presentation" onMouseDown={() => setSessionPickerOpen(false)}>
           <div className="session-picker" role="dialog" aria-label="Switch workspace or session" onMouseDown={(event) => event.stopPropagation()}>
-            <WorkspaceSidebar onNavigate={() => setSessionPickerOpen(false)} />
+            <WorkspaceSidebar onNavigate={() => setSessionPickerOpen(false)} isModal />
           </div>
         </div>
       )}

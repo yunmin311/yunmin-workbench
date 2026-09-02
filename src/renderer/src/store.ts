@@ -40,6 +40,16 @@ import {
   DEMO_CONVERSATIONS,
   DEMO_CONTEXT,
   DEMO_FROZEN,
+  DEMO_ACTIVITY,
+  DEMO_RUNTIME_SESSIONS,
+  DEMO_ATTENTION,
+  DEMO_HARNESS_CAPABILITIES,
+  getDemoFrozenDetail,
+  getDemoMemorySearchResult,
+  getDemoMemoryDetail,
+  getDemoHistorySearchResult,
+  DEMO_HISTORY_CATALOG,
+  DEMO_HISTORY_DETAILS,
 } from './demo/demoData';
 import { buildDispatchPlan, settleDispatchPlan, type DispatchOutcome } from '../../core/project/dispatchPipeline';
 import { useMemo } from 'react';
@@ -381,16 +391,17 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       draftSaveState: 'clean',
       packetValidity: 'CURRENT',
       handoffStatus: 'IDLE',
-      activity: [],
+      activity: DEMO_ACTIVITY,
       activityBeforeByte: undefined,
       activityHasEarlier: false,
-      runtimeSessions: [],
+      runtimeSessions: DEMO_RUNTIME_SESSIONS as RuntimeSession[],
       activityProblem: null,
       liveExecutions: [],
-      attentionItems: [],
+      attentionItems: DEMO_ATTENTION,
       handoffSourceRef: null,
       lastDispatchGroupId: null,
       lastDispatchOutcomes: [],
+      harnessCapabilities: DEMO_HARNESS_CAPABILITIES,
     });
     get().syncIslandAttention();
   },
@@ -427,9 +438,9 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       staging: DEMO_CONTEXT,
       taskSummary: '',
       frozen: DEMO_FROZEN,
-      activity: [],
-      runtimeSessions: [],
-      attentionItems: [],
+      activity: DEMO_ACTIVITY,
+      runtimeSessions: DEMO_RUNTIME_SESSIONS as RuntimeSession[],
+      attentionItems: DEMO_ATTENTION,
       packetValidity: 'CURRENT',
       draftSaveState: 'clean',
       contextMessage: null,
@@ -437,6 +448,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       handoffSourceRef: null,
       lastDispatchGroupId: null,
       lastDispatchOutcomes: [],
+      harnessCapabilities: DEMO_HARNESS_CAPABILITIES,
     });
     get().syncIslandAttention();
   },
