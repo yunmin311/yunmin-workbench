@@ -76,7 +76,7 @@ test.describe('real Runtime adapter → Activity → Inspector smoke', () => {
       await expect(win.locator('.activity-kind-handoff-accepted')).toBeVisible();
       await expect(win.locator('.activity-kind-turn-completed')).toBeVisible({ timeout: 120_000 });
       await win.getByTestId('session-runtime-badge').click();
-      await expect(win.getByTestId('runtime-detail')).toHaveAttribute('data-execution-id', `codex::${receipt.runtimeRef}`);
+      await expect(win.getByTestId('runtime-detail')).toHaveAttribute('data-execution-id', `codex::execution:${receipt.intentId}`);
       await expect(win.getByTestId('runtime-detail')).toContainText('Receipt accepted');
       await expect(win.getByTestId('runtime-detail')).toContainText('Turn completed');
       await expect(win.getByRole('button', { name: 'Attention, 0 active items' })).toBeVisible();

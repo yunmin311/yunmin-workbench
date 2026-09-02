@@ -14,8 +14,8 @@ describe('real execution relations', () => {
   it('turns an actual assistant result into explicit Context with an immutable sourceRef', () => {
     const item = contextFromAgentResult(event({}), '2026-09-01T00:00:01.000Z');
     expect(item).toMatchObject({
-      source: 'harness-result:codex::thread-1:event-1',
-      sourceRef: 'harness-result:codex::thread-1:event-1',
+      source: 'harness-result:codex::execution:intent-1:event-1',
+      sourceRef: 'harness-result:codex::execution:intent-1:event-1',
       body: 'A real assistant answer', state: 'included', isReference: true, provenance: 'EXTERNAL',
     });
   });
@@ -34,7 +34,9 @@ describe('real execution relations', () => {
     ];
     const groups = projectCompareGroups(activity);
     expect(groups).toHaveLength(1);
-    expect(groups[0].executions.map((execution) => execution.executionId)).toEqual(['claude::session-2', 'codex::thread-1']);
+    expect(groups[0].executions.map((execution) => execution.executionId)).toEqual([
+      'claude::execution:intent-2', 'codex::execution:intent-1',
+    ]);
     expect(groups[0].executions[1]).toMatchObject({
       result: expect.objectContaining({ content: 'A real assistant answer' }),
       evidence: [expect.objectContaining({ evidenceRef: 'tool:read-1' }), expect.objectContaining({ evidenceRef: 'file:src/App.tsx' })],
@@ -50,8 +52,9 @@ describe('real execution relations', () => {
     });
     const trajectory = projectTrajectory([event({}), followup]);
     expect(trajectory.relations).toEqual([{
-      id: `handoff:${source.sourceRef}->claude::session-2`,
-      sourceExecutionId: 'codex::thread-1', targetExecutionId: 'claude::session-2', sourceRef: source.sourceRef,
+      id: `handoff:${source.sourceRef}->claude::execution:intent-2`,
+      sourceExecutionId: 'codex::execution:intent-1',
+      targetExecutionId: 'claude::execution:intent-2', sourceRef: source.sourceRef,
     }]);
     expect(JSON.stringify(trajectory.relations)).not.toMatch(/\"x\"|\"y\"|position/i);
   });

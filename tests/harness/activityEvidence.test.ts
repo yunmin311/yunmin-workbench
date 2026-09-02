@@ -19,6 +19,12 @@ describe('real result and evidence extraction', () => {
     });
   });
 
+  it('correlates a Claude tool result with the native tool_use id', () => {
+    expect(eventEvidence({ type: 'tool_result', tool_use_id: 'tool-1', content: 'done' })).toEqual({
+      content: 'tool_result', evidenceRef: 'tool:tool-1',
+    });
+  });
+
   it('extracts the real user task from compiled Packet text for the transcript', () => {
     expect(packetTaskSummary('# Governance\n- none\n\n# Task Summary\nShip the actual flow\n\n# Context\n(none)')).toBe('Ship the actual flow');
     expect(packetTaskSummary('not a compiled packet')).toBeUndefined();

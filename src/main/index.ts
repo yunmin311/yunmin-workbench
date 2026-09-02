@@ -247,7 +247,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       observed: observed(`codex-app-server:${event.method}`),
     };
     if (event.method === 'adapter/error') {
-      liveExecutions.remove('codex', threadId);
+      liveExecutions.remove('codex', threadId, context.intentId);
       const message = typeof params?.message === 'string' ? params.message : 'Codex app-server stopped';
       void recordActivity({
         ...base, id: randomUUID(), kind: 'harness-error', runtimeState: 'error',
@@ -306,7 +306,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       // Turn completion ends the dispatch's turn; the thread leaves the live set
       // because this adapter starts one thread per dispatch. Receipt/completion
       // stay distinct from runtime state — they are separate projections.
-      liveExecutions.remove('codex', threadId);
+      liveExecutions.remove('codex', threadId, context.intentId);
       const failed = turn?.status === 'failed' || Boolean(turn?.error);
       const reviewKey = `${threadId}:${turnId}`;
       const reviewWorthy = !failed && reviewWorthyTurns.delete(reviewKey);
@@ -869,7 +869,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
            groupId: request.groupId,
            parentSourceRef: request.parentSourceRef,
           });
-          liveExecutions.add(harness, threadId, new Date().toISOString(), harness === 'claude');
+          liveExecutions.add(harness, threadId, new Date().toISOString(), harness === 'claude', request.intentId);
         };
         const onCodexThread = (threadId: string) => {
           rememberRuntime(threadId);
@@ -878,6 +878,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
             harness: 'codex', adapter: 'codex-app-server', capability: 'externalSessionRef',
             kind: 'session-started', summary: `${harness} session created`, runtimeRef: threadId,
             runtimeState: 'unknown',
+            intentId: request.intentId, groupId: request.groupId, parentSourceRef: request.parentSourceRef,
             binding: {
               harness, machine, cwd, externalSessionRef: threadId,
             },
@@ -916,7 +917,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
                 ...(event.params && typeof event.params === 'object' ? eventEvidence(event.params as Record<string, unknown>) : undefined),
               });
             } else if (event.method === 'turn/completed') {
-              liveExecutions.remove(harness, runtimeRef);
+              liveExecutions.remove(harness, runtimeRef, request.intentId);
               void recordActivity({ ...base, kind: 'turn-completed', summary: `${harness} demo turn completed`, runtimeState: 'idle' });
             }
           };
@@ -934,7 +935,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
           try {
             const claudeReceipt = await (adapter as typeof claudeAdapter).dispatch(request.intentId, cwd, dispatchText, rememberRuntime);
             receipt = claudeReceipt;
-            if (claudeReceipt.runtimeRef) liveExecutions.remove('claude', claudeReceipt.runtimeRef);
+            if (claudeReceipt.runtimeRef) liveExecutions.remove('claude', claudeReceipt.runtimeRef, request.intentId);
           } finally {
             pendingClaudeContexts.delete(request.intentId);
           }

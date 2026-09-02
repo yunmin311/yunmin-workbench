@@ -1,5 +1,5 @@
 import type { ActivityEvent, RuntimeSession } from '../types';
-import { runtimeExecutionId } from './runtimeIdentity';
+import { runtimeExecutionId, workbenchExecutionId } from './runtimeIdentity';
 
 const stateRank: Record<string, number> = {
   'session-started': 0,
@@ -24,7 +24,9 @@ export function projectRuntimeSessions(events: ActivityEvent[]): RuntimeSession[
     if (!event.runtimeRef || event.observed.source !== 'protocol') continue;
     const declaredHarness = event.harness ?? event.binding?.harness;
     if (!declaredHarness) continue;
-    const executionId = runtimeExecutionId(declaredHarness, event.runtimeRef);
+    const executionId = event.intentId
+      ? workbenchExecutionId(declaredHarness, event.intentId)
+      : runtimeExecutionId(declaredHarness, event.runtimeRef);
     const prior = sessions.get(executionId);
     if (!prior && !event.binding) continue;
     const state = event.runtimeState ?? prior?.state ?? 'unknown';

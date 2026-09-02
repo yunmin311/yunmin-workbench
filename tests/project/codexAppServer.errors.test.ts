@@ -134,9 +134,10 @@ describe('Codex adapter against a fake app-server (protocol fixture)', () => {
       const capabilities = await recovered.capabilities();
       expect(capabilities.canDispatch).toBe(true);
       expect(capabilities.support).toEqual({
-        dispatch: 'YES', observe: 'YES', receipt: 'YES', approval: 'YES', needsInput: 'YES',
+        dispatch: 'YES', observe: 'YES', receipt: 'YES', approval: 'NO', needsInput: 'NO',
         toolEvents: 'YES', fileEvents: 'YES', externalSessionRef: 'YES', resume: 'NO',
       });
+      expect(capabilities.evidence).toContain('requests observable; responses unsupported');
     } finally {
       recovered.close();
     }

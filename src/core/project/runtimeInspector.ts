@@ -1,6 +1,6 @@
 import type { ActivityEvent, Observation, RuntimeBinding, RuntimeState } from '../types';
 import { orderActivity } from './activity';
-import { isValidNativeRuntimeRef, parseRuntimeExecutionId, runtimeExecutionId } from './runtimeIdentity';
+import { isValidNativeRuntimeRef, parseRuntimeExecutionId, runtimeExecutionId, workbenchExecutionId } from './runtimeIdentity';
 
 /**
  * Runtime Inspector projection. Consumes the existing Activity projection and
@@ -20,8 +20,9 @@ export interface ExecutionReceiptView {
 
 export interface RuntimeExecutionView {
   /**
-   * Workbench execution id: exactly `harness::nativeRef`. Dispatch intents
-   * without a native external ref are not executions and are not projected.
+   * Workbench execution id: `harness::execution:intentId` for current events.
+   * Legacy activity without intent lineage falls back to `harness::nativeRef`.
+   * Dispatch intents without a native external ref are not executions and are not projected.
    */
   executionId: string;
   /** Harness-native session ref, observed directly and never guessed. */
@@ -58,7 +59,21 @@ export function executionIdForEvent(event: ActivityEvent): string | null {
   if (eventRef && bindingRef && eventRef !== bindingRef) return null;
   const nativeRef = eventRef ?? bindingRef;
   if (!harness || !isValidNativeRuntimeRef(nativeRef)) return null;
-  return runtimeExecutionId(harness, nativeRef);
+  return event.intentId
+    ? workbenchExecutionId(harness, event.intentId)
+    : runtimeExecutionId(harness, nativeRef);
+}
+
+function nativeIdentityForEvent(event: ActivityEvent): { harness: string; nativeRef: string } | null {
+  const eventHarness = event.harness;
+  const bindingHarness = event.binding?.harness;
+  if (eventHarness && bindingHarness && eventHarness !== bindingHarness) return null;
+  const harness = eventHarness ?? bindingHarness;
+  const eventRef = event.runtimeRef;
+  const bindingRef = event.binding?.externalSessionRef;
+  if (eventRef && bindingRef && eventRef !== bindingRef) return null;
+  const nativeRef = eventRef ?? bindingRef;
+  return harness && isValidNativeRuntimeRef(nativeRef) ? { harness, nativeRef } : null;
 }
 
 function isIntentEvent(event: ActivityEvent): boolean {
@@ -77,12 +92,12 @@ function isTypedIntentEvent(event: ActivityEvent): event is IntentEvent {
 }
 
 function intentIdOf(event: ActivityEvent): string | null {
-  return event.attentionKey ?? null;
+  return event.intentId ?? null;
 }
 
 /**
  * Resolves the execution an Attention item points at. Attention sessionRef is
- * either a full Workbench execution id (`harness::ref`) or a bare native ref;
+ * either a full Workbench execution id (`harness::execution:intentId`) or a bare native ref;
  * the exact activity event (eventRef) is always preferred when resolvable.
  * Returns null for stale/unknown targets — the caller must not guess.
  */
@@ -122,21 +137,31 @@ export function projectRuntimeExecutions(
 ): RuntimeExecutionView[] {
   const live = new Set(liveExecutionIds);
   const buckets = new Map<string, ExecutionBucket>();
+  const identities = new Map<string, { harness: string; nativeRef: string }>();
   const intentToExecution = new Map<string, string>();
   const conflictedIntents = new Set<string>();
 
   const bucketFor = (executionId: string): ExecutionBucket => {
     let bucket = buckets.get(executionId);
     if (!bucket) {
-      const identity = parseRuntimeExecutionId(executionId);
+      const observedIdentity = identities.get(executionId);
+      const legacyIdentity = parseRuntimeExecutionId(executionId);
+      const identity = observedIdentity ?? (legacyIdentity
+        ? { harness: legacyIdentity.harness, nativeRef: legacyIdentity.externalSessionRef }
+        : null);
       if (!identity) throw new Error('Invalid projected execution identity');
-      bucket = { executionId, nativeRef: identity.externalSessionRef, harness: identity.harness, events: [] };
+      bucket = { executionId, nativeRef: identity.nativeRef, harness: identity.harness, events: [] };
       buckets.set(executionId, bucket);
     }
     return bucket;
   };
 
   const ordered = orderActivity(events);
+  for (const event of ordered) {
+    const executionId = executionIdForEvent(event);
+    const identity = nativeIdentityForEvent(event);
+    if (executionId && identity) identities.set(executionId, identity);
+  }
   for (const event of ordered) {
     if (!isIntentEvent(event)) continue;
     const intentId = intentIdOf(event);

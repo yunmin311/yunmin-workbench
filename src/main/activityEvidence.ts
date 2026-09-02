@@ -29,7 +29,9 @@ function nestedPath(value: unknown): string | undefined {
 
 export function eventEvidence(value: Record<string, unknown>): { content: string; evidenceRef: string } | undefined {
   const path = nestedPath(value);
-  const id = typeof value.id === 'string' ? value.id : undefined;
+  const id = typeof value.id === 'string'
+    ? value.id
+    : typeof value.tool_use_id === 'string' ? value.tool_use_id : undefined;
   const type = typeof value.type === 'string' ? value.type : '';
   if (type === 'fileChange') {
     if (!path) return undefined;

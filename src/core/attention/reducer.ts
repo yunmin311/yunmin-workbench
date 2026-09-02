@@ -8,7 +8,7 @@ import type {
   AttentionPacketFact,
   RuntimeSession,
 } from '../types';
-import { runtimeExecutionId } from '../project/runtimeIdentity';
+import { runtimeExecutionId, workbenchExecutionId } from '../project/runtimeIdentity';
 
 export interface AttentionReducerInput {
   activity: ActivityEvent[];
@@ -178,7 +178,11 @@ export function reduceAttention(input: AttentionReducerInput): AttentionItem[] {
   const explicitlyObservedRuntimeRefs = new Set(
     trustedActivity.flatMap((event) => {
       const harness = event.harness ?? event.binding?.harness;
-      return harness && event.runtimeRef ? [runtimeExecutionId(harness, event.runtimeRef)] : [];
+      return harness && event.runtimeRef
+        ? [event.intentId
+          ? workbenchExecutionId(harness, event.intentId)
+          : runtimeExecutionId(harness, event.runtimeRef)]
+        : [];
     }),
   );
   const candidates = [

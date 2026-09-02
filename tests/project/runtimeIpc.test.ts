@@ -26,6 +26,15 @@ describe('Runtime IPC boundaries', () => {
     expect(() => registry.add('claude', '', '2026-08-31T01:00:02.000Z')).toThrow('Invalid native runtime ref');
   });
 
+  it('keeps parallel Workbench executions distinct even when a native session ref is reused', () => {
+    const registry = new LiveExecutionRegistry();
+    registry.add('codex', 'shared-thread', '2026-08-31T01:00:00.000Z', false, 'intent-a');
+    registry.add('codex', 'shared-thread', '2026-08-31T01:00:01.000Z', false, 'intent-b');
+    expect(registry.list().map((item) => item.executionId)).toEqual([
+      'codex::execution:intent-a', 'codex::execution:intent-b',
+    ]);
+  });
+
   it('fails malformed, stale, and unsupported cancel requests closed', () => {
     const cancelByIntent = vi.fn(() => true);
     const deps = {

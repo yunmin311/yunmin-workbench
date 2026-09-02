@@ -32,21 +32,21 @@ describe('Runtime Inspector execution projection', () => {
   it('correlates an earlier dispatch receipt to its later native execution without creating an intent execution', () => {
     const events = [
       event('dispatch', 'handoff-dispatched', '2026-08-31T01:00:00.000Z', {
-        harness: 'codex', attentionKey: 'intent-1',
+        harness: 'codex', intentId: 'intent-1', attentionKey: 'intent-1',
       }),
       event('accepted', 'handoff-accepted', '2026-08-31T01:00:01.000Z', {
-        harness: 'codex', attentionKey: 'intent-1', runtimeRef: 'thread-1',
+        harness: 'codex', intentId: 'intent-1', attentionKey: 'intent-1', runtimeRef: 'thread-1',
       }),
       event('started', 'session-started', '2026-08-31T01:00:02.000Z', {
-        harness: 'codex', runtimeRef: 'thread-1', runtimeState: 'working',
+        harness: 'codex', intentId: 'intent-1', runtimeRef: 'thread-1', runtimeState: 'working',
         binding: { harness: 'codex', machine: 'machine-1', externalSessionRef: 'thread-1' },
       }),
     ];
 
-    const projected = projectRuntimeExecutions(events, ['codex::thread-1']);
+    const projected = projectRuntimeExecutions(events, ['codex::execution:intent-1']);
     expect(projected).toHaveLength(1);
     expect(projected[0]).toMatchObject({
-      executionId: 'codex::thread-1',
+      executionId: 'codex::execution:intent-1',
       intentId: 'intent-1',
       intentState: 'accepted',
       state: 'working',
@@ -75,6 +75,22 @@ describe('Runtime Inspector execution projection', () => {
 
     expect(projectRuntimeExecutions(events).map((item) => item.executionId).sort()).toEqual([
       'claude::same-ref', 'codex::same-ref', 'codex::thread-2',
+    ]);
+  });
+
+  it('keeps two Workbench executions separate when they share one native session ref', () => {
+    const events = [
+      event('first', 'turn-started', '2026-08-31T01:00:00.000Z', {
+        harness: 'codex', runtimeRef: 'shared-thread', intentId: 'intent-a', runtimeState: 'working',
+      }),
+      event('second', 'turn-started', '2026-08-31T01:00:01.000Z', {
+        harness: 'codex', runtimeRef: 'shared-thread', intentId: 'intent-b', runtimeState: 'working',
+      }),
+    ];
+
+    expect(projectRuntimeExecutions(events).map((item) => [item.executionId, item.nativeRef]).sort()).toEqual([
+      ['codex::execution:intent-a', 'shared-thread'],
+      ['codex::execution:intent-b', 'shared-thread'],
     ]);
   });
 

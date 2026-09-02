@@ -207,7 +207,7 @@ export class CodexAppServerAdapter {
       return {
         harness: 'codex',
         support: {
-          dispatch: 'YES', observe: 'YES', receipt: 'YES', approval: 'YES', needsInput: 'YES',
+          dispatch: 'YES', observe: 'YES', receipt: 'YES', approval: 'NO', needsInput: 'NO',
           toolEvents: 'YES', fileEvents: 'YES', externalSessionRef: 'YES', resume: 'NO',
         },
         canDispatch: true,
@@ -216,7 +216,7 @@ export class CodexAppServerAdapter {
         canObserveRuntime: true,
         canReceiveReceipt: true,
         protocol: 'Codex app-server JSONL v2',
-        evidence: `initialize.userAgent=${userAgent}; official thread/start + turn/start and lifecycle notifications`,
+        evidence: `initialize.userAgent=${userAgent}; official thread/start + turn/start and lifecycle notifications; approval/input requests observable; responses unsupported`,
       };
     } catch (error) {
       return unavailableCapabilities(boundedProcessError(error));

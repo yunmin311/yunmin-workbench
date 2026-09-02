@@ -2,6 +2,11 @@ export function runtimeExecutionId(harness: string, externalSessionRef: string):
   return `${harness}::${externalSessionRef}`;
 }
 
+/** Workbench execution identity. Native session refs remain a separate field and may be reused. */
+export function workbenchExecutionId(harness: string, intentId: string): string {
+  return `${harness}::execution:${intentId}`;
+}
+
 export function isValidNativeRuntimeRef(value: unknown): value is string {
   return typeof value === 'string'
     && value.length > 0

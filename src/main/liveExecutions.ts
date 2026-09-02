@@ -1,4 +1,4 @@
-import { isValidNativeRuntimeRef, runtimeExecutionId } from '../core/project/runtimeIdentity';
+import { isValidNativeRuntimeRef, runtimeExecutionId, workbenchExecutionId } from '../core/project/runtimeIdentity';
 import type { HarnessCapabilities } from '../core/types';
 
 type Harness = HarnessCapabilities['harness'];
@@ -21,29 +21,42 @@ export interface LiveExecution {
 export class LiveExecutionRegistry {
   private entries = new Map<string, LiveExecution>();
 
-  private key(harness: Harness, externalSessionRef: string): string {
-    return `${harness}\0${externalSessionRef}`;
-  }
-
-  add(harness: Harness, externalSessionRef: string, startedAt: string, canCancel = false): LiveExecution {
+  add(
+    harness: Harness,
+    externalSessionRef: string,
+    startedAt: string,
+    canCancel = false,
+    intentId?: string,
+  ): LiveExecution {
     if (!isValidNativeRuntimeRef(externalSessionRef)) throw new Error('Invalid native runtime ref');
     const entry: LiveExecution = {
-      executionId: runtimeExecutionId(harness, externalSessionRef),
+      executionId: intentId
+        ? workbenchExecutionId(harness, intentId)
+        : runtimeExecutionId(harness, externalSessionRef),
       harness,
       externalSessionRef,
       startedAt,
       canCancel,
     };
-    this.entries.set(this.key(harness, externalSessionRef), entry);
+    this.entries.set(entry.executionId, entry);
     return entry;
   }
 
-  remove(harness: Harness, externalSessionRef: string): void {
-    this.entries.delete(this.key(harness, externalSessionRef));
+  remove(harness: Harness, externalSessionRef: string, intentId?: string): void {
+    if (intentId) {
+      this.entries.delete(workbenchExecutionId(harness, intentId));
+      return;
+    }
+    for (const [executionId, entry] of this.entries) {
+      if (entry.harness === harness && entry.externalSessionRef === externalSessionRef) {
+        this.entries.delete(executionId);
+      }
+    }
   }
 
   has(harness: Harness, externalSessionRef: string): boolean {
-    return this.entries.has(this.key(harness, externalSessionRef));
+    return [...this.entries.values()].some((entry) =>
+      entry.harness === harness && entry.externalSessionRef === externalSessionRef);
   }
 
   list(): LiveExecution[] {
