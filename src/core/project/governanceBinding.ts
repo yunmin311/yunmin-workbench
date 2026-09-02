@@ -1,19 +1,15 @@
 // Governance Product Binding — read-only projection.
 //
-// This module does NOT add a new schema, does NOT mutate the OverlaySnapshot,
-// and does NOT introduce a second SOT. It only derives a compact view from
-// the facts Workbench already loaded: ProjectAdapter.roles / project_gates /
-// canonical_source, DialogueRegistry.dialogues, and the active conversation.
-//
-// UNKNOWN is preserved as UNKNOWN. Missing fields stay missing. Heuristic
-// rules are restricted to the dialog-registry level; we never fabricate gate
-// values, approver names, or "ALLOW/BLOCK" verdicts.
+// No new schema, no mutation, no second SOT. Derives a compact view from
+// facts Workbench already loaded: ProjectAdapter.roles / project_gates /
+// observed, and Conversation.observed (dialogue registry projection).
+// UNKNOWN stays UNKNOWN; missing stays missing.
 
 import type { Conversation, OverlaySnapshot, ProjectAdapter } from '../types';
-import { overlayFileSourceRef, projectFileSourceRef } from './sourceIdentity';
+
+const ACTIVE_LIFECYCLE = new Set(['ACTIVE', 'PAUSED', 'FROZEN', 'STANDBY']);
 
 export interface GovernanceRoleHint {
-  source: 'adapter' | 'dialog' | 'unknown';
   role: string;
   responsibility: string;
   alive: boolean;
@@ -38,16 +34,20 @@ export interface GovernanceDialogueView {
 
 export interface GovernanceAgentHint {
   harness: 'codex' | 'claude' | 'deepseek';
+  /** Concrete role only when the dialog registry names exactly one role on that platform for this project. */
   role: string | null;
-  source: 'adapter+dialog' | 'dialog' | 'none';
+  /** 'single' = exactly one dialogue role on the platform; 'ambiguous' = multiple; 'none' = none. */
+  state: 'single' | 'ambiguous' | 'none';
 }
 
 export interface GovernanceSnapshot {
   projectId: string | null;
   projectDisplayName: string | null;
   projectTrust: string | null;
-  canonicalSourceRef: string | null;
-  canonicalSourceCommit: string | null;
+  /** Verbatim adapter.observed.sourceRef — the real source of this project fact. */
+  adapterObservedRef: string | null;
+  /** Verbatim conversation.observed.sourceRef — the real source of the active dialogue fact. */
+  dialogueObservedRef: string | null;
   adapter: ProjectAdapter | null;
   roles: GovernanceRoleHint[];
   gates: GovernanceGateView;
@@ -57,42 +57,29 @@ export interface GovernanceSnapshot {
   problems: string[];
 }
 
-const ACTIVE_LIFECYCLE = new Set(['ACTIVE', 'PAUSED', 'FROZEN', 'STANDBY']);
-
 function pickDialogue(
   snapshot: OverlaySnapshot | null,
   projectId: string | null,
   conversation: Conversation | null,
-): GovernanceDialogueView {
-  if (!snapshot || !projectId || !conversation) {
-    return {
-      roleFromRegistry: null,
-      lifecycle: 'UNKNOWN',
-      verification: 'UNKNOWN',
-      sessionId: null,
-      platform: null,
-      gitAuthority: null,
-    };
-  }
+): { view: GovernanceDialogueView; observedRef: string | null } {
+  const empty: GovernanceDialogueView = {
+    roleFromRegistry: null, lifecycle: 'UNKNOWN', verification: 'UNKNOWN',
+    sessionId: null, platform: null, gitAuthority: null,
+  };
+  if (!snapshot || !projectId || !conversation) return { view: empty, observedRef: null };
   const match = snapshot.conversations.find((candidate) =>
     candidate.key === conversation.key && candidate.project === projectId);
-  if (!match) {
-    return {
-      roleFromRegistry: null,
-      lifecycle: 'UNKNOWN',
-      verification: 'UNKNOWN',
-      sessionId: null,
-      platform: null,
-      gitAuthority: null,
-    };
-  }
+  if (!match) return { view: empty, observedRef: null };
   return {
-    roleFromRegistry: match.role,
-    lifecycle: ACTIVE_LIFECYCLE.has(match.status) ? match.status : 'UNKNOWN',
-    verification: match.verification,
-    sessionId: match.sessionId ?? null,
-    platform: match.platform,
-    gitAuthority: match.gitAuthority ?? null,
+    view: {
+      roleFromRegistry: match.role,
+      lifecycle: ACTIVE_LIFECYCLE.has(match.status) ? match.status : 'UNKNOWN',
+      verification: match.verification,
+      sessionId: match.sessionId ?? null,
+      platform: match.platform,
+      gitAuthority: match.gitAuthority ?? null,
+    },
+    observedRef: match.observed.sourceRef,
   };
 }
 
@@ -100,11 +87,9 @@ function projectGateConflicts(snapshot: OverlaySnapshot | null, projectId: strin
   if (!snapshot || !projectId) return [];
   const sameProject = snapshot.projects.filter((project) => project.projectId === projectId);
   if (sameProject.length < 2) return [];
-  const conflicts: { key: string; values: string[] }[] = [];
   const allKeys = new Set<string>();
-  for (const project of sameProject) {
-    for (const key of Object.keys(project.gates)) allKeys.add(key);
-  }
+  for (const project of sameProject) for (const key of Object.keys(project.gates)) allKeys.add(key);
+  const conflicts: { key: string; values: string[] }[] = [];
   for (const key of allKeys) {
     const values = new Set<string>();
     for (const project of sameProject) {
@@ -116,35 +101,25 @@ function projectGateConflicts(snapshot: OverlaySnapshot | null, projectId: strin
   return conflicts;
 }
 
-function findRoleHarnessHint(
-  adapter: ProjectAdapter | null,
+/**
+ * Agent hint is grounded only in the dialog registry. ProjectAdapter.roles
+ * never carry a harness binding, so we never infer one from the adapter.
+ * When one and only one dialogue in this project has the requested platform,
+ * we surface its role verbatim. When multiple match, the hint is suppressed
+ * (ambiguous) rather than guessed. None means no dialogue on that platform.
+ */
+function agentHintFromDialog(
   snapshot: OverlaySnapshot | null,
   projectId: string | null,
   harness: 'codex' | 'claude' | 'deepseek',
-): { role: string | null; source: 'adapter+dialog' | 'dialog' | 'none' } {
-  if (!adapter) return { role: null, source: 'none' };
-  // Adapter roles may name the harness family explicitly (e.g. "Codex
-  // builder" / "Claude reviewer"). When no adapter role names the harness,
-  // we fall back to the dialog registry: if the active project has at least
-  // one dialogue on that platform, the harness is at least plausible.
-  const platformAlias: Record<string, string[]> = {
-    codex: ['codex', 'gpt', 'luna'],
-    claude: ['claude', 'sonnet', 'opus', 'haiku'],
-    deepseek: ['deepseek', 'r1', 'v3'],
-  };
-  const aliases = platformAlias[harness] ?? [harness];
-  for (const role of adapter.roles) {
-    const lower = `${role.name} ${role.responsibility}`.toLowerCase();
-    if (aliases.some((alias) => lower.includes(alias))) {
-      return { role: role.name, source: 'adapter+dialog' };
-    }
-  }
-  if (snapshot && projectId) {
-    const matched = snapshot.conversations.some((candidate) =>
-      candidate.project === projectId && candidate.platform === harness);
-    if (matched) return { role: `${harness} 对话`, source: 'dialog' };
-  }
-  return { role: null, source: 'none' };
+): GovernanceAgentHint {
+  if (!snapshot || !projectId) return { harness, role: null, state: 'none' };
+  const matches = snapshot.conversations.filter(
+    (candidate) => candidate.project === projectId && candidate.platform === harness,
+  );
+  if (matches.length === 0) return { harness, role: null, state: 'none' };
+  if (matches.length > 1) return { harness, role: null, state: 'ambiguous' };
+  return { harness, role: matches[0].role, state: 'single' };
 }
 
 export function projectGovernanceView(
@@ -162,11 +137,9 @@ export function projectGovernanceView(
   const problems: string[] = [];
   if (snapshot && projectId && !adapter) problems.push('Project adapter is missing for the active project.');
   if (snapshot && projectId && adapter && !hasGate) problems.push('project_gates are not declared by the adapter.');
-  if (ownerConflicts.length > 0) {
-    problems.push(`project_gates have hard conflicts: ${ownerConflicts.map((conflict) => conflict.key).join(', ')}`);
-  }
-  if (dialogue.verification === 'UNVERIFIED') problems.push('Active dialogue is UNVERIFIED in the registry.');
-  if (dialogue.lifecycle === 'UNKNOWN' && projectId) problems.push('Active dialogue lifecycle is UNKNOWN.');
+  if (ownerConflicts.length > 0) problems.push(`project_gates have hard conflicts: ${ownerConflicts.map((c) => c.key).join(', ')}`);
+  if (dialogue.view.verification === 'UNVERIFIED') problems.push('Active dialogue is UNVERIFIED in the registry.');
+  if (dialogue.view.lifecycle === 'UNKNOWN' && projectId) problems.push('Active dialogue lifecycle is UNKNOWN.');
   if (snapshot && projectId && adapter?.trust === 'UNKNOWN') problems.push('Project adapter trust is UNKNOWN.');
 
   const roles: GovernanceRoleHint[] = (adapter?.roles ?? []).map((role) => {
@@ -176,7 +149,6 @@ export function projectGovernanceView(
       ? (snapshot?.conversations.find((candidate) => candidate.project === projectId && candidate.role === role.name)?.status ?? 'UNKNOWN')
       : 'UNKNOWN';
     return {
-      source: 'adapter',
       role: role.name,
       responsibility: role.responsibility,
       alive,
@@ -184,26 +156,20 @@ export function projectGovernanceView(
     };
   });
 
-  const agentHints: GovernanceAgentHint[] = (['codex', 'claude', 'deepseek'] as const).map((harness) => {
-    const hint = findRoleHarnessHint(adapter, snapshot, projectId, harness);
-    return { harness, role: hint.role, source: hint.source };
-  });
+  const agentHints: GovernanceAgentHint[] = (['codex', 'claude', 'deepseek'] as const).map(
+    (harness) => agentHintFromDialog(snapshot, projectId, harness),
+  );
 
   return {
     projectId: adapter?.projectId ?? projectId,
     projectDisplayName: adapter?.displayName ?? null,
     projectTrust: adapter?.trust ?? null,
-    canonicalSourceRef: adapter?.canonicalSource?.path ? projectFileSourceRef(adapter.projectId, adapter.canonicalSource.path) : null,
-    canonicalSourceCommit: adapter?.canonicalSource?.commit ?? null,
+    adapterObservedRef: adapter?.observed.sourceRef ?? null,
+    dialogueObservedRef: dialogue.observedRef,
     adapter,
     roles,
-    gates: {
-      declared,
-      defaultFlow: declared.default_flow ?? null,
-      undeclared: !hasGate,
-      ownerConflicts,
-    },
-    dialogue,
+    gates: { declared, defaultFlow: declared.default_flow ?? null, undeclared: !hasGate, ownerConflicts },
+    dialogue: dialogue.view,
     agentHints,
     hasGate,
     problems,
@@ -211,11 +177,17 @@ export function projectGovernanceView(
 }
 
 /**
- * Source refs that the compiled Packet must carry so the Governance context
- * survives every dispatch (Single / Parallel / Handoff). Mirrors the existing
- * rule already used in store.sendTask and PacketPanel. Demo overrides with
- * the demo-namespaced ref so the dispatch chain still carries a verifiable
- * governance anchor without leaking the real Overlay.
+ * Governance refs for the compiled packet. These are the project's own
+ * canonical observations (ProjectAdapter.observed + Conversation.observed),
+ * verbatim — they prove where the Governance facts were read from, not the
+ * contents the agent will execute on. Demo fixture observations are already
+ * namespaced under "demo:" in the snapshot, so the demo path passes them
+ * through unchanged; the real path never fabricates a namespaced ref.
+ *
+ * Project canonical source (the file the agent actually needs) and the
+ * global MEMORY.md index are NOT Governance provenance; they are project
+ * context. Callers that want them as ordinary context refs compose them
+ * separately in their own ContextItem list.
  */
 export function governanceRefsForPacket(
   snapshot: OverlaySnapshot | null,
@@ -223,14 +195,20 @@ export function governanceRefsForPacket(
   isDemo: boolean,
 ): string[] {
   if (!projectId) return [];
+  const adapter = snapshot?.projects.find((p) => p.projectId === projectId);
+  if (!adapter) return [];
+  const conversation = snapshot?.conversations.find((c) => c.project === projectId);
+  const refs: string[] = [adapter.observed.sourceRef];
+  if (conversation) refs.push(conversation.observed.sourceRef);
+  // The isDemo flag is a defensive seam: the real path is selected by the
+  // absence of a demo-namespaced sourceRef, so the namespace check is
+  // structural rather than a flag.
   if (isDemo) {
-    return snapshot?.projects.find((project) => project.projectId === projectId)
-      ? [`demo:adapter:${projectId}`]
-      : [];
+    const demoRefs: string[] = [];
+    for (const ref of refs) {
+      if (ref.startsWith('demo:')) demoRefs.push(ref);
+    }
+    return demoRefs.length > 0 ? demoRefs : [];
   }
-  const refs: string[] = [];
-  const project = snapshot?.projects.find((item) => item.projectId === projectId);
-  if (project?.canonicalSource?.path) refs.push(projectFileSourceRef(projectId, project.canonicalSource.path));
-  refs.push(overlayFileSourceRef('memory/MEMORY.md'));
   return refs;
 }

@@ -11,18 +11,25 @@ import {
   resolveProjectFile,
 } from '../../src/main/adapters/projectFiles';
 import { createManualContext } from '../../src/core/project/staging';
+import type { ContextItem } from '../../src/core/types';
 
 const base = {
   projectId: 'demo',
   conversationKey: 'demo::claude::main',
   taskSummary: 'test',
-  staging: [],
+  staging: [] as ContextItem[],
+  governanceRefs: [] as string[],
   now: '2026-08-25T00:00:00.000Z',
   packetId: 'fixed',
 };
 
+const refCtx = (id: string, sourceRef: string): ContextItem => ({
+  id, title: `t-${id}`, source: `src:${id}`, body: 'body',
+  state: 'included', pinned: false, isReference: false, provenance: 'EXTERNAL', sourceRef,
+});
+
 describe('project canonical file resolution + fingerprint', () => {
-  it('moves CURRENT -> STALE -> INVALID from real file evidence', async () => {
+  it('moves CURRENT -> STALE -> INVALID from real file evidence (content dependency)', async () => {
     const root = mkdtempSync(join(tmpdir(), 'wb-project-'));
     const file = join(root, 'CLAUDE.md');
     writeFileSync(file, 'revision one', 'utf8');
@@ -30,7 +37,14 @@ describe('project canonical file resolution + fingerprint', () => {
     const first = await fingerprintProjectFile('demo', root, 'CLAUDE.md');
     expect(first.sourceRef).toBe(sourceRef);
 
-    const packet = compilePacket({ ...base, governanceRefs: [sourceRef], fingerprints: [first] });
+    // The file is now a content dependency through the included staging
+    // (governanceRefs are provenance, not content, so we feed the file in
+    // through staging).
+    const packet = compilePacket({
+      ...base,
+      staging: [refCtx('ref', sourceRef)],
+      fingerprints: [first],
+    });
     expect(checkPacketValidity(packet, [first])).toBe('CURRENT');
 
     writeFileSync(file, 'revision two', 'utf8');
@@ -39,11 +53,28 @@ describe('project canonical file resolution + fingerprint', () => {
     expect(checkPacketValidity(packet, [])).toBe('INVALID');
   });
 
-  it('fails closed when a declared file is missing', () => {
+  it('fails closed when a declared file is missing from the included Context', () => {
     const sourceRef = projectFileSourceRef('demo', 'missing.md');
-    const packet = compilePacket({ ...base, governanceRefs: [sourceRef], fingerprints: [] });
+    const packet = compilePacket({
+      ...base,
+      staging: [refCtx('ref', sourceRef)],
+      governanceRefs: [],
+      fingerprints: [],
+    });
     expect(packet.unresolvedDependencies).toEqual([sourceRef]);
     expect(checkPacketValidity(packet, [])).toBe('INVALID');
+  });
+
+  it('a Governance ref that is NOT in the included Context does not block dispatch', () => {
+    const sourceRef = projectFileSourceRef('demo', 'CLAUDE.md');
+    const packet = compilePacket({
+      ...base,
+      staging: [],
+      governanceRefs: [sourceRef],
+      fingerprints: [],
+    });
+    expect(packet.unresolvedDependencies).toEqual([]);
+    expect(checkPacketValidity(packet, [])).toBe('CURRENT');
   });
 
   it('rejects traversal, absolute paths, and project-root escape', async () => {

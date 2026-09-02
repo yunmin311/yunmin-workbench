@@ -66,6 +66,7 @@ export interface CompileInput {
 export interface PacketDependencyResolution {
   resolved: SourceFingerprint[];
   unresolved: string[];
+  governanceRefs: string[];
 }
 
 /** Resolve every declared canonical dependency without guessing ambiguous paths. */
@@ -75,11 +76,11 @@ export function packetDependencies(
   fingerprints: SourceFingerprint[],
 ): PacketDependencyResolution {
   const byRef = new Map(fingerprints.map((f) => [f.sourceRef, f.sha256]));
+  // Content dependencies come from the Context staging list only.
+  // Governance refs are provenance (where the Governance facts were read
+  // from) and are recorded verbatim in the packet header without being
+  // re-verified as a content dependency.
   const declarations: string[] = [];
-  // Governance refs and Context sourceRefs are exact, namespaced identities.
-  for (const ref of governanceRefs) {
-    declarations.push(ref);
-  }
   for (const item of staging) {
     if (item.state !== 'included') continue;
     declarations.push(...(item.sourceRefs?.length ? item.sourceRefs : item.sourceRef ? [item.sourceRef] : []));
@@ -99,6 +100,9 @@ export function packetDependencies(
       ([sourceRef, sha256]) => ({ sourceRef, sha256 }),
     ),
     unresolved: [...unresolved].sort(),
+    // Governance refs are recorded as-is; they do not participate in the
+    // current-fingerprint comparison and they never block dispatch.
+    governanceRefs: [...governanceRefs].sort(),
   };
 }
 

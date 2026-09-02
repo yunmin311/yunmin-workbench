@@ -54,14 +54,18 @@ describe('compilePacket', () => {
       ctx('x', 'excluded', true, 'overlay:memory/MEMORY.md'), // excluded -> not a dependency
     ];
     const deps = packetDependencies(['overlay:memory/MEMORY.md'], staging, fps);
+    // Governance refs are provenance, not content dependencies. They are
+    // not added to either resolved or unresolved sets.
     expect(deps.resolved.map((d) => d.sourceRef).sort()).toEqual([
       'overlay:memory/MEMORY.md',
       'overlay:projects/instances/creative-os.adapter.yaml',
     ]);
     expect(deps.unresolved).toEqual([]);
+    expect(deps.governanceRefs).toEqual(['overlay:memory/MEMORY.md']);
     const p = compilePacket({ ...base, governanceRefs: ['overlay:memory/MEMORY.md'], staging, fingerprints: fps });
     expect(p.sourceFingerprints.length).toBe(2);
     expect(p.unresolvedDependencies).toEqual([]);
+    expect(p.governanceRefs).toEqual(['overlay:memory/MEMORY.md']);
   });
 
   it('keeps every evidence source declared by a derived Memory reference', () => {
@@ -105,15 +109,30 @@ describe('Frozen Packet Validity (Integrity §4)', () => {
     expect(checkPacketValidity(p, [])).toBe('CURRENT');
   });
 
-  it('external project-constitution path without a fingerprint is INVALID', () => {
+  it('external project-constitution path without a fingerprint is INVALID only when it is a content dependency, not when it is a Governance ref', () => {
+    // The ref appears in included staging (so it is a content dependency).
+    // compilePacket must surface it as unresolved.
+    const staging = [ctx('canon', 'included', false, 'project-file:creative-os:CLAUDE.md')];
     const p = compilePacket({
       ...base,
       governanceRefs: ['project-file:creative-os:CLAUDE.md'],
-      staging: [],
+      staging,
       fingerprints: fps,
     });
     expect(p.unresolvedDependencies).toEqual(['project-file:creative-os:CLAUDE.md']);
     expect(checkPacketValidity(p, fps)).toBe('INVALID');
+  });
+
+  it('Governance refs that are not part of the included Context never block dispatch', () => {
+    const p = compilePacket({
+      ...base,
+      governanceRefs: ['overlay:project-1.adapter', 'overlay:project-1.dialogue#main'],
+      staging: [],
+      fingerprints: fps,
+    });
+    expect(p.unresolvedDependencies).toEqual([]);
+    expect(p.governanceRefs.sort()).toEqual(['overlay:project-1.adapter', 'overlay:project-1.dialogue#main']);
+    expect(checkPacketValidity(p, fps)).toBe('CURRENT');
   });
 
   it('included canonical source with a missing compile-time fingerprint is INVALID', () => {

@@ -51,8 +51,14 @@ function GovernanceStrip({ governance, demoMode }: { governance: GovernanceSnaps
         <span className="governance-summary">{title}</span>
       </summary>
       <div className="governance-detail">
-        {governance.canonicalSourceRef && (
-          <p className="governance-line">Canonical source: <code>{governance.canonicalSourceRef}</code>{governance.canonicalSourceCommit ? ` @ ${governance.canonicalSourceCommit.slice(0, 8)}` : ''}</p>
+        {governance.adapterObservedRef && (
+          <p className="governance-line">Adapter observed at: <code>{governance.adapterObservedRef}</code></p>
+        )}
+        {governance.dialogueObservedRef && (
+          <p className="governance-line">Dialogue observed at: <code>{governance.dialogueObservedRef}</code></p>
+        )}
+        {governance.adapter?.canonicalSource?.path && (
+          <p className="governance-line">Project context ref: <code>project-file:{governance.adapter.projectId}:{governance.adapter.canonicalSource.path}</code>{governance.adapter.canonicalSource.commit ? ` @ ${governance.adapter.canonicalSource.commit.slice(0, 8)}` : ''}</p>
         )}
         {governance.roles.length > 0 ? (
           <ul className="governance-roles">

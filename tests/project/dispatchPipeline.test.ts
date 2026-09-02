@@ -88,15 +88,20 @@ describe('one product dispatch pipeline', () => {
   });
 
   it('carries the same governance refs into the compiled packet for Single / Parallel / Handoff', () => {
-    const realRefs = ['project-file:project-1:CLAUDE.md', 'overlay:memory/MEMORY.md'];
-    const demoRefs = ['demo:adapter:project-1'];
-    const realFingerprints = [
-      { sourceRef: 'project-file:project-1:CLAUDE.md', sha256: 'a'.repeat(64) },
-      { sourceRef: 'overlay:memory/MEMORY.md', sha256: 'b'.repeat(64) },
+    // The dispatch pipeline only carries the governance refs the caller
+    // hands in. Producing the real refs is governanceBinding's job; this
+    // test only proves every dispatch mode preserves the same set verbatim
+    // in both the packet header and the agent input text.
+    const realRefs = [
+      'overlay:project-1.adapter',
+      'overlay:project-1.dialogue#main',
     ];
-    const demoFingerprints = [
-      { sourceRef: 'demo:adapter:project-1', sha256: 'c'.repeat(64) },
+    const demoRefs = [
+      'demo:overlay:project-1.adapter',
+      'demo:overlay:project-1.dialogue#main',
     ];
+    const realFingerprints = realRefs.map((sourceRef) => ({ sourceRef, sha256: 'a'.repeat(64) }));
+    const demoFingerprints = demoRefs.map((sourceRef) => ({ sourceRef, sha256: 'c'.repeat(64) }));
 
     const single = buildDispatchPlan({
       projectId: 'project-1', conversationKey: 'conversation-1', taskSummary: 'Single probe',
@@ -106,8 +111,7 @@ describe('one product dispatch pipeline', () => {
     expect(single.mode).toBe('single');
     expect(single.packet.governanceRefs).toEqual([...realRefs].sort());
     expect(single.packet.unresolvedDependencies).toEqual([]);
-    expect(single.packetText).toContain('project-file:project-1:CLAUDE.md');
-    expect(single.packetText).toContain('overlay:memory/MEMORY.md');
+    for (const ref of realRefs) expect(single.packetText).toContain(ref);
 
     const parallel = buildDispatchPlan({
       projectId: 'project-1', conversationKey: 'conversation-1', taskSummary: 'Parallel probe',
@@ -117,7 +121,9 @@ describe('one product dispatch pipeline', () => {
     });
     expect(parallel.mode).toBe('parallel');
     expect(parallel.packet.governanceRefs).toEqual([...realRefs].sort());
-    for (const request of parallel.requests) expect(request.packetText).toContain('overlay:memory/MEMORY.md');
+    for (const request of parallel.requests) {
+      for (const ref of realRefs) expect(request.packetText).toContain(ref);
+    }
 
     const handoff = buildDispatchPlan({
       projectId: 'project-1', conversationKey: 'conversation-2', taskSummary: 'Continue from previous result',
@@ -128,7 +134,7 @@ describe('one product dispatch pipeline', () => {
     });
     expect(handoff.mode).toBe('handoff');
     expect(handoff.packet.governanceRefs).toEqual([...realRefs].sort());
-    expect(handoff.packetText).toContain('overlay:memory/MEMORY.md');
+    for (const ref of realRefs) expect(handoff.packetText).toContain(ref);
 
     const demoHandoff = buildDispatchPlan({
       projectId: 'project-1', conversationKey: 'conversation-2', taskSummary: 'Continue from previous result',
@@ -138,8 +144,19 @@ describe('one product dispatch pipeline', () => {
       parentSourceRef: 'harness-result:demo::previous-event',
     });
     expect(demoHandoff.mode).toBe('handoff');
-    expect(demoHandoff.packet.governanceRefs).toEqual(demoRefs);
-    expect(demoHandoff.packetText).toContain('demo:adapter:project-1');
-    expect(demoHandoff.packetText).not.toContain('overlay:memory/MEMORY.md');
+    expect(demoHandoff.packet.governanceRefs).toEqual([...demoRefs].sort());
+    for (const ref of demoRefs) expect(demoHandoff.packetText).toContain(ref);
+    // The packet text is a single string with sections. Parse the
+    // "# Governance" section and confirm only demo-namespaced refs appear.
+    const lines = demoHandoff.packetText.split('\n');
+    const governanceStart = lines.findIndex((line) => line === '# Governance');
+    expect(governanceStart).toBeGreaterThanOrEqual(0);
+    const governanceLines: string[] = [];
+    for (let i = governanceStart + 1; i < lines.length; i += 1) {
+      const line = lines[i];
+      if (line.startsWith('# ')) break;
+      if (line.startsWith('- ')) governanceLines.push(line.slice(2));
+    }
+    expect(governanceLines).toEqual([...demoRefs].sort());
   });
 });

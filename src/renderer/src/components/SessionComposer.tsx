@@ -154,9 +154,11 @@ export function SessionComposer() {
               <div className="composer-menu agent-menu" role="menu">
                 {Object.values(harnessCapabilities).map((caps) => {
                   const hint = governance.agentHints.find((item) => item.harness === caps.harness);
-                  const hintLabel = hint && hint.role
-                    ? `suggested role · ${hint.role}`
-                    : 'role hint unavailable — adapter does not name this harness';
+                  const hintLabel = hint?.state === 'single' && hint.role
+                    ? `dialogue role on this project: ${hint.role}`
+                    : hint?.state === 'ambiguous'
+                      ? `multiple dialogue roles on ${caps.harness}; not projecting a single hint`
+                      : `no dialogue role declared for ${caps.harness} on this project`;
                   return (
                     <button
                       key={caps.harness}
@@ -168,7 +170,7 @@ export function SessionComposer() {
                     >
                       <span className="agent-check">{agents.includes(caps.harness) ? '✓' : ''}</span>
                       <span><strong>{caps.harness}</strong><small>{caps.canDispatch ? caps.protocol : caps.evidence}</small></span>
-                      {hint && hint.role && <span className="agent-role-hint">role: {hint.role}</span>}
+                      {hint?.state === 'single' && hint.role && <span className="agent-role-hint">role: {hint.role}</span>}
                     </button>
                   );
                 })}

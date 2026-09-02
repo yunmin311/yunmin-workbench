@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { checkPacketValidity, compilePacket, renderAgentInput } from '../../../core/project/packet';
 import { dispatchableHarnesses, resolveHarnessTarget, type HarnessCapabilityMatrix, type HarnessTarget } from '../../../core/project/harnessSelection';
-import { overlayFileSourceRef, projectFileSourceRef } from '../../../core/project/sourceIdentity';
 import { governanceRefsForPacket } from '../../../core/project/governanceBinding';
 import type { FrozenPacketSummary, HandoffReceipt, HarnessCapabilities, SourceFingerprint } from '../../../core/types';
 import { useWorkbench } from '../store';
