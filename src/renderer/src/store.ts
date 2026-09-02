@@ -11,6 +11,7 @@ import { checkPacketValidity } from '../../core/project/packet';
 import { sha256 } from '@noble/hashes/sha256';
 import { bytesToHex } from '@noble/hashes/utils';
 import { overlayFileSourceRef, projectFileSourceRef } from '../../core/project/sourceIdentity';
+import { governanceRefsForPacket, projectGovernanceView, type GovernanceSnapshot } from '../../core/project/governanceBinding';
 import {
   resolveWorkspaceTarget,
   updateWorkspaceSession,
@@ -41,6 +42,7 @@ import {
   DEMO_FROZEN,
 } from './demo/demoData';
 import { buildDispatchPlan, settleDispatchPlan, type DispatchOutcome } from '../../core/project/dispatchPipeline';
+import { useMemo } from 'react';
 import { contextFromAgentResult } from '../../core/project/executionRelations';
 
 export type View = 'projects' | 'control' | 'canvas' | 'compare' | 'context' | 'packet';
@@ -1033,10 +1035,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     for (const item of before.recheckedFingerprints) merged.set(item.sourceRef, item.sha256);
     for (const item of before.projectFingerprints) merged.set(item.sourceRef, item.sha256);
     const adapter = snapshot.projects.find((item) => item.projectId === projectId);
-    const governanceRefs = demoMode ? [] : [
-      adapter?.canonicalSource?.path ? projectFileSourceRef(projectId, adapter.canonicalSource.path) : null,
-      overlayFileSourceRef('memory/MEMORY.md'),
-    ].filter((item): item is string => Boolean(item));
+    const governanceRefs = governanceRefsForPacket(snapshot, projectId, demoMode);
     try {
       const plan = buildDispatchPlan({
         projectId,
@@ -1195,3 +1194,18 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   setPacketValidity: (packetValidity) => set({ packetValidity }),
   setHandoffStatus: (handoffStatus) => set({ handoffStatus }),
 }));
+
+/**
+ * Selector hook: derive the read-only Governance view from the active
+ * snapshot + project + conversation. Never mutates state. UNKNOWN is
+ * preserved as UNKNOWN and never fabricated.
+ */
+export function useGovernanceView(): GovernanceSnapshot {
+  const snapshot = useWorkbench((state) => state.snapshot);
+  const projectId = useWorkbench((state) => state.projectId);
+  const conversation = useWorkbench((state) => state.conversation);
+  return useMemo(
+    () => projectGovernanceView(snapshot ?? null, projectId, conversation),
+    [snapshot, projectId, conversation],
+  );
+}

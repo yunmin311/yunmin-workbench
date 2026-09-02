@@ -3,7 +3,7 @@ import type { ActivityEvent } from '../../../core/types';
 import { executionIdForEvent, projectRuntimeExecutions } from '../../../core/project/runtimeInspector';
 import { latestRuntimeExecutionForConversation } from '../runtimeInspectorModel';
 import { boundedTimeline, TIMELINE_PAGE_SIZE, visibleCountForTarget } from '../boundedTimeline';
-import { useWorkbench } from '../store';
+import { useGovernanceView, useWorkbench } from '../store';
 import { SessionComposer } from '../components/SessionComposer';
 
 const ACTIVITY_LABEL: Record<ActivityEvent['kind'], string> = {
@@ -30,6 +30,71 @@ const boundaryKinds = new Set<ActivityEvent['kind']>([
   'session-started', 'turn-started', 'turn-completed', 'turn-error',
   'approval-required', 'needs-user-input', 'harness-error', 'process-cancelled',
 ]);
+
+import type { GovernanceSnapshot } from '../../../core/project/governanceBinding';
+
+function GovernanceStrip({ governance, demoMode }: { governance: GovernanceSnapshot; demoMode: boolean }) {
+  // Quiet, single-line at rest. We only surface problems or missing facts.
+  const problemCount = governance.problems.length;
+  const roleLabel = governance.dialogue.roleFromRegistry ?? 'role UNKNOWN';
+  const lifecycle = governance.dialogue.lifecycle;
+  const gateKeys = Object.keys(governance.gates.declared);
+  const sessionId = governance.dialogue.sessionId ? ` · session ${governance.dialogue.sessionId}` : '';
+  const defaultFlow = governance.gates.defaultFlow;
+  const problem = problemCount > 0 ? ` · ${problemCount} problem${problemCount === 1 ? '' : 's'}` : '';
+  const demo = demoMode ? ' · SIMULATED' : '';
+  const title = `Role ${roleLabel} · ${lifecycle}${sessionId} · ${gateKeys.length} gate${gateKeys.length === 1 ? '' : 's'}${problem}${demo}`;
+  return (
+    <details className={`governance-strip ${problemCount > 0 ? 'has-problems' : ''}`} aria-label="Project governance summary">
+      <summary>
+        <strong>Governance</strong>
+        <span className="governance-summary">{title}</span>
+      </summary>
+      <div className="governance-detail">
+        {governance.canonicalSourceRef && (
+          <p className="governance-line">Canonical source: <code>{governance.canonicalSourceRef}</code>{governance.canonicalSourceCommit ? ` @ ${governance.canonicalSourceCommit.slice(0, 8)}` : ''}</p>
+        )}
+        {governance.roles.length > 0 ? (
+          <ul className="governance-roles">
+            {governance.roles.map((role) => (
+              <li key={role.role}>
+                <strong>{role.role}</strong>
+                <small>{role.responsibility}</small>
+                <span className={`governance-lifecycle lifecycle-${role.lifecycle.toLowerCase()}`}>{role.lifecycle}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="governance-line">No roles declared by the adapter.</p>
+        )}
+        {gateKeys.length > 0 ? (
+          <ul className="governance-gates">
+            {gateKeys.map((key) => (
+              <li key={key}><strong>{key}</strong> · <code>{governance.gates.declared[key]}</code></li>
+            ))}
+          </ul>
+        ) : (
+          <p className="governance-line">No <code>project_gates</code> declared by the adapter.</p>
+        )}
+        {defaultFlow && <p className="governance-line">Default flow: <code>{defaultFlow}</code></p>}
+        {governance.gates.ownerConflicts.length > 0 && (
+          <ul className="governance-conflicts">
+            {governance.gates.ownerConflicts.map((conflict) => (
+              <li key={conflict.key}>
+                Hard conflict on <code>{conflict.key}</code>: {conflict.values.join(' | ')}
+              </li>
+            ))}
+          </ul>
+        )}
+        {governance.problems.length > 0 && (
+          <ul className="governance-problems">
+            {governance.problems.map((message) => <li key={message}>{message}</li>)}
+          </ul>
+        )}
+      </div>
+    </details>
+  );
+}
 
 function ActivityCard({ event }: { event: ActivityEvent }) {
   const isTool = event.kind === 'tool-started' || event.kind === 'tool-completed';
@@ -122,6 +187,7 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
   const clearActivity = useWorkbench((state) => state.clearActivity);
   const loadHarnessCapabilities = useWorkbench((state) => state.loadHarnessCapabilities);
   const demoMode = useWorkbench((state) => state.demoMode);
+  const governance = useGovernanceView();
 
   useEffect(() => { void loadHarnessCapabilities(); }, [loadHarnessCapabilities, demoMode]);
 
@@ -219,6 +285,8 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
           <button onClick={() => window.dispatchEvent(new CustomEvent('workbench:open-attention'))}>Review</button>
         </div>
       )}
+
+      <GovernanceStrip governance={governance} demoMode={demoMode} />
 
       <section className="session-activity" aria-label="Structured runtime activity">
         {activityProblem && <p className="surface-alert">{activityProblem}</p>}

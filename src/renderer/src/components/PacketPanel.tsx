@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { checkPacketValidity, compilePacket, renderAgentInput } from '../../../core/project/packet';
 import { dispatchableHarnesses, resolveHarnessTarget, type HarnessCapabilityMatrix, type HarnessTarget } from '../../../core/project/harnessSelection';
 import { overlayFileSourceRef, projectFileSourceRef } from '../../../core/project/sourceIdentity';
+import { governanceRefsForPacket } from '../../../core/project/governanceBinding';
 import type { FrozenPacketSummary, HandoffReceipt, HarnessCapabilities, SourceFingerprint } from '../../../core/types';
 import { useWorkbench } from '../store';
 
@@ -128,10 +129,7 @@ export function PacketPanel() {
   const packet = useMemo(() => {
     if (!projectId || !conversation || !snapshot) return null;
     const adapter = snapshot.projects.find((p) => p.projectId === projectId);
-    const governanceRefs = demoMode ? [] : [
-      adapter?.canonicalSource?.path ? projectFileSourceRef(projectId, adapter.canonicalSource.path) : null,
-      overlayFileSourceRef('memory/MEMORY.md'),
-    ].filter((x): x is string => Boolean(x));
+    const governanceRefs = governanceRefsForPacket(snapshot, projectId, demoMode);
     return compilePacket({
       projectId,
       conversationKey: conversation.key,

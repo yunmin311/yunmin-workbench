@@ -86,4 +86,60 @@ describe('one product dispatch pipeline', () => {
     ]);
     expect(dispatch).toHaveBeenCalledTimes(2);
   });
+
+  it('carries the same governance refs into the compiled packet for Single / Parallel / Handoff', () => {
+    const realRefs = ['project-file:project-1:CLAUDE.md', 'overlay:memory/MEMORY.md'];
+    const demoRefs = ['demo:adapter:project-1'];
+    const realFingerprints = [
+      { sourceRef: 'project-file:project-1:CLAUDE.md', sha256: 'a'.repeat(64) },
+      { sourceRef: 'overlay:memory/MEMORY.md', sha256: 'b'.repeat(64) },
+    ];
+    const demoFingerprints = [
+      { sourceRef: 'demo:adapter:project-1', sha256: 'c'.repeat(64) },
+    ];
+
+    const single = buildDispatchPlan({
+      projectId: 'project-1', conversationKey: 'conversation-1', taskSummary: 'Single probe',
+      governanceRefs: realRefs, staging: [], fingerprints: realFingerprints, agents: ['claude'],
+      capabilities: { claude: capabilities('claude') }, environment: { kind: 'real' },
+    });
+    expect(single.mode).toBe('single');
+    expect(single.packet.governanceRefs).toEqual([...realRefs].sort());
+    expect(single.packet.unresolvedDependencies).toEqual([]);
+    expect(single.packetText).toContain('project-file:project-1:CLAUDE.md');
+    expect(single.packetText).toContain('overlay:memory/MEMORY.md');
+
+    const parallel = buildDispatchPlan({
+      projectId: 'project-1', conversationKey: 'conversation-1', taskSummary: 'Parallel probe',
+      governanceRefs: realRefs, staging: [], fingerprints: realFingerprints, agents: ['codex', 'claude'],
+      capabilities: { codex: capabilities('codex'), claude: capabilities('claude') },
+      environment: { kind: 'real' },
+    });
+    expect(parallel.mode).toBe('parallel');
+    expect(parallel.packet.governanceRefs).toEqual([...realRefs].sort());
+    for (const request of parallel.requests) expect(request.packetText).toContain('overlay:memory/MEMORY.md');
+
+    const handoff = buildDispatchPlan({
+      projectId: 'project-1', conversationKey: 'conversation-2', taskSummary: 'Continue from previous result',
+      governanceRefs: realRefs, staging: [], fingerprints: realFingerprints, agents: ['claude'],
+      capabilities: { claude: capabilities('claude') },
+      environment: { kind: 'real' },
+      parentSourceRef: 'harness-result:claude::previous-event',
+    });
+    expect(handoff.mode).toBe('handoff');
+    expect(handoff.packet.governanceRefs).toEqual([...realRefs].sort());
+    expect(handoff.packetText).toContain('overlay:memory/MEMORY.md');
+
+    const demoHandoff = buildDispatchPlan({
+      projectId: 'project-1', conversationKey: 'conversation-2', taskSummary: 'Continue from previous result',
+      governanceRefs: demoRefs, staging: [], fingerprints: demoFingerprints, agents: ['claude'],
+      capabilities: { claude: capabilities('claude') },
+      environment: { kind: 'demo', sessionId: 'demo-session-b' },
+      parentSourceRef: 'harness-result:demo::previous-event',
+    });
+    expect(demoHandoff.mode).toBe('handoff');
+    expect(demoHandoff.packet.governanceRefs).toEqual(demoRefs);
+    expect(demoHandoff.packetText).toContain('demo:adapter:project-1');
+    expect(demoHandoff.packetText).not.toContain('overlay:memory/MEMORY.md');
+  });
 });

@@ -5,7 +5,7 @@
  */
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
 import type { HarnessCapabilities } from '../../../core/types';
-import { useWorkbench } from '../store';
+import { useGovernanceView, useWorkbench } from '../store';
 
 type Harness = HarnessCapabilities['harness'];
 
@@ -22,6 +22,7 @@ export function SessionComposer() {
   const handoffSourceRef = useWorkbench((state) => state.handoffSourceRef);
   const clearHandoffSource = useWorkbench((state) => state.clearHandoffSource);
   const lastDispatchOutcomes = useWorkbench((state) => state.lastDispatchOutcomes);
+  const governance = useGovernanceView();
   const [agents, setAgents] = useState<Harness[]>([]);
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
@@ -151,12 +152,26 @@ export function SessionComposer() {
             </button>
             {selectorOpen && (
               <div className="composer-menu agent-menu" role="menu">
-                {Object.values(harnessCapabilities).map((caps) => (
-                  <button key={caps.harness} role="menuitemcheckbox" aria-checked={agents.includes(caps.harness)} disabled={!caps.canDispatch} onClick={() => toggleAgent(caps.harness)}>
-                    <span className="agent-check">{agents.includes(caps.harness) ? '✓' : ''}</span>
-                    <span><strong>{caps.harness}</strong><small>{caps.canDispatch ? caps.protocol : caps.evidence}</small></span>
-                  </button>
-                ))}
+                {Object.values(harnessCapabilities).map((caps) => {
+                  const hint = governance.agentHints.find((item) => item.harness === caps.harness);
+                  const hintLabel = hint && hint.role
+                    ? `suggested role · ${hint.role}`
+                    : 'role hint unavailable — adapter does not name this harness';
+                  return (
+                    <button
+                      key={caps.harness}
+                      role="menuitemcheckbox"
+                      aria-checked={agents.includes(caps.harness)}
+                      disabled={!caps.canDispatch}
+                      title={hintLabel}
+                      onClick={() => toggleAgent(caps.harness)}
+                    >
+                      <span className="agent-check">{agents.includes(caps.harness) ? '✓' : ''}</span>
+                      <span><strong>{caps.harness}</strong><small>{caps.canDispatch ? caps.protocol : caps.evidence}</small></span>
+                      {hint && hint.role && <span className="agent-role-hint">role: {hint.role}</span>}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>

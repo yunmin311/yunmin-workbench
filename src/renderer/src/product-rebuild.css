@@ -1256,3 +1256,118 @@ select:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
 }
+
+/* ---- Governance product binding projection ---- */
+.governance-strip {
+  box-sizing: border-box;
+  width: min(920px, calc(100% - 56px));
+  margin: 0 auto;
+  padding: 0;
+  border-bottom: 1px solid var(--rebuild-line-soft);
+  color: var(--rebuild-muted);
+  font-size: 11px;
+}
+.governance-strip > summary {
+  list-style: none;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 4px;
+  cursor: pointer;
+  user-select: none;
+}
+.governance-strip > summary::-webkit-details-marker { display: none; }
+.governance-strip > summary strong {
+  color: var(--rebuild-accent);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.governance-summary {
+  overflow: hidden;
+  color: var(--rebuild-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.governance-strip.has-problems > summary strong { color: var(--rebuild-warning); }
+.governance-detail {
+  display: grid;
+  gap: 6px;
+  padding: 4px 4px 12px;
+}
+.governance-line {
+  margin: 0;
+  color: var(--rebuild-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.governance-line code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--rebuild-text);
+  font: 10px ui-monospace, monospace;
+}
+.governance-roles,
+.governance-gates,
+.governance-conflicts,
+.governance-problems {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.governance-roles li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.governance-roles li strong { color: var(--rebuild-text); font-weight: 600; }
+.governance-roles li small { color: var(--rebuild-faint); font-size: 10px; }
+.governance-lifecycle {
+  padding: 1px 6px;
+  border-radius: 999px;
+  font: 8px/1.4 ui-monospace, monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.lifecycle-active { background: rgba(121, 201, 165, 0.18); color: var(--rebuild-success); }
+.lifecycle-paused,
+.lifecycle-standby { background: rgba(240, 182, 108, 0.18); color: var(--rebuild-warning); }
+.lifecycle-frozen { background: rgba(242, 140, 131, 0.18); color: #f28c83; }
+.lifecycle-unknown { background: rgba(180, 188, 200, 0.18); color: var(--rebuild-faint); }
+.governance-gates li,
+.governance-conflicts li,
+.governance-problems li {
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--rebuild-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.governance-gates li code,
+.governance-conflicts li code,
+.governance-problems li code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--rebuild-text);
+  font: 10px ui-monospace, monospace;
+}
+.governance-problems li { color: var(--rebuild-warning); }
+
+.agent-role-hint {
+  display: block;
+  margin-top: 3px;
+  color: var(--rebuild-accent);
+  font: 9px ui-monospace, monospace;
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+}
