@@ -271,7 +271,8 @@ describe('governanceBinding.governanceRefsForPacket', () => {
     };
     const primary = governanceRefsForPacket(multiDemo, 'creative-os', DEMO_CONVERSATIONS[0].key, true);
     const secondary = governanceRefsForPacket(multiDemo, 'creative-os', 'creative-os::claude::secondary-dialogue', true);
-    expect(primary).toContain(extraDemoObserved === primary[1] ? 'demo:project:creative-os' : extraDemoObserved);
+    expect(primary).not.toContain(extraDemoObserved);
+    expect(secondary).toContain(extraDemoObserved);
     // Simpler: the two conversations produce different dialogue provenance.
     const primaryDialogue = primary.find((ref) => ref !== 'demo:project:creative-os');
     const secondaryDialogue = secondary.find((ref) => ref !== 'demo:project:creative-os');
