@@ -66,7 +66,9 @@ function GovernanceStrip({ governance, demoMode }: { governance: GovernanceSnaps
               <li key={role.role}>
                 <strong>{role.role}</strong>
                 <small>{role.responsibility}</small>
-                <span className={`governance-lifecycle lifecycle-${role.lifecycle.toLowerCase()}`}>{role.lifecycle}</span>
+                {role.alive && role.lifecycle !== 'UNKNOWN' && (
+                  <span className={`governance-lifecycle lifecycle-${role.lifecycle.toLowerCase()}`}>{role.lifecycle}</span>
+                )}
               </li>
             ))}
           </ul>

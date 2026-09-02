@@ -1260,8 +1260,8 @@ select:focus-visible {
 /* ---- Governance product binding projection ---- */
 .governance-strip {
   box-sizing: border-box;
-  width: min(920px, calc(100% - 56px));
-  margin: 0 auto;
+  /* Width and horizontal centering are inherited from .session-surface so
+     the strip aligns with the header and the composer. */
   padding: 0;
   border-bottom: 1px solid var(--rebuild-line-soft);
   color: var(--rebuild-muted);
