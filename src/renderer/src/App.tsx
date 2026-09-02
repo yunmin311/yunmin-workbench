@@ -16,7 +16,6 @@ import { DemoWelcomeScreen } from './demo/DemoWelcomeScreen';
 import { AppChrome } from './components/AppChrome';
 import { CompareView } from './views/CompareView';
 import { ApprovalModal } from './components/ApprovalModal';
-import { startDemoEnvironmentWatcher } from './demo/demoEnvironment';
 import type { ActivityEvent } from '../../core/types';
 
 export default function App() {
@@ -45,7 +44,6 @@ export default function App() {
 
   useEffect(() => {
     void initialize();
-    startDemoEnvironmentWatcher();
     const offOverlay = window.wb.onOverlayChanged(() => void useWorkbench.getState().reloadAndRecheck());
     let focusTimer: ReturnType<typeof setTimeout> | null = null;
     const offFocus = window.wb.onAppFocus(() => {

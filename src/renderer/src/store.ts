@@ -51,6 +51,15 @@ import {
   DEMO_HISTORY_CATALOG,
   DEMO_HISTORY_DETAILS,
 } from './demo/demoData';
+import type {
+  HistoryCatalogResult,
+  HistorySearchResult,
+  HistorySessionDetail,
+} from '../../core/history/types';
+import type {
+  MemorySearchResult,
+  MemoryEvidenceExpansion,
+} from '../../core/memory/types';
 import { buildDispatchPlan, settleDispatchPlan, type DispatchOutcome } from '../../core/project/dispatchPipeline';
 import { useMemo } from 'react';
 import { contextFromAgentResult } from '../../core/project/executionRelations';
@@ -127,6 +136,12 @@ interface WorkbenchState {
   setTaskSummary: (s: string) => void;
   refreshFrozen: () => Promise<void>;
   loadFrozenDetail: (summary: FrozenPacketSummary) => Promise<FrozenPacket | null>;
+  // Demo-aware data accessors (store boundary chooses fixture vs IPC)
+  listHistory: () => Promise<HistoryCatalogResult>;
+  searchHistory: (query: { text: string; limit?: number }) => Promise<HistorySearchResult>;
+  readHistoryDetail: (sessionId: string) => Promise<HistorySessionDetail | null>;
+  searchMemory: (query: { text: string; limit?: number }) => Promise<MemorySearchResult>;
+  expandMemory: (id: string) => Promise<MemoryEvidenceExpansion | null>;
   loadGit: (projectId: string) => Promise<void>;
   loadMemoryBody: (memoryId: string) => Promise<void>;
   addProjectFile: (asReference: boolean) => Promise<void>;
@@ -749,6 +764,13 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     if (!projectId || !conversation) return null;
     const cached = frozenDetails[summary.hash];
     if (cached) return cached;
+    if (get().demoMode) {
+      const detail = getDemoFrozenDetail(summary);
+      if (detail && get().projectId === projectId && get().conversation?.key === conversation.key) {
+        set((state) => ({ frozenDetails: { ...state.frozenDetails, [summary.hash]: detail } }));
+      }
+      return detail;
+    }
     const detail = await window.wb.readFrozenDetail(projectId, conversation.key, {
       version: summary.version,
     });
@@ -756,6 +778,31 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       set((state) => ({ frozenDetails: { ...state.frozenDetails, [summary.hash]: detail } }));
     }
     return detail;
+  },
+
+  listHistory: async () => {
+    if (get().demoMode) return DEMO_HISTORY_CATALOG;
+    return window.wb.listHistory();
+  },
+
+  searchHistory: async (query) => {
+    if (get().demoMode) return getDemoHistorySearchResult(query.text);
+    return window.wb.searchHistory(query);
+  },
+
+  readHistoryDetail: async (sessionId) => {
+    if (get().demoMode) return DEMO_HISTORY_DETAILS[sessionId] ?? null;
+    return window.wb.readHistoryDetail(sessionId);
+  },
+
+  searchMemory: async (query) => {
+    if (get().demoMode) return getDemoMemorySearchResult(query.text);
+    return window.wb.searchMemory(query);
+  },
+
+  expandMemory: async (id) => {
+    if (get().demoMode) return getDemoMemoryDetail(id);
+    return window.wb.expandMemory(id);
   },
 
   loadGit: async (projectId) => {

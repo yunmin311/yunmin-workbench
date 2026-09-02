@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { SNIPPET_MARK, type HistoryCatalogResult, type HistorySearchResult, type HistorySessionDetail } from '../../../core/history/types';
+import { useWorkbench } from '../store';
 
 function MarkedSnippet({ text }: { text: string }) {
   return <>{text.split(SNIPPET_MARK).map((part, index) => index % 2 === 1 ? <mark key={index}>{part}</mark> : part)}</>;
@@ -12,10 +13,13 @@ export function HistoryPanel({ onClose, initialSessionId }: { onClose: () => voi
   const [detail, setDetail] = useState<HistorySessionDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
+  const listHistory = useWorkbench((state) => state.listHistory);
+  const searchHistory = useWorkbench((state) => state.searchHistory);
+  const readHistoryDetail = useWorkbench((state) => state.readHistoryDetail);
 
   useEffect(() => {
-    void window.wb.listHistory().then(setCatalog).catch((reason) => setError(String(reason))).finally(() => setBusy(false));
-  }, []);
+    void listHistory().then(setCatalog).catch((reason) => setError(String(reason))).finally(() => setBusy(false));
+  }, [listHistory]);
 
   useEffect(() => {
     if (initialSessionId) void openDetail(initialSessionId);
@@ -26,7 +30,7 @@ export function HistoryPanel({ onClose, initialSessionId }: { onClose: () => voi
     setDetail(null);
     setError(null);
     try {
-      setResult(await window.wb.searchHistory({ text: query, limit: 100 }));
+      setResult(await searchHistory({ text: query, limit: 100 }));
     } catch (reason) {
       setError(String(reason));
     } finally {
@@ -37,7 +41,7 @@ export function HistoryPanel({ onClose, initialSessionId }: { onClose: () => voi
     setBusy(true);
     setError(null);
     try {
-      setDetail(await window.wb.readHistoryDetail(sessionId));
+      setDetail(await readHistoryDetail(sessionId));
     } catch (reason) {
       setError(String(reason));
     } finally {

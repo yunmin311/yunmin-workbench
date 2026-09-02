@@ -10,16 +10,18 @@ export function MemoryPanel({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const addMemoryContext = useWorkbench((state) => state.addMemoryContext);
   const conversation = useWorkbench((state) => state.conversation);
+  const searchMemory = useWorkbench((state) => state.searchMemory);
+  const expandMemory = useWorkbench((state) => state.expandMemory);
 
   const search = async () => {
     setBusy(true); setError(null); setDetail(null);
-    try { setResult(await window.wb.searchMemory({ text: query, limit: 50 })); }
+    try { setResult(await searchMemory({ text: query, limit: 50 })); }
     catch (reason) { setError(String(reason)); }
     finally { setBusy(false); }
   };
   const inspect = async (hit: MemorySearchHit) => {
     setBusy(true); setError(null);
-    try { setDetail(await window.wb.expandMemory(hit.id)); }
+    try { setDetail(await expandMemory(hit.id)); }
     catch (reason) { setError(String(reason)); }
     finally { setBusy(false); }
   };
