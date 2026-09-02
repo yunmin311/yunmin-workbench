@@ -49,6 +49,64 @@ test('Demo resets and exits without leaking simulated history', async () => {
   }
 });
 
+test('Demo Creative OS exposes six sessions and switches follow the selection', async () => {
+  const { app, win } = await launchEmpty();
+  try {
+    await win.getByRole('button', { name: 'Try Demo' }).click();
+    await expect(win.locator('.session-surface')).toBeVisible();
+
+    const openPicker = () => win.getByRole('button', { name: 'Open workspace and session switcher' }).click();
+    openPicker();
+    const picker = win.locator('.session-picker');
+    await picker.locator('.project-switcher select').selectOption('creative-os');
+
+    const sessions = picker.locator('.sidebar-conversations li');
+    await expect(sessions).toHaveCount(6);
+    await expect(picker.locator('.sidebar-conversations')).toContainText('claude');
+    await expect(picker.locator('.sidebar-conversations')).toContainText('codex');
+    await expect(picker.locator('.sidebar-conversations')).toContainText('deepseek');
+    await expect(picker.locator('.sidebar-conversations em', { hasText: 'ACTIVE' }).first()).toBeAttached();
+    await expect(picker.locator('.sidebar-conversations em', { hasText: 'PAUSED' }).first()).toBeAttached();
+    await expect(picker.locator('.sidebar-conversations em', { hasText: 'STANDBY' }).first()).toBeAttached();
+
+    // Switch three sessions: header role, governance lifecycle and dispatch
+    // isolation must all follow the selected conversation.
+    const pick = async (role: string) => {
+      openPicker();
+      await picker.locator('.sidebar-conversations li button', { hasText: role }).first().click();
+    };
+
+    await pick('Creative OS 规划');
+    await expect(win.locator('.session-header h1')).toHaveText('Creative OS 规划');
+    await expect(win.locator('.governance-strip .governance-summary')).toContainText('ACTIVE');
+    await expect(win.locator('.session-path')).toContainText('claude');
+
+    await pick('Creative OS 顾问');
+    await expect(win.locator('.session-header h1')).toHaveText('Creative OS 顾问');
+    await expect(win.locator('.governance-strip .governance-summary')).toContainText('PAUSED');
+    await expect(win.locator('.session-path')).toContainText('deepseek');
+
+    await pick('Creative OS Codex 替补');
+    await expect(win.locator('.session-header h1')).toHaveText('Creative OS Codex 替补');
+    await expect(win.locator('.governance-strip .governance-summary')).toContainText('STANDBY');
+    await expect(win.locator('.session-path')).toContainText('codex');
+
+    // Dispatch provenance stays scoped: events sent to one session never
+    // appear in another session's timeline.
+    await pick('Creative OS 主对话');
+    await win.getByRole('textbox', { name: 'Task for Agent' }).fill('Scoped to main dialogue');
+    await win.getByRole('button', { name: /Send to/ }).click();
+    await expect(win.locator('.activity-kind-agent-response')).toHaveCount(1);
+    await pick('Creative OS 设计');
+    await expect(win.locator('.session-header h1')).toHaveText('Creative OS 设计');
+    await expect(win.locator('.activity-kind-agent-response')).toHaveCount(0);
+    await pick('Creative OS 主对话');
+    await expect(win.locator('.activity-kind-agent-response')).toHaveCount(1);
+  } finally {
+    await app.close();
+  }
+});
+
 test('Demo completes Single → Parallel → Handoff → Compare through real dispatch UI', async () => {
   test.setTimeout(90_000);
   const { app, win } = await launchEmpty();

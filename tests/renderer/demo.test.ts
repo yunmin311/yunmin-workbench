@@ -17,7 +17,13 @@ describe('Demo Workspace is isolated initial state, not a fake renderer runtime'
 
   it('contains workspace, session and Context fixtures but no seeded live history', () => {
     expect(DEMO_PROJECTS.length).toBeGreaterThanOrEqual(2);
-    expect(DEMO_CONVERSATIONS.length).toBe(DEMO_PROJECTS.length);
+    // Creative OS mirrors a real multi-session setup: at least six role
+    // conversations spanning platforms and non-ACTIVE lifecycle states.
+    const creativeOs = DEMO_CONVERSATIONS.filter((item) => item.project === 'creative-os');
+    expect(creativeOs.length).toBeGreaterThanOrEqual(6);
+    expect(new Set(creativeOs.map((item) => item.platform))).toEqual(new Set(['claude', 'codex', 'deepseek']));
+    expect(new Set(creativeOs.map((item) => item.status))).toEqual(new Set(['ACTIVE', 'PAUSED', 'STANDBY']));
+    expect(new Set(DEMO_CONVERSATIONS.map((item) => item.key)).size).toBe(DEMO_CONVERSATIONS.length);
     expect(DEMO_CONTEXT.some((item) => item.state === 'included' && item.pinned)).toBe(true);
     expect(DEMO_CONTEXT.some((item) => item.provenance === 'USER PROVIDED')).toBe(true);
     expect(DEMO_FROZEN.length).toBeGreaterThanOrEqual(1);

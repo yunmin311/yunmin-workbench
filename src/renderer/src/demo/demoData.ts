@@ -45,19 +45,48 @@ export const DEMO_PROJECTS: DemoProject[] = [
 ];
 
 // ---- Conversations --------------------------------------------------------
+// Creative OS mirrors a real multi-session setup: one main dialogue plus
+// supporting roles across platforms. Lifecycle states deliberately differ so
+// the sidebar and Governance strip exercise non-ACTIVE routing.
 
-export const DEMO_CONVERSATIONS: Conversation[] = DEMO_PROJECTS.map((project, index) => ({
-  key: `${project.projectId}::${project.platform}::${project.role}`,
-  role: project.role,
-  project: project.projectId,
-  platform: project.platform,
-  status: index === 1 ? 'ACTIVE' : 'ACTIVE',
-  taskState: index === 1 ? 'waiting' : 'active',
-  runtimeState: index === 1 ? 'idle' : 'unknown',
-  attention: 'none',
-  verification: 'VERIFIED' as const,
-  observed: obs('canonical-file', `demo:conversation:${project.projectId}`, 'VERIFIED'),
-}));
+interface DemoConversationSeed {
+  project: string;
+  platform: DemoProject['platform'];
+  role: string;
+  status: Conversation['status'];
+  taskState: Conversation['taskState'];
+  runtimeState: Conversation['runtimeState'];
+  verification: Conversation['verification'];
+  sourceRef: string;
+}
+
+function conv(seed: DemoConversationSeed): Conversation {
+  return {
+    key: `${seed.project}::${seed.platform}::${seed.role}`,
+    role: seed.role,
+    project: seed.project,
+    platform: seed.platform,
+    status: seed.status,
+    taskState: seed.taskState,
+    runtimeState: seed.runtimeState,
+    attention: 'none',
+    verification: seed.verification,
+    observed: obs('canonical-file', seed.sourceRef, 'VERIFIED'),
+  };
+}
+
+export const DEMO_CONVERSATIONS: Conversation[] = [
+  // Creative OS — six real, anonymised role conversations.
+  conv({ project: 'creative-os', platform: 'claude', role: 'Creative OS 主对话', status: 'ACTIVE', taskState: 'active', runtimeState: 'idle', verification: 'VERIFIED', sourceRef: 'demo:conversation:creative-os:main' }),
+  conv({ project: 'creative-os', platform: 'claude', role: 'Creative OS 规划', status: 'ACTIVE', taskState: 'waiting', runtimeState: 'unknown', verification: 'VERIFIED', sourceRef: 'demo:conversation:creative-os:planning' }),
+  conv({ project: 'creative-os', platform: 'deepseek', role: 'Creative OS 顾问', status: 'PAUSED', taskState: 'waiting', runtimeState: 'stopped', verification: 'UNVERIFIED', sourceRef: 'demo:conversation:creative-os:advisor' }),
+  conv({ project: 'creative-os', platform: 'claude', role: 'Creative OS 设计', status: 'ACTIVE', taskState: 'active', runtimeState: 'idle', verification: 'VERIFIED', sourceRef: 'demo:conversation:creative-os:design' }),
+  conv({ project: 'creative-os', platform: 'claude', role: 'Creative OS 笔记', status: 'PAUSED', taskState: 'unknown', runtimeState: 'stopped', verification: 'UNVERIFIED', sourceRef: 'demo:conversation:creative-os:notes' }),
+  conv({ project: 'creative-os', platform: 'codex', role: 'Creative OS Codex 替补', status: 'STANDBY', taskState: 'standby', runtimeState: 'stopped', verification: 'VERIFIED', sourceRef: 'demo:conversation:creative-os:codex-standby' }),
+  // Other demo workspaces keep one conversation each.
+  conv({ project: 'governance', platform: 'codex', role: 'Governance 栈', status: 'ACTIVE', taskState: 'waiting', runtimeState: 'idle', verification: 'VERIFIED', sourceRef: 'demo:conversation:governance' }),
+  conv({ project: 'personal-site', platform: 'claude', role: '站点发布', status: 'ACTIVE', taskState: 'active', runtimeState: 'unknown', verification: 'VERIFIED', sourceRef: 'demo:conversation:personal-site' }),
+];
 
 // ---- Context staging (visible Included / Excluded / Pinned) ---------------
 
@@ -183,6 +212,10 @@ export const DEMO_SNAPSHOT: OverlaySnapshot = {
   sourceFingerprints: [
     { sourceRef: 'demo:project-file:creative-os:CLAUDE.md', sha256: 'demo-sha-canon' },
     { sourceRef: 'demo:adapter:creative-os', sha256: 'demo-sha-adapter' },
+    // buildStaging derives gate items from each adapter's observed ref, so the
+    // demo snapshot must fingerprint those refs or rebuilt staging (any session
+    // switch) compiles an INVALID dispatch packet.
+    ...DEMO_PROJECTS.map((p) => ({ sourceRef: `demo:project:${p.projectId}`, sha256: `demo-sha-project-${p.projectId}` })),
   ],
   problems: [],
 };

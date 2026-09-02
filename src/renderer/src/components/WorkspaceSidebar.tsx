@@ -59,12 +59,13 @@ export function WorkspaceSidebar({ onNavigate }: { onNavigate?: () => void }) {
             <ul>
               {conversations.map((item) => {
                 const runtime = runtimeSessions.filter((session) => session.conversationKey === item.key).at(-1);
+                const runtimeState = runtime?.state ?? item.runtimeState;
                 return (
                   <li key={item.key}>
                     <button className={conversation?.key === item.key ? 'selected' : ''} onClick={() => openConversation(item.key)}>
-                      <i className={`runtime-dot runtime-${runtime?.state ?? 'unknown'}`} />
+                      <i className={`runtime-dot runtime-${runtimeState}`} />
                       <span><strong>{item.role}</strong><small>{item.platform}</small></span>
-                      <em>{runtime?.state === 'working' ? 'RUNNING' : item.status}</em>
+                      <em className={item.status === 'ACTIVE' ? undefined : `lifecycle-${item.status.toLowerCase()}`}>{runtime?.state === 'working' ? 'RUNNING' : item.status}</em>
                     </button>
                   </li>
                 );
