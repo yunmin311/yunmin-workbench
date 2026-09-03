@@ -2,13 +2,31 @@ import { discoverProjects } from '../../../core/project/discovery';
 import { resolveWorkspaceTarget } from '../../../core/project/workspaceSession';
 import { useWorkbench } from '../store';
 
-function runtimeStateLabel(runtimeState: string, lifecycle: string): { label: string; state: string } {
-  if (runtimeState === 'working') return { label: 'Running', state: 'working' };
-  if (lifecycle === 'STANDBY') return { label: 'Standby', state: 'idle' };
-  if (lifecycle === 'PAUSED') return { label: 'Paused', state: 'stopped' };
-  if (runtimeState === 'error') return { label: 'Error', state: 'error' };
-  if (runtimeState === 'idle') return { label: 'Idle', state: 'idle' };
-  return { label: lifecycle || 'Unknown', state: 'unknown' };
+function lifecycleLabel(status: string): { label: string; className: string } {
+  switch (status) {
+    case 'ACTIVE': return { label: 'Active', className: 'lifecycle-active' };
+    case 'PAUSED': return { label: 'Paused', className: 'lifecycle-paused' };
+    case 'STANDBY': return { label: 'Standby', className: 'lifecycle-standby' };
+    case 'FROZEN': return { label: 'Frozen', className: 'lifecycle-frozen' };
+    default: return { label: status || 'Unknown', className: 'lifecycle-unknown' };
+  }
+}
+
+function runtimeStateLabel(state: string): { label: string; className: string } {
+  switch (state) {
+    case 'working': return { label: 'Running', className: 'runtime-working' };
+    case 'error': return { label: 'Error', className: 'runtime-error' };
+    case 'idle': return { label: 'Idle', className: 'runtime-idle' };
+    case 'stopped': return { label: 'Stopped', className: 'runtime-stopped' };
+    default: return { label: 'Unknown', className: 'runtime-unknown' };
+  }
+}
+
+function attentionLabel(item: { kind: string; level: string }): { label: string; className: string } | null {
+  if (item.kind === 'approval-required') return { label: 'Needs Approval', className: 'attention-approval' };
+  if (item.kind === 'needs-user-input') return { label: 'Needs Input', className: 'attention-input' };
+  if (item.kind === 'execution-review') return { label: 'Ready Review', className: 'attention-review' };
+  return null;
 }
 
 export function WorkspaceSidebar({ onNavigate, isModal = false }: { onNavigate?: () => void; isModal?: boolean }) {
@@ -17,6 +35,7 @@ export function WorkspaceSidebar({ onNavigate, isModal = false }: { onNavigate?:
   const conversation = useWorkbench((state) => state.conversation);
   const workspaceSession = useWorkbench((state) => state.workspaceSession);
   const runtimeSessions = useWorkbench((state) => state.runtimeSessions);
+  const attentionItems = useWorkbench((state) => state.attentionItems);
   const selectProject = useWorkbench((state) => state.selectProject);
   const selectConversation = useWorkbench((state) => state.selectConversation);
   const resumeWorkspace = useWorkbench((state) => state.resumeWorkspace);
@@ -29,6 +48,9 @@ export function WorkspaceSidebar({ onNavigate, isModal = false }: { onNavigate?:
     .filter((target) => resolveWorkspaceTarget(snapshot, target).target)
     .slice(0, 4);
   const running = runtimeSessions.filter((session) => session.state === 'working');
+
+  const conversationAttention = (key: string) =>
+    attentionItems.find((a) => a.conversationKey === key && (a.kind === 'approval-required' || a.kind === 'needs-user-input' || a.kind === 'execution-review'));
 
   const openConversation = (key: string) => {
     const next = snapshot.conversations.find((item) => item.key === key);
@@ -69,13 +91,20 @@ export function WorkspaceSidebar({ onNavigate, isModal = false }: { onNavigate?:
               <ul>
                 {conversations.map((item) => {
                   const runtime = runtimeSessions.filter((session) => session.conversationKey === item.key).at(-1);
-                  const runtimeState = runtime?.state ?? item.runtimeState;
+                  const rState = runtime?.state ?? item.runtimeState;
+                  const rLabel = runtimeStateLabel(rState);
+                  const lLabel = lifecycleLabel(item.status);
+                  const attn = conversationAttention(item.key);
+                  const aLabel = attn ? attentionLabel(attn) : null;
                   return (
                     <li key={item.key}>
                       <button className={conversation?.key === item.key ? 'selected' : ''} onClick={() => openConversation(item.key)}>
-                        <i className={`runtime-dot runtime-${runtimeState}`} />
+                        <i className={`runtime-dot ${rLabel.className}`} />
                         <span><strong>{item.role}</strong><small>{item.platform}</small></span>
-                        <em className={item.status === 'ACTIVE' ? undefined : `lifecycle-${item.status.toLowerCase()}`}>{runtime?.state === 'working' ? 'RUNNING' : item.status}</em>
+                        <span className="status-badges">
+                          <em className={lLabel.className}>{lLabel.label}</em>
+                          {aLabel && <em className={aLabel.className}>{aLabel.label}</em>}
+                        </span>
                       </button>
                     </li>
                   );
@@ -150,7 +179,7 @@ export function WorkspaceSidebar({ onNavigate, isModal = false }: { onNavigate?:
               }}
               title={`${project.displayName} · ${project.conversationCount} session${project.conversationCount === 1 ? '' : 's'}`}
             >
-              <i className={`runtime-pill ${project.trust === 'VERIFIED' ? 'idle' : project.trust === 'DISCOVERED' ? 'working' : 'unknown'}`} />
+              <i className={`trust-pill trust-${project.trust?.toLowerCase() ?? 'unknown'}`} />
               <span className="name">{project.displayName}</span>
               <span className="count">{project.conversationCount}</span>
             </button>
@@ -168,18 +197,24 @@ export function WorkspaceSidebar({ onNavigate, isModal = false }: { onNavigate?:
           {conversations.length > 0 ? (
             conversations.map((item) => {
               const runtime = runtimeSessions.filter((session) => session.conversationKey === item.key).at(-1);
-              const runtimeState = runtime?.state ?? item.runtimeState;
-              const meta = runtimeStateLabel(runtimeState, item.status);
+              const rState = runtime?.state ?? item.runtimeState;
+              const rLabel = runtimeStateLabel(rState);
+              const lLabel = lifecycleLabel(item.status);
+              const attn = conversationAttention(item.key);
+              const aLabel = attn ? attentionLabel(attn) : null;
               return (
                 <li key={item.key}>
                   <button
                     className={conversation?.key === item.key ? 'is-current' : ''}
                     onClick={() => openConversation(item.key)}
-                    title={`${item.role} · ${item.platform} · ${meta.label}`}
+                    title={`${item.role} · ${item.platform} · ${lLabel.label} · ${rLabel.label}${aLabel ? ` · ${aLabel.label}` : ''}`}
                   >
-                    <i className={`runtime-pill ${meta.state}`} />
+                    <i className={`runtime-pill ${rLabel.className}`} />
                     <span className="name">{item.role}</span>
-                    <span className="lifecycle">{meta.label}</span>
+                    <span className="status-badges">
+                      <em className={lLabel.className}>{lLabel.label}</em>
+                      {aLabel && <em className={aLabel.className}>{aLabel.label}</em>}
+                    </span>
                   </button>
                 </li>
               );
@@ -205,7 +240,7 @@ export function WorkspaceSidebar({ onNavigate, isModal = false }: { onNavigate?:
                   onClick={() => session.conversationKey && openConversation(session.conversationKey)}
                   title={`Running · ${session.binding.harness}`}
                 >
-                  <i className="runtime-pill working" />
+                  <i className="runtime-pill runtime-working" />
                   <span className="name">{snapshot.conversations.find((item) => item.key === session.conversationKey)?.role ?? session.id}</span>
                   <span className="lifecycle">{session.binding.harness}</span>
                 </button>
@@ -215,12 +250,16 @@ export function WorkspaceSidebar({ onNavigate, isModal = false }: { onNavigate?:
               const targetConversation = target.conversationScope
                 ? snapshot.conversations.find((item) => item.key === target.conversationScope!.conversationKey)
                 : undefined;
+              const rLabel = targetConversation ? runtimeStateLabel(targetConversation.runtimeState) : { label: 'Unknown', className: 'runtime-unknown' };
+              const lLabel = targetConversation ? lifecycleLabel(targetConversation.status) : { label: 'Project', className: 'lifecycle-unknown' };
               return (
                 <li key={`${target.projectId}:${target.conversationScope?.conversationKey ?? ''}`}>
                   <button onClick={() => { resumeWorkspace(target); }} title={targetConversation?.role ?? target.projectId}>
-                    <i className="runtime-pill unknown" />
+                    <i className={`runtime-pill ${rLabel.className}`} />
                     <span className="name">{targetConversation?.role ?? target.projectId}</span>
-                    <span className="lifecycle">{targetConversation ? target.projectId.slice(0, 8) : 'PROJECT'}</span>
+                    <span className="status-badges">
+                      <em className={lLabel.className}>{lLabel.label}</em>
+                    </span>
                   </button>
                 </li>
               );
