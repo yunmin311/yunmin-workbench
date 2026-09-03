@@ -68,6 +68,23 @@ export function projectConversationStatus(
   return { runtime, lifecycle, attention };
 }
 
+/** Shared renderer for conversation status badges: runtime pill + lifecycle badge + attention badge */
+function ConversationStatusBadges({ proj, showProjectFallback = false, projectName }: { proj: ConversationStatusProjection; showProjectFallback?: boolean; projectName?: string }) {
+  if (showProjectFallback && projectName) {
+    return (
+      <span className="status-badges">
+        <em className="lifecycle-project">{projectName}</em>
+      </span>
+    );
+  }
+  return (
+    <span className="status-badges">
+      <em className={proj.lifecycle.className}>{proj.lifecycle.label}</em>
+      {proj.attention && <em className={proj.attention.className}>{proj.attention.label}</em>}
+    </span>
+  );
+}
+
 export function WorkspaceSidebar({ onNavigate, isModal = false }: { onNavigate?: () => void; isModal?: boolean }) {
   const snapshot = useWorkbench((state) => state.snapshot);
   const projectId = useWorkbench((state) => state.projectId);
@@ -163,6 +180,7 @@ export function WorkspaceSidebar({ onNavigate, isModal = false }: { onNavigate?:
                           <i className={`runtime-dot ${proj.runtime.className}`} />
                           <span>{targetConversation?.role ?? session.id}</span>
                           <small>{session.binding.harness}</small>
+                          <ConversationStatusBadges proj={proj} />
                         </button>
                       </li>
                     );
@@ -184,6 +202,7 @@ export function WorkspaceSidebar({ onNavigate, isModal = false }: { onNavigate?:
                         <button onClick={() => { resumeWorkspace(target); onNavigate?.(); }}>
                           <span>{targetConversation?.role ?? target.projectId}</span>
                           <small>{targetConversation ? target.projectId : 'PROJECT'}</small>
+                          <ConversationStatusBadges proj={proj} showProjectFallback projectName={target.projectId} />
                         </button>
                       </li>
                     );
@@ -279,9 +298,7 @@ export function WorkspaceSidebar({ onNavigate, isModal = false }: { onNavigate?:
                   >
                     <i className={`runtime-pill ${proj.runtime.className}`} />
                     <span className="name">{targetConversation?.role ?? session.id}</span>
-                    <span className="status-badges">
-                      <em className={proj.lifecycle.className}>{proj.lifecycle.label}</em>
-                    </span>
+                    <ConversationStatusBadges proj={proj} />
                   </button>
                 </li>
               );
@@ -302,9 +319,7 @@ export function WorkspaceSidebar({ onNavigate, isModal = false }: { onNavigate?:
                   <button onClick={() => { resumeWorkspace(target); }} title={targetConversation?.role ?? target.projectId}>
                     <i className={`runtime-pill ${proj.runtime.className}`} />
                     <span className="name">{targetConversation?.role ?? target.projectId}</span>
-                    <span className="status-badges">
-                      <em className={proj.lifecycle.className}>{proj.lifecycle.label}</em>
-                    </span>
+                    <ConversationStatusBadges proj={proj} showProjectFallback projectName={target.projectId} />
                   </button>
                 </li>
               );
