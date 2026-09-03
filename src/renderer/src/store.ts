@@ -8,9 +8,7 @@ import { buildStaging, createManualContext, createMemoryProjectionContext } from
 import { orderActivity, projectRuntimeSessions } from '../../core/project/activity';
 import { applyAttentionLocalState, reduceAttention } from '../../core/attention/reducer';
 import { checkPacketValidity } from '../../core/project/packet';
-import { canonicalPacketJson } from '../../core/project/canonical';
-import { sha256 } from '@noble/hashes/sha256';
-import { bytesToHex } from '@noble/hashes/utils';
+import { computeFrozenPacketHash, computeStringHash } from '../../core/project/canonical';
 import { overlayFileSourceRef, projectFileSourceRef } from '../../core/project/sourceIdentity';
 import { governanceRefsForPacket, projectGovernanceView, type GovernanceSnapshot } from '../../core/project/governanceBinding';
 import {
@@ -187,11 +185,6 @@ interface DemoFrozenPacket {
   detail: FrozenPacket;
 }
 
-function computeDemoFrozenHash(packet: TaskPacket): string {
-  // Use the formal canonicalPacketJson + SHA-256 (64 hex chars), same as formal freezePacket
-  return bytesToHex(sha256(new TextEncoder().encode(canonicalPacketJson(packet))));
-}
-
 function createDemoFrozenState(): { frozen: FrozenPacketSummary[]; frozenDetails: Record<string, FrozenPacket> } {
   const frozen = DEMO_FROZEN.map((f) => ({ ...f }));
   const frozenDetails: Record<string, FrozenPacket> = {};
@@ -231,7 +224,7 @@ function projectAttention(state: AttentionProjectionSource): AttentionItem[] {
       .map((item) => `${item.sourceRef}=${current.get(item.sourceRef) ?? 'MISSING'}`)
       .sort()
       .join('\n');
-    const versionHash = bytesToHex(sha256(new TextEncoder().encode(dependencyVersion)));
+    const versionHash = computeStringHash(dependencyVersion);
     return {
       key: `${packet.hash}:${validity}:${versionHash}`,
       projectId: packet.projectId,
@@ -883,7 +876,7 @@ load: async (refresh) => {
         conversationKey: packet.conversationKey,
         conversationId: packet.conversationId,
         version: nextVersion,
-        hash: computeDemoFrozenHash(packet),
+        hash: computeFrozenPacketHash(packet),
         frozenAt: new Date().toISOString(),
         roughTokens: packet.roughTokens,
         taskSummary: packet.taskSummary,
@@ -1295,7 +1288,7 @@ load: async (refresh) => {
 
   addResultToContext: (event) => {
     const item = contextFromAgentResult(event);
-    const hash = bytesToHex(sha256(new TextEncoder().encode(item.body)));
+    const hash = computeStringHash(item.body);
     set((state) => ({
       staging: [...state.staging.filter((current) => current.id !== item.id), item],
       recheckedSourceRefs: [...new Set([...state.recheckedSourceRefs, item.sourceRef!])],

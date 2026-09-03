@@ -27,14 +27,15 @@ export function canonicalPacketJson(value: unknown): string {
 
 /** Compute deterministic SHA-256 hash (64 hex chars) of a packet-like object. */
 export function computePacketHash(value: unknown): string {
-  const { sha256 } = require('@noble/hashes/sha256');
-  const { bytesToHex } = require('@noble/hashes/utils');
   return bytesToHex(sha256(new TextEncoder().encode(canonicalPacketJson(value))));
 }
 
 /** Compute Frozen packet hash using the formal canonicalization + SHA-256. */
 export function computeFrozenPacketHash(packet: unknown): string {
-  const { sha256 } = require('@noble/hashes/sha256');
-  const { bytesToHex } = require('@noble/hashes/utils');
   return bytesToHex(sha256(new TextEncoder().encode(JSON.stringify(sortKeys(packet)))));
+}
+
+/** Compute SHA-256 hash of an arbitrary string (64 hex chars). */
+export function computeStringHash(input: string): string {
+  return bytesToHex(sha256(new TextEncoder().encode(input)));
 }
