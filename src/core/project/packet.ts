@@ -162,22 +162,9 @@ export function checkPacketValidity(
   return stale ? 'STALE' : 'CURRENT';
 }
 
-function sortKeys<T>(value: T): T {
-  if (Array.isArray(value)) return value.map(sortKeys) as T;
-  if (value !== null && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([k, v]) => [k, sortKeys(v)]),
-    ) as T;
-  }
-  return value;
-}
+import { canonicalPacketJson, sortKeys } from './canonical';
 
-/** Canonical JSON: stable key order so the hash is reproducible. */
-export function canonicalPacketJson(packet: TaskPacket): string {
-  return JSON.stringify(sortKeys(packet));
-}
+export { canonicalPacketJson, sortKeys } from './canonical';
 
 export function freezePacket(
   packet: TaskPacket,

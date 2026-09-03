@@ -8,6 +8,7 @@ import { buildStaging, createManualContext, createMemoryProjectionContext } from
 import { orderActivity, projectRuntimeSessions } from '../../core/project/activity';
 import { applyAttentionLocalState, reduceAttention } from '../../core/attention/reducer';
 import { checkPacketValidity } from '../../core/project/packet';
+import { canonicalPacketJson } from '../../core/project/canonical';
 import { sha256 } from '@noble/hashes/sha256';
 import { bytesToHex } from '@noble/hashes/utils';
 import { overlayFileSourceRef, projectFileSourceRef } from '../../core/project/sourceIdentity';
@@ -187,18 +188,8 @@ interface DemoFrozenPacket {
 }
 
 function computeDemoFrozenHash(packet: TaskPacket): string {
-  // Deterministic hash from packet content (not time/random)
-  const content = JSON.stringify({
-    projectId: packet.projectId,
-    conversationKey: packet.conversationKey,
-    taskSummary: packet.taskSummary,
-    governanceRefs: packet.governanceRefs.sort(),
-    included: packet.included.map((i) => ({ id: i.id, state: i.state, pinned: i.pinned })).sort((a, b) => a.id.localeCompare(b.id)),
-    references: packet.references.map((i) => ({ id: i.id, state: i.state, pinned: i.pinned })).sort((a, b) => a.id.localeCompare(b.id)),
-    sourceFingerprints: packet.sourceFingerprints.sort((a, b) => a.sourceRef.localeCompare(b.sourceRef)),
-    unresolvedDependencies: packet.unresolvedDependencies.sort(),
-  });
-  return bytesToHex(sha256(new TextEncoder().encode(content))).slice(0, 32);
+  // Use the formal canonicalPacketJson + SHA-256 (64 hex chars), same as formal freezePacket
+  return bytesToHex(sha256(new TextEncoder().encode(canonicalPacketJson(packet))));
 }
 
 function createDemoFrozenState(): { frozen: FrozenPacketSummary[]; frozenDetails: Record<string, FrozenPacket> } {
@@ -880,8 +871,10 @@ load: async (refresh) => {
     const { demoMode } = get();
     if (demoMode) {
       // Demo mode: add to in-memory frozen state
-      // Version per conversation: max version for this conversation + 1
-      const convFrozen = demoFrozenState.frozen.filter((f) => f.conversationKey === packet.conversationKey);
+      // Version per (projectId, conversationKey) pair: max version for this exact pair + 1
+      const convFrozen = demoFrozenState.frozen.filter(
+        (f) => f.projectId === packet.projectId && f.conversationKey === packet.conversationKey,
+      );
       const nextVersion = convFrozen.length > 0 ? Math.max(...convFrozen.map((f) => f.version)) + 1 : 1;
       const newFrozen: FrozenPacketSummary = {
         schemaVersion: 1,

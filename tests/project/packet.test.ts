@@ -8,7 +8,7 @@ import {
   renderAgentInput,
   roughTokenEstimate,
 } from '../../src/core/project/packet';
-import type { ContextItem, SourceFingerprint } from '../../src/core/types';
+import type { ContextItem, SourceFingerprint, FrozenPacket } from '../../src/core/types';
 
 const ctx = (id: string, state: ContextItem['state'], isReference = false, sourceRef?: string): ContextItem => ({
   id,
@@ -198,5 +198,60 @@ describe('deterministic Agent Input text', () => {
       staging: [ctx('a', 'included')],
     });
     expect(renderAgentInput(first)).toBe(renderAgentInput(second));
+  });
+});
+
+describe('freezePacket version scope per (projectId, conversationKey)', () => {
+  const makePacket = (overrides: Partial<{ projectId: string; conversationKey: string; taskSummary: string }> = {}) =>
+    compilePacket({ ...base, staging: [ctx('a', 'included')], ...overrides });
+
+  it('version increments per (projectId, conversationKey) pair', () => {
+    const existing: Pick<FrozenPacket, 'projectId' | 'conversationKey' | 'version'>[] = [
+      { projectId: 'proj-a', conversationKey: 'conv-1', version: 1 },
+      { projectId: 'proj-a', conversationKey: 'conv-1', version: 2 },
+      { projectId: 'proj-b', conversationKey: 'conv-1', version: 1 }, // different project
+      { projectId: 'proj-a', conversationKey: 'conv-2', version: 5 }, // different conversation
+    ];
+
+    // conv-1 on proj-a: next version should be 3 (max of 1,2 + 1)
+    const v1 = freezePacket(
+      makePacket({ projectId: 'proj-a', conversationKey: 'conv-1' }),
+      existing,
+    );
+    expect(v1.version).toBe(3);
+
+    // conv-1 on proj-b: next version should be 2 (max of 1 + 1)
+    const v2 = freezePacket(
+      makePacket({ projectId: 'proj-b', conversationKey: 'conv-1' }),
+      existing,
+    );
+    expect(v2.version).toBe(2);
+
+    // conv-2 on proj-a: next version should be 6 (max of 5 + 1)
+    const v3 = freezePacket(
+      makePacket({ projectId: 'proj-a', conversationKey: 'conv-2' }),
+      existing,
+    );
+    expect(v3.version).toBe(6);
+
+    // proj-c, conv-3: no prior, should be 1
+    const v4 = freezePacket(
+      makePacket({ projectId: 'proj-c', conversationKey: 'conv-3' }),
+      existing,
+    );
+    expect(v4.version).toBe(1);
+  });
+
+  it('hash changes when content changes', () => {
+    const p1 = freezePacket(makePacket({ taskSummary: 'task 1' }), []);
+    const p2 = freezePacket(makePacket({ taskSummary: 'task 2' }), []);
+    expect(p1.hash).not.toBe(p2.hash);
+  });
+
+it('hash includes projectId and conversationKey in canonical JSON', () => {
+    const p1 = freezePacket(makePacket({ projectId: 'proj-a', conversationKey: 'conv-1', taskSummary: 'same task' }), []);
+    const p2 = freezePacket(makePacket({ projectId: 'proj-b', conversationKey: 'conv-2', taskSummary: 'same task' }), []);
+    // Hash includes projectId/conversationKey so they differ
+    expect(p1.hash).not.toBe(p2.hash);
   });
 });

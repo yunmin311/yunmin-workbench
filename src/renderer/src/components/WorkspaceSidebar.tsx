@@ -13,11 +13,12 @@ interface ConversationStatusProjection {
  * Lifecycle: directly from Conversation.status.
  * Attention: from AttentionItems (approval/input/review).
  */
-function projectConversationStatus(
+export function projectConversationStatus(
   conversationKey: string,
   runtimeSessions: readonly { conversationKey?: string; state: string }[],
   attentionItems: readonly { conversationKey?: string; kind: string; level: string }[],
-  conversationStatus: string
+  conversationRuntimeState: string, // for runtime fallback only
+  conversationStatus: string // for lifecycle only
 ): ConversationStatusProjection {
   // Runtime: prefer latest matching RuntimeSession
   const matchingSessions = runtimeSessions.filter((s) => s.conversationKey === conversationKey);
@@ -33,11 +34,11 @@ function projectConversationStatus(
     }
   } else {
     // Fallback to Conversation.runtimeState only when no RuntimeSession evidence
-    switch (conversationStatus) {
-      case 'ACTIVE': runtime = { label: 'Running', className: 'runtime-working' }; break;
-      case 'PAUSED': runtime = { label: 'Paused', className: 'runtime-paused' }; break;
-      case 'STANDBY': runtime = { label: 'Standby', className: 'runtime-standby' }; break;
-      case 'FROZEN': runtime = { label: 'Frozen', className: 'runtime-frozen' }; break;
+    switch (conversationRuntimeState) {
+      case 'idle': runtime = { label: 'Idle', className: 'runtime-idle' }; break;
+      case 'working': runtime = { label: 'Running', className: 'runtime-working' }; break;
+      case 'error': runtime = { label: 'Error', className: 'runtime-error' }; break;
+      case 'stopped': runtime = { label: 'Stopped', className: 'runtime-stopped' }; break;
       default: runtime = { label: 'Unknown', className: 'runtime-unknown' };
     }
   }
@@ -128,7 +129,7 @@ export function WorkspaceSidebar({ onNavigate, isModal = false }: { onNavigate?:
             conversations.length > 0 ? (
               <ul>
                 {conversations.map((item) => {
-                  const proj = projectConversationStatus(item.key, runtimeSessions, attentionItems, item.status);
+                  const proj = projectConversationStatus(item.key, runtimeSessions, attentionItems, item.runtimeState, item.status);
                   return (
                     <li key={item.key}>
                       <button className={conversation?.key === item.key ? 'selected' : ''} onClick={() => openConversation(item.key)}>
@@ -155,7 +156,7 @@ export function WorkspaceSidebar({ onNavigate, isModal = false }: { onNavigate?:
                 <ul>
                   {running.map((session) => {
                     const targetConversation = snapshot.conversations.find((item) => item.key === session.conversationKey);
-                    const proj = targetConversation ? projectConversationStatus(targetConversation.key, runtimeSessions, attentionItems, targetConversation.status) : { runtime: { label: 'Running', className: 'runtime-working' }, lifecycle: { label: 'Unknown', className: 'lifecycle-unknown' }, attention: null };
+                    const proj = targetConversation ? projectConversationStatus(targetConversation.key, runtimeSessions, attentionItems, targetConversation.runtimeState, targetConversation.status) : { runtime: { label: 'Running', className: 'runtime-working' }, lifecycle: { label: 'Unknown', className: 'lifecycle-unknown' }, attention: null };
                     return (
                       <li key={session.id}>
                         <button onClick={() => session.conversationKey && openConversation(session.conversationKey)}>
@@ -177,7 +178,7 @@ export function WorkspaceSidebar({ onNavigate, isModal = false }: { onNavigate?:
                     const targetConversation = target.conversationScope
                       ? snapshot.conversations.find((item) => item.key === target.conversationScope!.conversationKey)
                       : undefined;
-                    const proj = targetConversation ? projectConversationStatus(targetConversation.key, runtimeSessions, attentionItems, targetConversation.status) : { runtime: { label: 'Unknown', className: 'runtime-unknown' }, lifecycle: { label: 'Project', className: 'lifecycle-unknown' }, attention: null };
+                    const proj = targetConversation ? projectConversationStatus(targetConversation.key, runtimeSessions, attentionItems, targetConversation.runtimeState, targetConversation.status) : { runtime: { label: 'Unknown', className: 'runtime-unknown' }, lifecycle: { label: 'Project', className: 'lifecycle-unknown' }, attention: null };
                     return (
                       <li key={`${target.projectId}:${target.conversationScope?.conversationKey ?? ''}`}>
                         <button onClick={() => { resumeWorkspace(target); onNavigate?.(); }}>
@@ -234,7 +235,7 @@ export function WorkspaceSidebar({ onNavigate, isModal = false }: { onNavigate?:
         <ul className="rail-sessions" role="list">
           {conversations.length > 0 ? (
             conversations.map((item) => {
-              const proj = projectConversationStatus(item.key, runtimeSessions, attentionItems, item.status);
+              const proj = projectConversationStatus(item.key, runtimeSessions, attentionItems, item.runtimeState, item.status);
               return (
                 <li key={item.key}>
                   <button
@@ -269,7 +270,7 @@ export function WorkspaceSidebar({ onNavigate, isModal = false }: { onNavigate?:
           <ul className="rail-sessions" role="list">
             {running.slice(0, 3).map((session) => {
               const targetConversation = snapshot.conversations.find((item) => item.key === session.conversationKey);
-              const proj = targetConversation ? projectConversationStatus(targetConversation.key, runtimeSessions, attentionItems, targetConversation.status) : { runtime: { label: 'Running', className: 'runtime-working' }, lifecycle: { label: 'Unknown', className: 'lifecycle-unknown' }, attention: null };
+              const proj = targetConversation ? projectConversationStatus(targetConversation.key, runtimeSessions, attentionItems, targetConversation.runtimeState, targetConversation.status) : { runtime: { label: 'Running', className: 'runtime-working' }, lifecycle: { label: 'Unknown', className: 'lifecycle-unknown' }, attention: null };
               return (
                 <li key={session.id}>
                   <button
@@ -295,7 +296,7 @@ export function WorkspaceSidebar({ onNavigate, isModal = false }: { onNavigate?:
               const targetConversation = target.conversationScope
                 ? snapshot.conversations.find((item) => item.key === target.conversationScope!.conversationKey)
                 : undefined;
-              const proj = targetConversation ? projectConversationStatus(targetConversation.key, runtimeSessions, attentionItems, targetConversation.status) : { runtime: { label: 'Unknown', className: 'runtime-unknown' }, lifecycle: { label: 'Project', className: 'lifecycle-unknown' }, attention: null };
+              const proj = targetConversation ? projectConversationStatus(targetConversation.key, runtimeSessions, attentionItems, targetConversation.runtimeState, targetConversation.status) : { runtime: { label: 'Unknown', className: 'runtime-unknown' }, lifecycle: { label: 'Project', className: 'lifecycle-unknown' }, attention: null };
               return (
                 <li key={`${target.projectId}:${target.conversationScope?.conversationKey ?? ''}`}>
                   <button onClick={() => { resumeWorkspace(target); }} title={targetConversation?.role ?? target.projectId}>
