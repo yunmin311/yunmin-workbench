@@ -150,9 +150,18 @@ export function PacketPanel() {
     if (!packet || freezePending) return;
     setFreezePending(true);
     setFreezeError('');
+    const { demoMode, freezePacket: storeFreezePacket } = useWorkbench.getState();
     try {
-      const { frozen: f, path } = await window.wb.freezePacket(packet);
-      setLastFrozen(`v${f.version} · ${f.hash.slice(0, 12)} → ${path}`);
+      if (demoMode) {
+        // Demo mode: use in-memory store freeze
+        const newFrozen = await storeFreezePacket(packet);
+        if (newFrozen) {
+          setLastFrozen(`v${newFrozen.version} · ${newFrozen.hash.slice(0, 12)} → demo`);
+        }
+      } else {
+        const { frozen: f, path } = await window.wb.freezePacket(packet);
+        setLastFrozen(`v${f.version} · ${f.hash.slice(0, 12)} → ${path}`);
+      }
       await refreshFrozen();
     } catch (error) {
       setFreezeError(`Freeze failed — nothing was written. ${String(error)}`);

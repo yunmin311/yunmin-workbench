@@ -230,22 +230,35 @@ export function WorkspaceSidebar({ onNavigate, isModal = false }: { onNavigate?:
       {(running.length > 0 || recent.length > 0) && (
         <>
           <div className="rail-section-title">
+            <span>Running</span>
+            <span>{running.length}</span>
+          </div>
+          <ul className="rail-sessions" role="list">
+            {running.slice(0, 3).map((session) => {
+              const targetConversation = snapshot.conversations.find((item) => item.key === session.conversationKey);
+              const rLabel = runtimeStateLabel(session.state);
+              const lLabel = targetConversation ? lifecycleLabel(targetConversation.status) : { label: 'Unknown', className: 'lifecycle-unknown' };
+              return (
+                <li key={session.id}>
+                  <button
+                    onClick={() => session.conversationKey && openConversation(session.conversationKey)}
+                    title={`Running · ${session.binding.harness}`}
+                  >
+                    <i className={`runtime-pill ${rLabel.className}`} />
+                    <span className="name">{targetConversation?.role ?? session.id}</span>
+                    <span className="status-badges">
+                      <em className={lLabel.className}>{lLabel.label}</em>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="rail-section-title">
             <span>Recent</span>
             <span>{recent.length}</span>
           </div>
           <ul className="rail-sessions" role="list">
-            {running.slice(0, 3).map((session) => (
-              <li key={session.id}>
-                <button
-                  onClick={() => session.conversationKey && openConversation(session.conversationKey)}
-                  title={`Running · ${session.binding.harness}`}
-                >
-                  <i className="runtime-pill runtime-working" />
-                  <span className="name">{snapshot.conversations.find((item) => item.key === session.conversationKey)?.role ?? session.id}</span>
-                  <span className="lifecycle">{session.binding.harness}</span>
-                </button>
-              </li>
-            ))}
             {recent.slice(0, 3).map((target) => {
               const targetConversation = target.conversationScope
                 ? snapshot.conversations.find((item) => item.key === target.conversationScope!.conversationKey)

@@ -31,6 +31,7 @@ import type {
   AttentionItem,
   AttentionLocalState,
   HarnessCapabilities,
+  TaskPacket,
 } from '../../core/types';
 import type { MemorySearchHit } from '../../core/memory/types';
 import { probeLiveExecutions } from './runtimeInspectorModel';
@@ -164,6 +165,7 @@ interface WorkbenchState {
   dismissAttention: (item: AttentionItem) => Promise<void>;
   setPacketValidity: (validity: WorkbenchState['packetValidity']) => void;
   setHandoffStatus: (status: string) => void;
+  freezePacket: (packet: TaskPacket) => Promise<FrozenPacketSummary | undefined>;
 }
 
 const draftTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -176,6 +178,25 @@ const EMPTY_WORKSPACE_SESSION: WorkspaceSessionV1 = {
 };
 
 const EMPTY_ATTENTION_LOCAL: AttentionLocalState = { schemaVersion: 1, dismissed: {} };
+
+// Demo-in-memory state (never persisted, discarded on reset/exit)
+interface DemoFrozenPacket {
+  summary: FrozenPacketSummary;
+  detail: FrozenPacket;
+}
+
+function createDemoFrozenState(): { frozen: FrozenPacketSummary[]; frozenDetails: Record<string, FrozenPacket> } {
+  const frozen = DEMO_FROZEN.map((f) => ({ ...f }));
+  const frozenDetails: Record<string, FrozenPacket> = {};
+  for (const f of frozen) {
+    frozenDetails[f.hash] = getDemoFrozenDetail(f);
+  }
+  return { frozen, frozenDetails };
+}
+
+let demoFrozenState = createDemoFrozenState();
+let demoWorkspaceSession = EMPTY_WORKSPACE_SESSION;
+let demoDraftState: WorkbenchDraftV1 | null = null;
 
 type AttentionProjectionSource = Pick<
   WorkbenchState,
@@ -233,6 +254,10 @@ function scheduleWorkspaceSave(state: WorkbenchState): void {
   };
   const session = updateWorkspaceSession(state.workspaceSession, target);
   useWorkbench.setState({ workspaceSession: session });
+  if (state.demoMode) {
+    demoWorkspaceSession = session;
+    return;
+  }
   if (workspaceTimer) clearTimeout(workspaceTimer);
   workspaceTimer = setTimeout(() => {
     workspaceTimer = null;
@@ -261,6 +286,11 @@ function scheduleDraftSave(state: WorkbenchState): void {
   const prior = draftTimers.get(key);
   if (prior) clearTimeout(prior);
   useWorkbench.setState({ draftSaveState: 'dirty' });
+  if (state.demoMode) {
+    demoDraftState = draft;
+    useWorkbench.setState({ draftSaveState: 'saved' });
+    return;
+  }
   draftTimers.set(key, setTimeout(() => {
     draftTimers.delete(key);
     useWorkbench.setState({ draftSaveState: 'saving' });
@@ -499,7 +529,14 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     scheduleWorkspaceSave(get());
   },
 
-  load: async (refresh) => {
+load: async (refresh) => {
+    const { demoMode } = get();
+    if (demoMode) {
+      // Demo mode: already has DEMO_SNAPSHOT, no real overlay load needed
+      set({ loading: false });
+      get().syncIslandAttention();
+      return;
+    }
     set({ loading: true });
     const snapshot = await window.wb.loadOverlay({ refresh });
     const priorState = get();
@@ -548,10 +585,10 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
         recheckedFingerprints,
         contextMessage: applyScopedRefresh
           ? messages([
-            state.contextMessage,
-            removedMemoryIds.length > 0 ? `Orphaned draft decisions: ${removedMemoryIds.join(', ')}` : null,
-            refreshedMemory.errors.length > 0 ? `Memory source unavailable: ${refreshedMemory.errors.join(', ')}` : null,
-          ])
+              state.contextMessage,
+              removedMemoryIds.length > 0 ? `Orphaned draft decisions: ${removedMemoryIds.join(', ')}` : null,
+              refreshedMemory.errors.length > 0 ? `Memory source unavailable: ${refreshedMemory.errors.join(', ')}` : null,
+            ])
           : state.contextMessage,
         attentionItems: projectAttention(next),
       };
@@ -565,16 +602,16 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   },
 
   selectProject: (projectId) => {
-    const { snapshot } = get();
+    const { snapshot, demoMode } = get();
     set({
       projectId,
       view: 'control',
       conversation: null,
       staging: snapshot ? buildStaging(snapshot, projectId) : [],
       taskSummary: '',
-      frozen: [],
+      frozen: demoMode ? demoFrozenState.frozen : [],
       frozenProblems: [],
-      frozenDetails: {},
+      frozenDetails: demoMode ? demoFrozenState.frozenDetails : {},
       git: null,
       projectFingerprints: [],
       recheckedSourceRefs: [],
@@ -588,12 +625,14 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     });
     set((state) => ({ attentionItems: projectAttention(state) }));
     get().syncIslandAttention();
-    void get().loadGit(projectId);
-    scheduleWorkspaceSave(get());
+    if (!demoMode) {
+      void get().loadGit(projectId);
+      scheduleWorkspaceSave(get());
+    }
   },
 
   selectConversation: (conversation) => {
-    const { projectId, snapshot } = get();
+    const { projectId, snapshot, demoMode } = get();
     if (!projectId || !snapshot) return;
     set({
       conversation,
@@ -611,63 +650,73 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     });
     set((state) => ({ attentionItems: projectAttention(state) }));
     get().syncIslandAttention();
-    void (async () => {
-      const loaded = await window.wb.loadDraft(projectId, conversation.key);
-      if (get().projectId !== projectId || get().conversation?.key !== conversation.key) return;
-      if (!loaded.draft) {
-        set({ contextMessage: loaded.problem ?? null });
+    if (!demoMode) {
+      void (async () => {
+        const loaded = await window.wb.loadDraft(projectId, conversation.key);
+        if (get().projectId !== projectId || get().conversation?.key !== conversation.key) return;
+        if (!loaded.draft) {
+          set({ contextMessage: loaded.problem ?? null });
+          await get().refreshFrozen();
+          return;
+        }
+        const fileResult = await window.wb.refreshProjectFiles(
+          projectId,
+          loaded.draft.projectFiles.map((file) => ({
+            relativePath: file.relativePath,
+            asReference: file.asReference,
+          })),
+        );
+        const restoredMemoryCandidates = (await Promise.all(
+          loaded.draft.projectedDecisions
+            .filter((decision) => decision.itemId.startsWith('memory-projection:'))
+            .map((decision) => refreshMemoryContextItem({ id: decision.itemId, state: decision.state, pinned: decision.pinned })),
+        )).filter((item): item is ContextItem => item !== null);
+        const restoredMemory = await verifyMemoryContextItems(projectId, restoredMemoryCandidates);
+        if (get().projectId !== projectId || get().conversation?.key !== conversation.key) return;
+        const restored = restoreWorkbenchDraft(
+          [...buildStaging(snapshot, projectId), ...restoredMemory.items],
+          loaded.draft,
+          fileResult.entries.map((entry) => entry.item),
+        );
+        const currentByRef = new Map(fileResult.entries.map((entry) => [entry.fingerprint.sourceRef, entry.fingerprint.sha256]));
+        const sourceChanges = loaded.draft.projectFiles.flatMap((file) => {
+          const ref = projectFileSourceRef(projectId, file.relativePath);
+          const current = currentByRef.get(ref);
+          return file.lastKnownSha256 && current && file.lastKnownSha256 !== current ? [file.relativePath] : [];
+        });
+        set({
+          taskSummary: loaded.draft.taskSummary,
+          staging: restored.staging,
+          projectFingerprints: fileResult.entries.map((entry) => entry.fingerprint),
+          recheckedSourceRefs: restoredMemory.checkedSourceRefs,
+          recheckedFingerprints: restoredMemory.fingerprints,
+          orphanedDraftDecisionIds: restored.orphanedDecisionIds,
+          sourceChanges,
+          contextMessage: messages([
+            restored.orphanedDecisionIds.length > 0
+              ? `Orphaned draft decisions: ${restored.orphanedDecisionIds.join(', ')}`
+              : null,
+            restored.unavailableProjectFiles.length > 0
+              ? `Unavailable project files: ${restored.unavailableProjectFiles.join(', ')}`
+              : null,
+            sourceChanges.length > 0 ? `Source changed since draft save: ${sourceChanges.join(', ')}` : null,
+            fileResult.errors.length > 0 ? fileResult.errors.join('\n') : null,
+            restoredMemory.errors.length > 0 ? `Memory source unavailable: ${restoredMemory.errors.join(', ')}` : null,
+          ]),
+          draftSaveState: 'saved',
+        });
         await get().refreshFrozen();
-        return;
+        await get().recheckSources();
+      })();
+    } else {
+      // Demo mode: use in-memory demo draft state if available
+      if (demoDraftState && demoDraftState.scope.conversationKey === conversation.key) {
+        set({
+          taskSummary: demoDraftState.taskSummary,
+          draftSaveState: 'saved',
+        });
       }
-      const fileResult = await window.wb.refreshProjectFiles(
-        projectId,
-        loaded.draft.projectFiles.map((file) => ({
-          relativePath: file.relativePath,
-          asReference: file.asReference,
-        })),
-      );
-      const restoredMemoryCandidates = (await Promise.all(
-        loaded.draft.projectedDecisions
-          .filter((decision) => decision.itemId.startsWith('memory-projection:'))
-          .map((decision) => refreshMemoryContextItem({ id: decision.itemId, state: decision.state, pinned: decision.pinned })),
-      )).filter((item): item is ContextItem => item !== null);
-      const restoredMemory = await verifyMemoryContextItems(projectId, restoredMemoryCandidates);
-      if (get().projectId !== projectId || get().conversation?.key !== conversation.key) return;
-      const restored = restoreWorkbenchDraft(
-        [...buildStaging(snapshot, projectId), ...restoredMemory.items],
-        loaded.draft,
-        fileResult.entries.map((entry) => entry.item),
-      );
-      const currentByRef = new Map(fileResult.entries.map((entry) => [entry.fingerprint.sourceRef, entry.fingerprint.sha256]));
-      const sourceChanges = loaded.draft.projectFiles.flatMap((file) => {
-        const ref = projectFileSourceRef(projectId, file.relativePath);
-        const current = currentByRef.get(ref);
-        return file.lastKnownSha256 && current && file.lastKnownSha256 !== current ? [file.relativePath] : [];
-      });
-      set({
-        taskSummary: loaded.draft.taskSummary,
-        staging: restored.staging,
-        projectFingerprints: fileResult.entries.map((entry) => entry.fingerprint),
-        recheckedSourceRefs: restoredMemory.checkedSourceRefs,
-        recheckedFingerprints: restoredMemory.fingerprints,
-        orphanedDraftDecisionIds: restored.orphanedDecisionIds,
-        sourceChanges,
-        contextMessage: messages([
-          restored.orphanedDecisionIds.length > 0
-            ? `Orphaned draft decisions: ${restored.orphanedDecisionIds.join(', ')}`
-            : null,
-          restored.unavailableProjectFiles.length > 0
-            ? `Unavailable project files: ${restored.unavailableProjectFiles.join(', ')}`
-            : null,
-          sourceChanges.length > 0 ? `Source changed since draft save: ${sourceChanges.join(', ')}` : null,
-          fileResult.errors.length > 0 ? fileResult.errors.join('\n') : null,
-          restoredMemory.errors.length > 0 ? `Memory source unavailable: ${restoredMemory.errors.join(', ')}` : null,
-        ]),
-        draftSaveState: 'saved',
-      });
-      await get().refreshFrozen();
-      await get().recheckSources();
-    })();
+    }
     scheduleWorkspaceSave(get());
   },
 
@@ -745,8 +794,19 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   },
 
   refreshFrozen: async () => {
-    const { projectId, conversation } = get();
+    const { projectId, conversation, demoMode } = get();
     if (!projectId || !conversation) return;
+    if (demoMode) {
+      // Demo mode: use in-memory frozen state
+      set((state) => ({
+        frozen: demoFrozenState.frozen,
+        frozenProblems: [],
+        frozenDetails: demoFrozenState.frozenDetails,
+        attentionItems: projectAttention({ ...state, frozen: demoFrozenState.frozen }),
+      }));
+      get().syncIslandAttention();
+      return;
+    }
     const result = await window.wb.listFrozen(projectId, conversation.key);
     if (get().projectId === projectId && get().conversation?.key === conversation.key) {
       set((state) => ({
@@ -757,6 +817,46 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       }));
       get().syncIslandAttention();
     }
+  },
+
+  freezePacket: async (packet) => {
+    const { demoMode } = get();
+    if (demoMode) {
+      // Demo mode: add to in-memory frozen state
+      const newFrozen: FrozenPacketSummary = {
+        schemaVersion: 1,
+        packetId: packet.packetId,
+        projectId: packet.projectId,
+        conversationKey: packet.conversationKey,
+        conversationId: packet.conversationId,
+        version: (demoFrozenState.frozen.length + 1),
+        hash: `demo-frozen-${Date.now()}`,
+        frozenAt: new Date().toISOString(),
+        roughTokens: packet.roughTokens,
+        taskSummary: packet.taskSummary,
+        sourceFingerprints: packet.sourceFingerprints,
+        unresolvedDependencies: packet.unresolvedDependencies,
+      };
+      const newDetail: FrozenPacket = {
+        ...packet,
+        frozenAt: newFrozen.frozenAt,
+        version: newFrozen.version,
+        hash: newFrozen.hash,
+      };
+      demoFrozenState = {
+        frozen: [...demoFrozenState.frozen, newFrozen],
+        frozenDetails: { ...demoFrozenState.frozenDetails, [newFrozen.hash]: newDetail },
+      };
+      set((state) => ({
+        frozen: demoFrozenState.frozen,
+        frozenDetails: demoFrozenState.frozenDetails,
+        attentionItems: projectAttention({ ...state, frozen: demoFrozenState.frozen }),
+      }));
+      get().syncIslandAttention();
+      return newFrozen; // Return the created summary for UI
+    }
+    const { frozen: f, path } = await window.wb.freezePacket(packet);
+    await get().refreshFrozen();
   },
 
   loadFrozenDetail: async (summary) => {
@@ -806,6 +906,10 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   },
 
   loadGit: async (projectId) => {
+    if (get().demoMode) {
+      set({ git: { error: 'DEMO · NO REAL GIT' } });
+      return;
+    }
     const result = await window.wb.loadGit(projectId);
     if (get().projectId === projectId) set({ git: result.facts ?? { error: result.error ?? 'unknown' } });
   },
@@ -976,13 +1080,17 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   },
 
   clearDraft: async () => {
-    const { projectId, conversation, snapshot } = get();
+    const { projectId, conversation, snapshot, demoMode } = get();
     if (!projectId || !conversation || !snapshot) return;
     const timerKey = `${projectId}\0${conversation.key}`;
     const pending = draftTimers.get(timerKey);
     if (pending) clearTimeout(pending);
     draftTimers.delete(timerKey);
-    await window.wb.clearDraft(projectId, conversation.key);
+    if (!demoMode) {
+      await window.wb.clearDraft(projectId, conversation.key);
+    } else {
+      demoDraftState = null;
+    }
     set({
       taskSummary: '',
       staging: buildStaging(snapshot, projectId),

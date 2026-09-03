@@ -3631,6 +3631,106 @@ select:focus-visible {
   background: var(--wb-surface-overlay);
 }
 
+/* ---- Missing className definitions from components ---- */
+
+/* .center - used in App.tsx loading state */
+.center {
+  display: grid;
+  place-items: center;
+  height: 100vh;
+  color: var(--wb-text-contrast);
+  opacity: 0.5;
+}
+
+/* .runtime-pulse - used in SessionSurface, WorkspaceSidebar, RuntimeInspector */
+.runtime-pulse {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1px solid var(--wb-border-color);
+  background: var(--wb-surface-base);
+  flex-shrink: 0;
+}
+
+.runtime-pulse.runtime-working {
+  border-color: var(--pr-success);
+  box-shadow: 0 0 0 4px rgba(121, 201, 165, 0.12);
+  background: var(--pr-success);
+}
+
+.runtime-pulse.runtime-idle {
+  border-color: var(--pr-accent);
+  background: var(--pr-accent);
+}
+
+.runtime-pulse.runtime-error {
+  border-color: var(--pr-danger);
+  background: var(--pr-danger);
+}
+
+.runtime-pulse.runtime-stopped,
+.runtime-pulse.runtime-unknown {
+  border-color: var(--wb-border-color);
+  background: var(--wb-surface-base);
+}
+
+/* .canvas-node-copy - used in CanvasView */
+.canvas-node-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.canvas-node-copy strong {
+  font-size: 12px;
+  color: var(--wb-text-contrast);
+}
+
+.canvas-node-copy small {
+  font-size: 10px;
+  color: var(--wb-text-contrast);
+  opacity: 0.6;
+}
+
+/* .legend-line - used in CanvasView */
+.legend-line {
+  display: inline-block;
+  width: 22px;
+  height: 0;
+  border-top: 1px solid var(--wb-border-color);
+  margin-right: 6px;
+}
+
+.legend-line.legend-mount {
+  border-top-style: dotted;
+}
+
+/* .history-problems - used in HistoryPanel */
+.history-problems {
+  padding: 8px 12px;
+  border: 1px solid var(--wb-border-color);
+  border-radius: 6px;
+  background: var(--wb-surface-raised);
+  margin-bottom: 12px;
+}
+
+.history-problems summary {
+  cursor: pointer;
+  color: var(--wb-text-contrast);
+  opacity: 0.7;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.history-problems p {
+  margin: 4px 0 0;
+  color: var(--wb-text-contrast);
+  opacity: 0.8;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 @media (max-width: 760px) {
   .runtime-inspector { grid-template-columns: 1fr; }
   .runtime-inspector > .inspector-section:first-child { grid-row: auto; border-right: 0; border-bottom: 1px solid var(--wb-border-color); }
