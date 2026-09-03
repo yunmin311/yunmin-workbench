@@ -45,6 +45,7 @@ import {
   DEMO_RUNTIME_SESSIONS,
   DEMO_ATTENTION,
   DEMO_HARNESS_CAPABILITIES,
+  DEMO_MEMORY_HITS,
   getDemoFrozenDetail,
   getDemoMemorySearchResult,
   getDemoMemoryDetail,
@@ -185,6 +186,21 @@ interface DemoFrozenPacket {
   detail: FrozenPacket;
 }
 
+function computeDemoFrozenHash(packet: TaskPacket): string {
+  // Deterministic hash from packet content (not time/random)
+  const content = JSON.stringify({
+    projectId: packet.projectId,
+    conversationKey: packet.conversationKey,
+    taskSummary: packet.taskSummary,
+    governanceRefs: packet.governanceRefs.sort(),
+    included: packet.included.map((i) => ({ id: i.id, state: i.state, pinned: i.pinned })).sort((a, b) => a.id.localeCompare(b.id)),
+    references: packet.references.map((i) => ({ id: i.id, state: i.state, pinned: i.pinned })).sort((a, b) => a.id.localeCompare(b.id)),
+    sourceFingerprints: packet.sourceFingerprints.sort((a, b) => a.sourceRef.localeCompare(b.sourceRef)),
+    unresolvedDependencies: packet.unresolvedDependencies.sort(),
+  });
+  return bytesToHex(sha256(new TextEncoder().encode(content))).slice(0, 32);
+}
+
 function createDemoFrozenState(): { frozen: FrozenPacketSummary[]; frozenDetails: Record<string, FrozenPacket> } {
   const frozen = DEMO_FROZEN.map((f) => ({ ...f }));
   const frozenDetails: Record<string, FrozenPacket> = {};
@@ -197,6 +213,15 @@ function createDemoFrozenState(): { frozen: FrozenPacketSummary[]; frozenDetails
 let demoFrozenState = createDemoFrozenState();
 let demoWorkspaceSession = EMPTY_WORKSPACE_SESSION;
 let demoDraftState: WorkbenchDraftV1 | null = null;
+
+// Demo Memory use tracking (in-memory only, discarded on reset/exit)
+interface DemoMemoryUseRecord {
+  memoryId: string;
+  count: number;
+  lastUsedAt: string;
+  pinned: boolean;
+}
+const demoMemoryUse = new Map<string, DemoMemoryUseRecord>();
 
 type AttentionProjectionSource = Pick<
   WorkbenchState,
@@ -454,6 +479,11 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   exitDemo: async () => {
     // Leave demo mode and reload the real workspace. Demo state is recreated on
     // the next enterDemo(); nothing was persisted, so real truth is untouched.
+    // Reset all demo in-memory state
+    demoFrozenState = createDemoFrozenState();
+    demoMemoryUse.clear();
+    demoDraftState = null;
+    demoWorkspaceSession = EMPTY_WORKSPACE_SESSION;
     set({
       demoMode: false,
       demoSessionId: null,
@@ -475,6 +505,11 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   resetDemo: () => {
     if (!get().demoMode) return;
     const firstProject = DEMO_PROJECTS[0];
+    // Reset all demo in-memory state
+    demoFrozenState = createDemoFrozenState();
+    demoMemoryUse.clear();
+    demoDraftState = null;
+    demoWorkspaceSession = EMPTY_WORKSPACE_SESSION;
     set({
       snapshot: DEMO_SNAPSHOT,
       demoSessionId: globalThis.crypto.randomUUID(),
@@ -735,9 +770,31 @@ load: async (refresh) => {
   },
 
   togglePin: async (id) => {
+    const { demoMode } = get();
     const before = get();
     const item = before.staging.find((candidate) => candidate.id === id);
     if (item?.id.startsWith('memory-projection:') && item.state === 'included' && !item.pinned) {
+      if (demoMode) {
+        // Demo mode: pin in-memory only, no real IPC
+        const memoryId = item.id.slice('memory-projection:'.length);
+        set((state) => {
+          const stillPinnable = state.staging.some((candidate) => candidate.id === id && candidate.state === 'included' && !candidate.pinned);
+          if (!stillPinnable) return state;
+          return {
+            staging: state.staging.map((candidate) => candidate.id === id ? { ...candidate, pinned: true } : candidate),
+          };
+        });
+        // Demo mode: track memory use in-memory only
+        const existing = demoMemoryUse.get(memoryId);
+        demoMemoryUse.set(memoryId, {
+          memoryId,
+          count: (existing?.count ?? 0) + 1,
+          lastUsedAt: new Date().toISOString(),
+          pinned: true,
+        });
+        scheduleDraftSave(get());
+        return;
+      }
       try {
         const scope = { projectId: before.projectId, conversationKey: before.conversation?.key };
         const memoryId = item.id.slice('memory-projection:'.length);
@@ -823,14 +880,17 @@ load: async (refresh) => {
     const { demoMode } = get();
     if (demoMode) {
       // Demo mode: add to in-memory frozen state
+      // Version per conversation: max version for this conversation + 1
+      const convFrozen = demoFrozenState.frozen.filter((f) => f.conversationKey === packet.conversationKey);
+      const nextVersion = convFrozen.length > 0 ? Math.max(...convFrozen.map((f) => f.version)) + 1 : 1;
       const newFrozen: FrozenPacketSummary = {
         schemaVersion: 1,
         packetId: packet.packetId,
         projectId: packet.projectId,
         conversationKey: packet.conversationKey,
         conversationId: packet.conversationId,
-        version: (demoFrozenState.frozen.length + 1),
-        hash: `demo-frozen-${Date.now()}`,
+        version: nextVersion,
+        hash: computeDemoFrozenHash(packet),
         frozenAt: new Date().toISOString(),
         roughTokens: packet.roughTokens,
         taskSummary: packet.taskSummary,
@@ -1259,9 +1319,50 @@ load: async (refresh) => {
   clearHandoffSource: () => set({ handoffSourceRef: null }),
 
   addMemoryContext: async (hit, pinned = false) => {
-    const { projectId, conversation } = get();
+    const { projectId, conversation, demoMode } = get();
     if (!projectId || !conversation) {
       set({ contextMessage: 'Open a project session before adding Memory to Context.' });
+      return;
+    }
+    if (demoMode) {
+      // Demo mode: use in-memory fixtures, no real IPC
+      const demoHit = DEMO_MEMORY_HITS.find((h) => h.id === hit.id);
+      if (!demoHit) {
+        set({ contextMessage: 'Demo memory not found.' });
+        return;
+      }
+      const item = createMemoryProjectionContext({
+        ...demoHit,
+        sourceRefs: demoHit.sourceRefs,
+        currentness: demoHit.currentness,
+        verification: demoHit.verification,
+      }, pinned);
+      let committed = false;
+      let priorItem: ContextItem | undefined;
+      set((state) => {
+        if (state.projectId !== projectId || state.conversation?.key !== conversation.key) return state;
+        committed = true;
+        priorItem = state.staging.find((current) => current.id === item.id);
+        return {
+          staging: [...state.staging.filter((current) => current.id !== item.id), item],
+          recheckedSourceRefs: [...new Set([...state.recheckedSourceRefs, ...demoHit.sourceRefs])],
+          recheckedFingerprints: [
+            ...state.recheckedFingerprints.filter((prior) => !demoHit.sourceRefs.includes(prior.sourceRef)),
+            ...demoHit.sourceRefs.map((ref) => ({ sourceRef: ref, sha256: `demo-sha-${ref}` })),
+          ],
+          contextMessage: `${pinned ? 'Pinned' : 'Added'} Memory reference: ${hit.summary}`,
+        };
+      });
+      if (!committed) return;
+      // Demo mode: track memory use in-memory only
+      const existing = demoMemoryUse.get(hit.id);
+      demoMemoryUse.set(hit.id, {
+        memoryId: hit.id,
+        count: (existing?.count ?? 0) + 1,
+        lastUsedAt: new Date().toISOString(),
+        pinned: pinned || (existing?.pinned ?? false),
+      });
+      scheduleDraftSave(get());
       return;
     }
     try {

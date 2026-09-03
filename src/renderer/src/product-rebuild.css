@@ -3731,6 +3731,73 @@ select:focus-visible {
   line-height: 1.5;
 }
 
+/* .timeline-load-earlier - used in SessionSurface, RuntimeInspector */
+.timeline-load-earlier {
+  margin: 8px 0 0;
+  padding: 6px 12px;
+  border: 1px solid var(--wb-border-color);
+  border-radius: 6px;
+  background: var(--wb-surface-raised);
+  color: var(--wb-text-contrast);
+  font-size: 11px;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+
+.timeline-load-earlier:hover {
+  background: var(--wb-surface-overlay);
+}
+
+/* .problems - used in PacketPanel, SessionSurface, etc. */
+.problems {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border: 1px solid var(--wb-border-color);
+  border-radius: 6px;
+  background: var(--wb-surface-raised);
+  color: var(--pr-warning);
+  font-size: 12px;
+}
+
+.problems summary {
+  cursor: pointer;
+  color: var(--wb-text-contrast);
+  opacity: 0.7;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.problems p {
+  margin: 4px 0 0;
+  color: var(--wb-text-contrast);
+  opacity: 0.8;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* .icon-action - used in InspectorPane, AttentionPanel, etc. */
+.icon-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--wb-text-contrast);
+  opacity: 0.6;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.icon-action:hover {
+  background: var(--wb-surface-overlay);
+  opacity: 1;
+}
+
 @media (max-width: 760px) {
   .runtime-inspector { grid-template-columns: 1fr; }
   .runtime-inspector > .inspector-section:first-child { grid-row: auto; border-right: 0; border-bottom: 1px solid var(--wb-border-color); }

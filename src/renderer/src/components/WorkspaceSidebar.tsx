@@ -2,31 +2,69 @@ import { discoverProjects } from '../../../core/project/discovery';
 import { resolveWorkspaceTarget } from '../../../core/project/workspaceSession';
 import { useWorkbench } from '../store';
 
-function lifecycleLabel(status: string): { label: string; className: string } {
-  switch (status) {
-    case 'ACTIVE': return { label: 'Active', className: 'lifecycle-active' };
-    case 'PAUSED': return { label: 'Paused', className: 'lifecycle-paused' };
-    case 'STANDBY': return { label: 'Standby', className: 'lifecycle-standby' };
-    case 'FROZEN': return { label: 'Frozen', className: 'lifecycle-frozen' };
-    default: return { label: status || 'Unknown', className: 'lifecycle-unknown' };
-  }
+interface ConversationStatusProjection {
+  runtime: { label: string; className: string };
+  lifecycle: { label: string; className: string };
+  attention: { label: string; className: string } | null;
 }
 
-function runtimeStateLabel(state: string): { label: string; className: string } {
-  switch (state) {
-    case 'working': return { label: 'Running', className: 'runtime-working' };
-    case 'error': return { label: 'Error', className: 'runtime-error' };
-    case 'idle': return { label: 'Idle', className: 'runtime-idle' };
-    case 'stopped': return { label: 'Stopped', className: 'runtime-stopped' };
-    default: return { label: 'Unknown', className: 'runtime-unknown' };
+/** Single pure projection helper: computes runtime/lifecycle/attention for a conversation.
+ * Runtime: latest matching RuntimeSession state; fallback to Conversation.runtimeState only if no session.
+ * Lifecycle: directly from Conversation.status.
+ * Attention: from AttentionItems (approval/input/review).
+ */
+function projectConversationStatus(
+  conversationKey: string,
+  runtimeSessions: readonly { conversationKey?: string; state: string }[],
+  attentionItems: readonly { conversationKey?: string; kind: string; level: string }[],
+  conversationStatus: string
+): ConversationStatusProjection {
+  // Runtime: prefer latest matching RuntimeSession
+  const matchingSessions = runtimeSessions.filter((s) => s.conversationKey === conversationKey);
+  const latestSession = matchingSessions.length > 0 ? matchingSessions[matchingSessions.length - 1] : null;
+  let runtime: ConversationStatusProjection['runtime'];
+  if (latestSession) {
+    switch (latestSession.state) {
+      case 'working': runtime = { label: 'Running', className: 'runtime-working' }; break;
+      case 'error': runtime = { label: 'Error', className: 'runtime-error' }; break;
+      case 'idle': runtime = { label: 'Idle', className: 'runtime-idle' }; break;
+      case 'stopped': runtime = { label: 'Stopped', className: 'runtime-stopped' }; break;
+      default: runtime = { label: 'Unknown', className: 'runtime-unknown' };
+    }
+  } else {
+    // Fallback to Conversation.runtimeState only when no RuntimeSession evidence
+    switch (conversationStatus) {
+      case 'ACTIVE': runtime = { label: 'Running', className: 'runtime-working' }; break;
+      case 'PAUSED': runtime = { label: 'Paused', className: 'runtime-paused' }; break;
+      case 'STANDBY': runtime = { label: 'Standby', className: 'runtime-standby' }; break;
+      case 'FROZEN': runtime = { label: 'Frozen', className: 'runtime-frozen' }; break;
+      default: runtime = { label: 'Unknown', className: 'runtime-unknown' };
+    }
   }
-}
 
-function attentionLabel(item: { kind: string; level: string }): { label: string; className: string } | null {
-  if (item.kind === 'approval-required') return { label: 'Needs Approval', className: 'attention-approval' };
-  if (item.kind === 'needs-user-input') return { label: 'Needs Input', className: 'attention-input' };
-  if (item.kind === 'execution-review') return { label: 'Ready Review', className: 'attention-review' };
-  return null;
+  // Lifecycle: directly from Conversation.status
+  let lifecycle: ConversationStatusProjection['lifecycle'];
+  switch (conversationStatus) {
+    case 'ACTIVE': lifecycle = { label: 'Active', className: 'lifecycle-active' }; break;
+    case 'PAUSED': lifecycle = { label: 'Paused', className: 'lifecycle-paused' }; break;
+    case 'STANDBY': lifecycle = { label: 'Standby', className: 'lifecycle-standby' }; break;
+    case 'FROZEN': lifecycle = { label: 'Frozen', className: 'lifecycle-frozen' }; break;
+    default: lifecycle = { label: conversationStatus || 'Unknown', className: 'lifecycle-unknown' };
+  }
+
+  // Attention: from AttentionItems (only explicit kinds)
+  const attn = attentionItems.find(
+    (a) => a.conversationKey === conversationKey &&
+           (a.kind === 'approval-required' || a.kind === 'needs-user-input' || a.kind === 'execution-review')
+  );
+  let attention: ConversationStatusProjection['attention'] = null;
+  if (attn) {
+    if (attn.kind === 'approval-required') attention = { label: 'Needs Approval', className: 'attention-approval' };
+    else if (attn.kind === 'needs-user-input') attention = { label: 'Needs Input', className: 'attention-input' };
+    else if (attn.kind === 'execution-review') attention = { label: 'Ready Review', className: 'attention-review' };
+  }
+
+  return { runtime, lifecycle, attention };
 }
 
 export function WorkspaceSidebar({ onNavigate, isModal = false }: { onNavigate?: () => void; isModal?: boolean }) {
@@ -90,20 +128,15 @@ export function WorkspaceSidebar({ onNavigate, isModal = false }: { onNavigate?:
             conversations.length > 0 ? (
               <ul>
                 {conversations.map((item) => {
-                  const runtime = runtimeSessions.filter((session) => session.conversationKey === item.key).at(-1);
-                  const rState = runtime?.state ?? item.runtimeState;
-                  const rLabel = runtimeStateLabel(rState);
-                  const lLabel = lifecycleLabel(item.status);
-                  const attn = conversationAttention(item.key);
-                  const aLabel = attn ? attentionLabel(attn) : null;
+                  const proj = projectConversationStatus(item.key, runtimeSessions, attentionItems, item.status);
                   return (
                     <li key={item.key}>
                       <button className={conversation?.key === item.key ? 'selected' : ''} onClick={() => openConversation(item.key)}>
-                        <i className={`runtime-dot ${rLabel.className}`} />
+                        <i className={`runtime-dot ${proj.runtime.className}`} />
                         <span><strong>{item.role}</strong><small>{item.platform}</small></span>
                         <span className="status-badges">
-                          <em className={lLabel.className}>{lLabel.label}</em>
-                          {aLabel && <em className={aLabel.className}>{aLabel.label}</em>}
+                          <em className={proj.lifecycle.className}>{proj.lifecycle.label}</em>
+                          {proj.attention && <em className={proj.attention.className}>{proj.attention.label}</em>}
                         </span>
                       </button>
                     </li>
@@ -120,15 +153,19 @@ export function WorkspaceSidebar({ onNavigate, isModal = false }: { onNavigate?:
               <section className="sidebar-section sidebar-running">
                 <h2>Running <span>{running.length}</span></h2>
                 <ul>
-                  {running.map((session) => (
-                    <li key={session.id}>
-                      <button onClick={() => session.conversationKey && openConversation(session.conversationKey)}>
-                        <i className="runtime-dot runtime-working" />
-                        <span>{snapshot.conversations.find((item) => item.key === session.conversationKey)?.role ?? session.id}</span>
-                        <small>{session.binding.harness}</small>
-                      </button>
-                    </li>
-                  ))}
+                  {running.map((session) => {
+                    const targetConversation = snapshot.conversations.find((item) => item.key === session.conversationKey);
+                    const proj = targetConversation ? projectConversationStatus(targetConversation.key, runtimeSessions, attentionItems, targetConversation.status) : { runtime: { label: 'Running', className: 'runtime-working' }, lifecycle: { label: 'Unknown', className: 'lifecycle-unknown' }, attention: null };
+                    return (
+                      <li key={session.id}>
+                        <button onClick={() => session.conversationKey && openConversation(session.conversationKey)}>
+                          <i className={`runtime-dot ${proj.runtime.className}`} />
+                          <span>{targetConversation?.role ?? session.id}</span>
+                          <small>{session.binding.harness}</small>
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ul>
               </section>
             )}
@@ -140,6 +177,7 @@ export function WorkspaceSidebar({ onNavigate, isModal = false }: { onNavigate?:
                     const targetConversation = target.conversationScope
                       ? snapshot.conversations.find((item) => item.key === target.conversationScope!.conversationKey)
                       : undefined;
+                    const proj = targetConversation ? projectConversationStatus(targetConversation.key, runtimeSessions, attentionItems, targetConversation.status) : { runtime: { label: 'Unknown', className: 'runtime-unknown' }, lifecycle: { label: 'Project', className: 'lifecycle-unknown' }, attention: null };
                     return (
                       <li key={`${target.projectId}:${target.conversationScope?.conversationKey ?? ''}`}>
                         <button onClick={() => { resumeWorkspace(target); onNavigate?.(); }}>
@@ -196,24 +234,19 @@ export function WorkspaceSidebar({ onNavigate, isModal = false }: { onNavigate?:
         <ul className="rail-sessions" role="list">
           {conversations.length > 0 ? (
             conversations.map((item) => {
-              const runtime = runtimeSessions.filter((session) => session.conversationKey === item.key).at(-1);
-              const rState = runtime?.state ?? item.runtimeState;
-              const rLabel = runtimeStateLabel(rState);
-              const lLabel = lifecycleLabel(item.status);
-              const attn = conversationAttention(item.key);
-              const aLabel = attn ? attentionLabel(attn) : null;
+              const proj = projectConversationStatus(item.key, runtimeSessions, attentionItems, item.status);
               return (
                 <li key={item.key}>
                   <button
                     className={conversation?.key === item.key ? 'is-current' : ''}
                     onClick={() => openConversation(item.key)}
-                    title={`${item.role} · ${item.platform} · ${lLabel.label} · ${rLabel.label}${aLabel ? ` · ${aLabel.label}` : ''}`}
+                    title={`${item.role} · ${item.platform} · ${proj.lifecycle.label} · ${proj.runtime.label}${proj.attention ? ` · ${proj.attention.label}` : ''}`}
                   >
-                    <i className={`runtime-pill ${rLabel.className}`} />
+                    <i className={`runtime-pill ${proj.runtime.className}`} />
                     <span className="name">{item.role}</span>
                     <span className="status-badges">
-                      <em className={lLabel.className}>{lLabel.label}</em>
-                      {aLabel && <em className={aLabel.className}>{aLabel.label}</em>}
+                      <em className={proj.lifecycle.className}>{proj.lifecycle.label}</em>
+                      {proj.attention && <em className={proj.attention.className}>{proj.attention.label}</em>}
                     </span>
                   </button>
                 </li>
@@ -236,18 +269,17 @@ export function WorkspaceSidebar({ onNavigate, isModal = false }: { onNavigate?:
           <ul className="rail-sessions" role="list">
             {running.slice(0, 3).map((session) => {
               const targetConversation = snapshot.conversations.find((item) => item.key === session.conversationKey);
-              const rLabel = runtimeStateLabel(session.state);
-              const lLabel = targetConversation ? lifecycleLabel(targetConversation.status) : { label: 'Unknown', className: 'lifecycle-unknown' };
+              const proj = targetConversation ? projectConversationStatus(targetConversation.key, runtimeSessions, attentionItems, targetConversation.status) : { runtime: { label: 'Running', className: 'runtime-working' }, lifecycle: { label: 'Unknown', className: 'lifecycle-unknown' }, attention: null };
               return (
                 <li key={session.id}>
                   <button
                     onClick={() => session.conversationKey && openConversation(session.conversationKey)}
                     title={`Running · ${session.binding.harness}`}
                   >
-                    <i className={`runtime-pill ${rLabel.className}`} />
+                    <i className={`runtime-pill ${proj.runtime.className}`} />
                     <span className="name">{targetConversation?.role ?? session.id}</span>
                     <span className="status-badges">
-                      <em className={lLabel.className}>{lLabel.label}</em>
+                      <em className={proj.lifecycle.className}>{proj.lifecycle.label}</em>
                     </span>
                   </button>
                 </li>
@@ -263,15 +295,14 @@ export function WorkspaceSidebar({ onNavigate, isModal = false }: { onNavigate?:
               const targetConversation = target.conversationScope
                 ? snapshot.conversations.find((item) => item.key === target.conversationScope!.conversationKey)
                 : undefined;
-              const rLabel = targetConversation ? runtimeStateLabel(targetConversation.runtimeState) : { label: 'Unknown', className: 'runtime-unknown' };
-              const lLabel = targetConversation ? lifecycleLabel(targetConversation.status) : { label: 'Project', className: 'lifecycle-unknown' };
+              const proj = targetConversation ? projectConversationStatus(targetConversation.key, runtimeSessions, attentionItems, targetConversation.status) : { runtime: { label: 'Unknown', className: 'runtime-unknown' }, lifecycle: { label: 'Project', className: 'lifecycle-unknown' }, attention: null };
               return (
                 <li key={`${target.projectId}:${target.conversationScope?.conversationKey ?? ''}`}>
                   <button onClick={() => { resumeWorkspace(target); }} title={targetConversation?.role ?? target.projectId}>
-                    <i className={`runtime-pill ${rLabel.className}`} />
+                    <i className={`runtime-pill ${proj.runtime.className}`} />
                     <span className="name">{targetConversation?.role ?? target.projectId}</span>
                     <span className="status-badges">
-                      <em className={lLabel.className}>{lLabel.label}</em>
+                      <em className={proj.lifecycle.className}>{proj.lifecycle.label}</em>
                     </span>
                   </button>
                 </li>
