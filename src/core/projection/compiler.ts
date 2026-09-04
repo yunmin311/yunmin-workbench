@@ -54,6 +54,9 @@ function sorted<T>(items: readonly T[], key: (item: T) => string): T[] {
  * - sourceFingerprints are restricted to the exact sourceRefs the compiled
  *   candidate referenced. Unrelated Project B canonical files therefore
  *   cannot influence Project A's digest.
+ * - liveExecutionIds are restricted to RuntimeExecution identities the compiled
+ *   candidate projected. Unrelated Project B live/stopped transitions cannot
+ *   influence Project A's digest.
  * - The shared/global Memory Vault is a current intentional product mount,
  *   so its fingerprints are included when memoryIndex has entries.
  *
@@ -72,6 +75,12 @@ function sourceDigestFacts(
     input.snapshot.memoryIndex.filter((item) => consumedSourceRefs.includes(item.sourceRef)),
     (item) => item.id,
   );
+  // liveExecutionIds is the renderer's global set; restrict it to the exact
+  // RuntimeExecution identities the compiled candidate projected, so unrelated
+  // Project B live/stopped transitions cannot change Project A's sourceDigest.
+  const candidateExecutionIds = new Set(candidate.semanticFacts.runtimeExecutions.map((item) => item.executionId));
+  const scopedLiveExecutionIds = [...new Set((input.liveExecutionIds ?? [])
+    .filter((id) => candidateExecutionIds.has(id)))].sort();
   return {
     projectId: input.projectId,
     conversations: sorted(
@@ -85,7 +94,7 @@ function sourceDigestFacts(
     ),
     sourceFingerprints: consumedFingerprints,
     memoryIndex,
-    liveExecutionIds: [...(input.liveExecutionIds ?? [])].sort(),
+    liveExecutionIds: scopedLiveExecutionIds,
     gitFacts: input.gitFacts?.projectId === input.projectId ? input.gitFacts : null,
   };
 }

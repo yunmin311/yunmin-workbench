@@ -201,4 +201,76 @@ describe('Verified Projection Foundation · trust fix', () => {
       .sourceBinding.sourceDigest;
     expect(driftedDigest).not.toBe(baselineDigest);
   });
+
+  it('D1) scopes liveExecutionIds to the projected candidate and ignores Project B live/stopped transitions', () => {
+    const snapshot = snapshotB({});
+    const baselineInput: ProjectionFactInputV0 = {
+      ...projectAInput(snapshot),
+      liveExecutionIds: [],
+    };
+    const baseline = compileProjectionCandidate(baselineInput);
+
+    // Project A candidate contains exactly one execution; capture its id.
+    expect(baseline.semanticFacts.runtimeExecutions).toHaveLength(1);
+    const projectAExecutionId = baseline.semanticFacts.runtimeExecutions[0].executionId;
+    expect(projectAExecutionId).toBe('codex::execution:intent-source');
+    expect(baseline.semanticFacts.runtimeExecutions[0].live).toBe(false);
+
+    const baselineDigest = baseline.sourceBinding.sourceDigest;
+
+    // 1) Add an unrelated Project B live execution id: digest must not change.
+    const withUnrelatedLive: ProjectionFactInputV0 = {
+      ...baselineInput,
+      liveExecutionIds: ['project-b::execution:intent-other', 'codex::execution:intent-unrelated-2'],
+    };
+    const candidateWithUnrelated = compileProjectionCandidate(withUnrelatedLive);
+    expect(candidateWithUnrelated.sourceBinding.sourceDigest).toBe(baselineDigest);
+    expect(candidateWithUnrelated.semanticFacts.runtimeExecutions[0].live).toBe(false);
+
+    // 2) Add/remove only that unrelated id: digest stays the same.
+    const onlyUnrelated = compileProjectionCandidate({
+      ...baselineInput,
+      liveExecutionIds: ['codex::execution:intent-unrelated-2'],
+    });
+    expect(onlyUnrelated.sourceBinding.sourceDigest).toBe(baselineDigest);
+
+    // 3) Recompute via the public computeProjectionSourceDigest with a
+    //    stale digest returned from a different input shape: must match too.
+    const recomputed = computeProjectionSourceDigest(withUnrelatedLive, candidateWithUnrelated);
+    expect(recomputed).toBe(baselineDigest);
+  });
+
+  it('D2) toggling the projected Project A execution live id changes Project A sourceDigest and live state', () => {
+    const snapshot = snapshotB({});
+    const baselineInput: ProjectionFactInputV0 = {
+      ...projectAInput(snapshot),
+      liveExecutionIds: [],
+    };
+    const baseline = compileProjectionCandidate(baselineInput);
+    const projectAExecutionId = baseline.semanticFacts.runtimeExecutions[0].executionId;
+    const baselineDigest = baseline.sourceBinding.sourceDigest;
+
+    // The exact live id of Project A's projected execution enters the digest.
+    const liveInput: ProjectionFactInputV0 = {
+      ...baselineInput,
+      liveExecutionIds: [projectAExecutionId],
+    };
+    const liveCandidate = compileProjectionCandidate(liveInput);
+    expect(liveCandidate.sourceBinding.sourceDigest).not.toBe(baselineDigest);
+    expect(liveCandidate.semanticFacts.runtimeExecutions[0].live).toBe(true);
+
+    // Toggling the live id off again returns to the baseline digest and live=false.
+    const restored = compileProjectionCandidate(baselineInput);
+    expect(restored.sourceBinding.sourceDigest).toBe(baselineDigest);
+    expect(restored.semanticFacts.runtimeExecutions[0].live).toBe(false);
+
+    // Mixing the Project A live id with extra unrelated live ids does not
+    // change the digest relative to the Project-A-only-live case: only the
+    // projected execution set may enter the digest.
+    const mixed = compileProjectionCandidate({
+      ...baselineInput,
+      liveExecutionIds: [projectAExecutionId, 'codex::execution:intent-unrelated-3'],
+    });
+    expect(mixed.sourceBinding.sourceDigest).toBe(liveCandidate.sourceBinding.sourceDigest);
+  });
 });
