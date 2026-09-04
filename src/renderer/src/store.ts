@@ -64,6 +64,15 @@ import type {
 import { buildDispatchPlan, settleDispatchPlan, type DispatchOutcome } from '../../core/project/dispatchPipeline';
 import { useMemo } from 'react';
 import { contextFromAgentResult } from '../../core/project/executionRelations';
+import {
+  computeProjectionSourceDigest,
+  type ProjectionFactInputV0,
+} from '../../core/projection/compiler';
+import {
+  buildVerifiedProjection,
+  emptyProjectionBuildState,
+} from '../../core/projection/revision';
+import type { ProjectionBuildStateV0 } from '../../core/projection/types';
 
 export type View = 'projects' | 'control' | 'canvas' | 'compare' | 'context' | 'packet';
 export type DraftSaveState = 'clean' | 'dirty' | 'saving' | 'saved' | 'error';
@@ -115,6 +124,8 @@ interface WorkbenchState {
   attentionItems: AttentionItem[];
   attentionLocal: AttentionLocalState;
   attentionProblem: string | null;
+  /** Current verification outcome plus the last-known-good Projection revision. */
+  projection: ProjectionBuildStateV0;
   draftSaveState: DraftSaveState;
   packetValidity: 'CURRENT' | 'STALE' | 'INVALID' | 'UNKNOWN';
   handoffStatus: string;
@@ -122,6 +133,7 @@ interface WorkbenchState {
   lastDispatchGroupId: string | null;
   lastDispatchOutcomes: DispatchOutcome[];
   syncIslandAttention: () => void;
+  refreshProjection: () => void;
   initialize: () => Promise<void>;
   resumeWorkspace: (target?: WorkspaceTargetV1) => void;
   enterDemo: () => void;
@@ -244,6 +256,27 @@ function projectAttention(state: AttentionProjectionSource): AttentionItem[] {
     runtimeSessions: state.runtimeSessions,
     packetFacts,
   }), state.attentionLocal);
+}
+
+type RendererProjectionSource = Pick<
+  WorkbenchState,
+  'snapshot' | 'projectId' | 'activity' | 'liveExecutions' | 'git' | 'projection'
+>;
+
+function projectionInput(state: RendererProjectionSource): ProjectionFactInputV0 | null {
+  if (!state.snapshot || !state.projectId) return null;
+  const gitFacts = state.git && 'projectId' in state.git ? state.git : null;
+  const priorLayout = state.projection.current?.candidate.scope.projectId === state.projectId
+    ? state.projection.current.candidate.layoutState
+    : undefined;
+  return {
+    projectId: state.projectId,
+    snapshot: state.snapshot,
+    activity: state.activity,
+    liveExecutionIds: state.liveExecutions.map((item) => item.executionId),
+    gitFacts,
+    ...(priorLayout ? { layoutState: priorLayout } : {}),
+  };
 }
 
 function scheduleWorkspaceSave(state: WorkbenchState): void {
@@ -392,6 +425,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   attentionItems: [],
   attentionLocal: EMPTY_ATTENTION_LOCAL,
   attentionProblem: null,
+  projection: emptyProjectionBuildState(),
   draftSaveState: 'clean',
   packetValidity: 'UNKNOWN',
   handoffStatus: 'IDLE',
@@ -403,6 +437,21 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     if (window.wb?.syncIslandAttention) {
       void window.wb.syncIslandAttention(items);
     }
+  },
+  refreshProjection: () => {
+    const before = get();
+    const input = projectionInput(before);
+    if (!input) {
+      set({ projection: emptyProjectionBuildState() });
+      return;
+    }
+    const projection = buildVerifiedProjection(input, before.projection.current, {
+      recheckSourceDigest: () => {
+        const latest = projectionInput(get());
+        return latest ? computeProjectionSourceDigest(latest) : '0'.repeat(64);
+      },
+    });
+    set({ projection });
   },
 
   initialize: async () => {
@@ -457,6 +506,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       lastDispatchOutcomes: [],
       harnessCapabilities: DEMO_HARNESS_CAPABILITIES,
     });
+    get().refreshProjection();
     get().syncIslandAttention();
   },
 
@@ -482,6 +532,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       handoffSourceRef: null,
       lastDispatchGroupId: null,
       lastDispatchOutcomes: [],
+      projection: emptyProjectionBuildState(),
     });
     await get().initialize();
   },
@@ -514,6 +565,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       lastDispatchOutcomes: [],
       harnessCapabilities: DEMO_HARNESS_CAPABILITIES,
     });
+    get().refreshProjection();
     get().syncIslandAttention();
   },
 
@@ -612,6 +664,7 @@ load: async (refresh) => {
         attentionItems: projectAttention(next),
       };
     });
+    get().refreshProjection();
     get().syncIslandAttention();
   },
 
@@ -642,6 +695,7 @@ load: async (refresh) => {
       packetValidity: 'UNKNOWN',
       handoffStatus: 'IDLE',
     });
+    get().refreshProjection();
     set((state) => ({ attentionItems: projectAttention(state) }));
     get().syncIslandAttention();
     if (!demoMode) {
@@ -954,10 +1008,14 @@ load: async (refresh) => {
   loadGit: async (projectId) => {
     if (get().demoMode) {
       set({ git: { error: 'DEMO · NO REAL GIT' } });
+      get().refreshProjection();
       return;
     }
     const result = await window.wb.loadGit(projectId);
-    if (get().projectId === projectId) set({ git: result.facts ?? { error: result.error ?? 'unknown' } });
+    if (get().projectId === projectId) {
+      set({ git: result.facts ?? { error: result.error ?? 'unknown' } });
+      get().refreshProjection();
+    }
   },
 
   loadMemoryBody: async (memoryId) => {
@@ -1164,6 +1222,7 @@ load: async (refresh) => {
         attentionItems: projectAttention(next),
       };
     });
+    get().refreshProjection();
     get().syncIslandAttention();
   },
 
@@ -1184,6 +1243,7 @@ load: async (refresh) => {
         attentionItems: projectAttention(next),
       };
     });
+    get().refreshProjection();
     get().syncIslandAttention();
   },
 
@@ -1193,6 +1253,7 @@ load: async (refresh) => {
       const runtimeSessions = projectRuntimeSessions(activity);
       return { activity, runtimeSessions, attentionItems: projectAttention({ ...state, activity, runtimeSessions }) };
     });
+    get().refreshProjection();
     // Session/process boundaries change what the adapter currently holds live;
     // chatty per-item events (tools/files) do not.
     if (['session-started', 'turn-completed', 'turn-error', 'harness-error', 'process-cancelled', 'handoff-dispatched', 'handoff-accepted', 'handoff-failed', 'handoff-cancelled'].includes(event.kind)) {
@@ -1208,15 +1269,18 @@ load: async (refresh) => {
       activityBeforeByte: undefined, activityHasEarlier: false,
       attentionItems: projectAttention({ ...state, activity: [], runtimeSessions: [] }),
     }));
+    get().refreshProjection();
     get().syncIslandAttention();
   },
 
   refreshLiveExecutions: async () => {
     if (!window.wb.loadLiveExecutions) {
       set({ liveExecutions: [] });
+      get().refreshProjection();
       return;
     }
     set({ liveExecutions: await probeLiveExecutions(window.wb.loadLiveExecutions) });
+    get().refreshProjection();
   },
 
   openRuntimeInspector: (target) => {
