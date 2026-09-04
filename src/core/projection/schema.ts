@@ -1,5 +1,6 @@
 import { z, type ZodIssue } from 'zod';
 import type {
+  CollaborationRelationProjectionV0,
   ProjectionCandidateV0,
   ProjectionCandidateValidationV0,
   ProjectionDiagnosticV0,
@@ -173,4 +174,227 @@ export function validateProjectionCandidate(input: unknown): ProjectionCandidate
     candidate: parsed.data as ProjectionCandidateV0,
     diagnostics: [],
   };
+}
+
+function semanticDiagnostic(
+  code: string,
+  message: string,
+  subject: Record<string, unknown>,
+  evidence: Record<string, unknown>,
+  supportedFix: string,
+): ProjectionDiagnosticV0 {
+  return normalizeProjectionDiagnostic({
+    code,
+    severity: 'error',
+    message,
+    subject,
+    evidence,
+    supportedFixes: [supportedFix],
+  });
+}
+
+function relationEvidenceRefs(relation: CollaborationRelationProjectionV0): string[] {
+  return relation.evidenceRefs;
+}
+
+/**
+ * Cross-reference validation over an already structurally valid candidate.
+ * It reports facts as supplied and never repairs, defaults, or mutates them.
+ */
+export function validateProjectionSemantics(candidate: ProjectionCandidateV0): ProjectionDiagnosticV0[] {
+  const diagnostics: ProjectionDiagnosticV0[] = [];
+  const allIds = new Set<string>();
+  const collections: Array<readonly { id: string }[]> = [
+    candidate.semanticFacts.conversations,
+    candidate.semanticFacts.runtimeExecutions,
+    candidate.semanticFacts.collaborationRelations,
+    candidate.semanticFacts.artifactsOrEvidence,
+    candidate.semanticFacts.evidenceRefs,
+  ];
+  for (const collection of collections) {
+    for (const item of collection) {
+      if (allIds.has(item.id)) {
+        diagnostics.push(semanticDiagnostic(
+          'semantic/duplicate-id',
+          `Projection semantic ID is duplicated: ${item.id}`,
+          { id: item.id },
+          { duplicatedId: item.id },
+          'give every projected entity a unique stable semantic ID',
+        ));
+      }
+      allIds.add(item.id);
+    }
+  }
+
+  const evidenceIds = new Set(candidate.semanticFacts.evidenceRefs.map((item) => item.id));
+  const conversationIds = new Set(candidate.semanticFacts.conversations.map((item) => item.id));
+  const executionIds = new Set(candidate.semanticFacts.runtimeExecutions.map((item) => item.id));
+  const artifactById = new Map(candidate.semanticFacts.artifactsOrEvidence.map((item) => [item.id, item]));
+
+  const checkEvidence = (subjectId: string, refs: readonly string[]): void => {
+    for (const evidenceRef of refs) {
+      if (evidenceIds.has(evidenceRef)) continue;
+      diagnostics.push(semanticDiagnostic(
+        'semantic/missing-evidence',
+        `Projected entity ${subjectId} references missing evidence ${evidenceRef}`,
+        { id: subjectId },
+        { evidenceRef },
+        'include the exact evidence record or remove the unsupported reference',
+      ));
+    }
+  };
+
+  for (const conversation of candidate.semanticFacts.conversations) {
+    if (conversation.id !== `conversation:${conversation.conversationKey}`) {
+      diagnostics.push(semanticDiagnostic(
+        'semantic/unstable-id',
+        `Conversation ID does not match its Workbench key: ${conversation.id}`,
+        { id: conversation.id },
+        { conversationKey: conversation.conversationKey },
+        'derive the Conversation semantic ID from the existing Workbench conversation key',
+      ));
+    }
+    if (conversation.projectId !== candidate.scope.projectId) {
+      diagnostics.push(semanticDiagnostic(
+        'semantic/scope-mismatch',
+        `Conversation ${conversation.id} is outside projection scope`,
+        { id: conversation.id },
+        { projectId: conversation.projectId, scope: candidate.scope.projectId },
+        'compile only facts belonging to the projection project scope',
+      ));
+    }
+    checkEvidence(conversation.id, conversation.evidenceRefs);
+  }
+
+  for (const execution of candidate.semanticFacts.runtimeExecutions) {
+    if (execution.id !== `execution:${execution.executionId}`) {
+      diagnostics.push(semanticDiagnostic(
+        'semantic/unstable-id',
+        `RuntimeExecution ID does not match its execution identity: ${execution.id}`,
+        { id: execution.id },
+        { executionId: execution.executionId },
+        'derive the RuntimeExecution semantic ID from the existing execution ID',
+      ));
+    }
+    if (execution.projectId !== candidate.scope.projectId) {
+      diagnostics.push(semanticDiagnostic(
+        'semantic/scope-mismatch',
+        `RuntimeExecution ${execution.id} is outside projection scope`,
+        { id: execution.id },
+        { projectId: execution.projectId, scope: candidate.scope.projectId },
+        'compile only facts belonging to the projection project scope',
+      ));
+    }
+    if (execution.conversationRef && !conversationIds.has(execution.conversationRef)) {
+      diagnostics.push(semanticDiagnostic(
+        'semantic/missing-reference',
+        `RuntimeExecution ${execution.id} references missing Conversation ${execution.conversationRef}`,
+        { id: execution.id },
+        { conversationRef: execution.conversationRef },
+        'use an exact projected Conversation ref or preserve the association as null',
+      ));
+    }
+    checkEvidence(execution.id, execution.evidenceRefs);
+  }
+
+  for (const artifact of candidate.semanticFacts.artifactsOrEvidence) {
+    if (artifact.projectId !== candidate.scope.projectId) {
+      diagnostics.push(semanticDiagnostic(
+        'semantic/scope-mismatch',
+        `ArtifactOrEvidence ${artifact.id} is outside projection scope`,
+        { id: artifact.id },
+        { projectId: artifact.projectId, scope: candidate.scope.projectId },
+        'compile only facts belonging to the projection project scope',
+      ));
+    }
+    if (artifact.executionRef && !executionIds.has(artifact.executionRef)) {
+      diagnostics.push(semanticDiagnostic(
+        'semantic/missing-reference',
+        `ArtifactOrEvidence ${artifact.id} references missing RuntimeExecution ${artifact.executionRef}`,
+        { id: artifact.id },
+        { executionRef: artifact.executionRef },
+        'use an exact projected RuntimeExecution ref or omit the unsupported association',
+      ));
+    }
+    checkEvidence(artifact.id, artifact.evidenceRefs);
+  }
+
+  for (const relation of candidate.semanticFacts.collaborationRelations) {
+    checkEvidence(relation.id, relationEvidenceRefs(relation));
+    if (relation.kind === 'parallel') {
+      const members = new Set(relation.executionRefs);
+      if (members.size < 2 || members.size !== relation.executionRefs.length) {
+        diagnostics.push(semanticDiagnostic(
+          'semantic/relation-members',
+          `Parallel relation ${relation.id} requires at least two distinct executions`,
+          { id: relation.id },
+          { executionRefs: relation.executionRefs },
+          'retain only explicit, distinct execution members from the same groupId',
+        ));
+      }
+      for (const executionRef of members) {
+        if (executionIds.has(executionRef)) continue;
+        diagnostics.push(semanticDiagnostic(
+          'semantic/missing-reference',
+          `Parallel relation ${relation.id} references missing RuntimeExecution ${executionRef}`,
+          { id: relation.id },
+          { executionRef },
+          'include only exact RuntimeExecution refs present in this projection',
+        ));
+      }
+    } else {
+      for (const executionRef of [relation.sourceExecutionRef, relation.targetExecutionRef]) {
+        if (executionIds.has(executionRef)) continue;
+        diagnostics.push(semanticDiagnostic(
+          'semantic/missing-reference',
+          `Handoff relation ${relation.id} references missing RuntimeExecution ${executionRef}`,
+          { id: relation.id },
+          { executionRef },
+          'include only exact RuntimeExecution refs present in this projection',
+        ));
+      }
+      const usedResult = artifactById.get(relation.usedResultRef);
+      if (!usedResult) {
+        diagnostics.push(semanticDiagnostic(
+          'semantic/missing-reference',
+          `Handoff relation ${relation.id} references missing result ${relation.usedResultRef}`,
+          { id: relation.id },
+          { usedResultRef: relation.usedResultRef },
+          'reference the exact projected agent result selected for the handoff',
+        ));
+      } else if (usedResult.kind !== 'agent-result' || usedResult.executionRef !== relation.sourceExecutionRef) {
+        diagnostics.push(semanticDiagnostic(
+          'semantic/handoff-source',
+          `Handoff relation ${relation.id} does not use a result owned by its source execution`,
+          { id: relation.id },
+          {
+            usedResultRef: relation.usedResultRef,
+            artifactKind: usedResult.kind,
+            artifactExecutionRef: usedResult.executionRef,
+            sourceExecutionRef: relation.sourceExecutionRef,
+          },
+          'use an exact agent-result artifact produced by the source RuntimeExecution',
+        ));
+      }
+    }
+  }
+
+  const layoutTargets = new Set([
+    `project:${candidate.scope.projectId}`,
+    ...candidate.semanticFacts.conversations.map((item) => item.id),
+    ...candidate.semanticFacts.runtimeExecutions.map((item) => item.id),
+    ...candidate.semanticFacts.artifactsOrEvidence.map((item) => item.id),
+  ]);
+  for (const targetId of Object.keys(candidate.layoutState.nodePositions)) {
+    if (layoutTargets.has(targetId)) continue;
+    diagnostics.push(semanticDiagnostic(
+      'semantic/layout-target',
+      `Layout position targets an entity not present in the projection: ${targetId}`,
+      { id: targetId },
+      { targetId },
+      'keep layout state keyed only by projected entities in this revision',
+    ));
+  }
+
+  return diagnostics;
 }
