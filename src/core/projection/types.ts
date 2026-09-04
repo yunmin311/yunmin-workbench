@@ -367,7 +367,7 @@ export interface ProjectionDeltaSummaryV0 {
 
 export interface ProjectionDeltaIdentityDeclarationV0 {
   conversations: 'id';
-  runtimeExecutions: 'executionId';
+  runtimeExecutions: 'id';
   collaborationRelations: 'id';
   artifactsOrEvidence: 'id';
   evidenceRefs: 'id';

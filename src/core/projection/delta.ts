@@ -1,7 +1,7 @@
 /**
  * ADAPT design principles from Archify
  * `archify/delta/architecture-delta.mjs` at commit
- * 06dd052602dd9a369e4d034e24faef0917b5a60c (MIT).
+ * 06dd052602dd9a369e4d034e24faf0917b5a60c (MIT).
  *
  * Reused ideas, none of the diagram-specific code:
  *   - stable-id keyed entity matching (ADAPT)
@@ -54,13 +54,17 @@ import {
   PROJECTION_DELTA_COMPARATOR_VERSION,
   PROJECTION_DELTA_SCHEMA_VERSION,
 } from './types';
+import {
+  computeProjectionLayoutHash,
+  computeProjectionRevisionHash,
+  computeProjectionSemanticHash,
+  verifyProjectionCandidate,
+} from './revision';
+
+// ===== helpers =====
 
 function byId<T extends { id: string }>(left: T, right: T): number {
   return left.id.localeCompare(right.id);
-}
-
-function sortedIds<T extends { id: string }>(items: readonly T[]): T[] {
-  return [...items].sort(byId);
 }
 
 function toIndex<T extends { id: string }>(items: readonly T[]): Map<string, T> {
@@ -77,8 +81,33 @@ function arraysOfSameElements(left: readonly string[], right: readonly string[])
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
-function strictEquals(a: unknown, b: unknown): boolean {
-  return a === b;
+/**
+ * Deterministic structural equality. Object property insertion order does
+ * not matter; arrays are element-compared by canonical-sort order when they
+ * carry string IDs. No model logic; no JSON.stringify of untrusted shapes.
+ */
+function structuralEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a === null || b === null || a === undefined || b === undefined) return a === b;
+  if (typeof a !== 'object' || typeof b !== 'object') return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i += 1) {
+      if (!structuralEqual(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  const aKeys = Object.keys(a as Record<string, unknown>).sort();
+  const bKeys = Object.keys(b as Record<string, unknown>).sort();
+  if (aKeys.length !== bKeys.length) return false;
+  for (let i = 0; i < aKeys.length; i += 1) {
+    if (aKeys[i] !== bKeys[i]) return false;
+    if (!structuralEqual((a as Record<string, unknown>)[aKeys[i]], (b as Record<string, unknown>)[bKeys[i]])) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function failure(
@@ -98,193 +127,275 @@ function failure(
   };
 }
 
-function checkRevisionsForDuplicates(
+// ===== comparability gate =====
+
+/**
+ * Trust only verified projections. Re-uses Foundation's
+ * `verifyProjectionCandidate` so the comparator never invents a second
+ * hash/validator. Any structural, semantic, sourceDigest, hash, or envelope
+ * mismatch becomes `delta/invalid-revision`. Duplicate stable IDs keep their
+ * own code.
+ */
+function trustVerifiedRevision(
+  side: 'base' | 'head',
+  revision: VerifiedProjectionRevisionV0,
+  diagnostics: ProjectionDiagnosticV0[],
+): void {
+  // Foundation's structural validator already rejects unknown fields and
+  // schema mismatches. Strict schema means TS casts cannot smuggle extra
+  // fields past `verifyProjectionCandidate`.
+  const verified = verifyProjectionCandidate(revision.candidate, null, {
+    recheckSourceDigest: () => revision.candidate.sourceBinding.sourceDigest,
+  });
+  if (!verified.current) {
+    for (const diagnostic of verified.diagnostics) {
+      diagnostics.push({
+        ...diagnostic,
+        code: diagnostic.code.startsWith('schema/')
+          ? 'delta/invalid-revision'
+          : diagnostic.code,
+        message: `${side} revision failed Workbench Verified Projection validation: ${diagnostic.message}`,
+        subject: { side, ...diagnostic.subject },
+        evidence: { side, ...diagnostic.evidence },
+      });
+    }
+    return;
+  }
+  // Envelope integrity: hashes, revision id, sourceDigest must all match the
+  // candidate Foundation actually computed.
+  const recomputedSemantic = computeProjectionSemanticHash(revision.candidate);
+  const recomputedLayout = computeProjectionLayoutHash(revision.candidate);
+  const recomputedRevision = computeProjectionRevisionHash({
+    scope: revision.candidate.scope,
+    sourceDigest: revision.candidate.sourceBinding.sourceDigest,
+    semanticHash: recomputedSemantic,
+    layoutHash: recomputedLayout,
+  });
+  const recomputedRevisionId = `projection:${recomputedRevision}`;
+  if (recomputedSemantic !== revision.semanticHash
+    || recomputedLayout !== revision.layoutHash
+    || recomputedRevision !== revision.revisionHash
+    || recomputedRevisionId !== revision.revisionId
+    || revision.candidate.sourceBinding.sourceDigest !== revision.sourceDigest) {
+    diagnostics.push({
+      code: 'delta/invalid-revision',
+      severity: 'error',
+      message: `${side} revision envelope does not match its candidate after recomputation.`,
+      subject: { side, revisionId: revision.revisionId },
+      evidence: {
+        revisionSemanticHash: revision.semanticHash,
+        recomputedSemanticHash: recomputedSemantic,
+        revisionLayoutHash: revision.layoutHash,
+        recomputedLayoutHash: recomputedLayout,
+        revisionRevisionHash: revision.revisionHash,
+        recomputedRevisionHash: recomputedRevision,
+        revisionRevisionId: revision.revisionId,
+        recomputedRevisionId,
+        revisionSourceDigest: revision.sourceDigest,
+        candidateSourceDigest: revision.candidate.sourceBinding.sourceDigest,
+      },
+      supportedFixes: [
+        'discard the revision and rebuild from Foundation; only verified revisions produced by Workbench are comparable',
+      ],
+    });
+  }
+}
+
+function indexConversations(revision: VerifiedProjectionRevisionV0): Map<string, ConversationProjectionV0> {
+  return toIndex(revision.candidate.semanticFacts.conversations);
+}
+
+function indexExecutions(revision: VerifiedProjectionRevisionV0): Map<string, RuntimeExecutionProjectionV0> {
+  return toIndex(revision.candidate.semanticFacts.runtimeExecutions);
+}
+
+function indexRelations(revision: VerifiedProjectionRevisionV0): Map<string, CollaborationRelationProjectionV0> {
+  return toIndex(revision.candidate.semanticFacts.collaborationRelations);
+}
+
+function indexArtifacts(revision: VerifiedProjectionRevisionV0): Map<string, ArtifactOrEvidenceProjectionV0> {
+  return toIndex(revision.candidate.semanticFacts.artifactsOrEvidence);
+}
+
+function indexEvidence(revision: VerifiedProjectionRevisionV0): Map<string, EvidenceRefV0> {
+  return toIndex(revision.candidate.semanticFacts.evidenceRefs);
+}
+
+function deduplicateIdsAcrossCollections(
   revision: VerifiedProjectionRevisionV0,
   diagnostics: ProjectionDiagnosticV0[],
 ): void {
   const seen = new Set<string>();
-  for (const conversation of revision.candidate.semanticFacts.conversations) {
-    if (seen.has(conversation.id)) diagnostics.push(makeDuplicateDiagnostic(conversation.id));
-    seen.add(conversation.id);
+  const collections: Array<{ kind: 'conversation' | 'runtimeExecution' | 'collaborationRelation' | 'artifact' | 'evidence'; items: Array<{ id: string }> }> = [
+    { kind: 'conversation', items: revision.candidate.semanticFacts.conversations },
+    { kind: 'runtimeExecution', items: revision.candidate.semanticFacts.runtimeExecutions },
+    { kind: 'collaborationRelation', items: revision.candidate.semanticFacts.collaborationRelations },
+    { kind: 'artifact', items: revision.candidate.semanticFacts.artifactsOrEvidence },
+    { kind: 'evidence', items: revision.candidate.semanticFacts.evidenceRefs },
+  ];
+  for (const collection of collections) {
+    for (const item of collection.items) {
+      if (seen.has(item.id)) {
+        diagnostics.push({
+          code: 'delta/duplicate-id',
+          severity: 'error',
+          message: `Stable Projection ID appears more than once across collections: ${item.id}`,
+          subject: { id: item.id, kind: collection.kind },
+          evidence: { duplicatedId: item.id, kind: collection.kind },
+          supportedFixes: ['reject the candidate upstream; verified revisions require unique stable IDs across collections'],
+        });
+        continue;
+      }
+      seen.add(item.id);
+    }
   }
-  for (const execution of revision.candidate.semanticFacts.runtimeExecutions) {
-    if (seen.has(execution.id)) diagnostics.push(makeDuplicateDiagnostic(execution.id));
-    seen.add(execution.id);
-  }
-  for (const relation of revision.candidate.semanticFacts.collaborationRelations) {
-    if (seen.has(relation.id)) diagnostics.push(makeDuplicateDiagnostic(relation.id));
-    seen.add(relation.id);
-  }
-  for (const artifact of revision.candidate.semanticFacts.artifactsOrEvidence) {
-    if (seen.has(artifact.id)) diagnostics.push(makeDuplicateDiagnostic(artifact.id));
-    seen.add(artifact.id);
-  }
-  for (const evidence of revision.candidate.semanticFacts.evidenceRefs) {
-    if (seen.has(evidence.id)) diagnostics.push(makeDuplicateDiagnostic(evidence.id));
-    seen.add(evidence.id);
-  }
 }
 
-function makeDuplicateDiagnostic(id: string): ProjectionDiagnosticV0 {
-  return {
-    code: 'delta/duplicate-id',
-    severity: 'error',
-    message: `Projection semantic ID appears more than once across collections: ${id}`,
-    subject: { id },
-    evidence: { duplicatedId: id },
-    supportedFixes: ['reject the candidate upstream; verified revisions are required to have stable unique IDs'],
-  };
-}
+// ===== per-collection comparators =====
 
-function indexConversations(revision: VerifiedProjectionRevisionV0): Map<string, ConversationProjectionV0> {
-  return toIndex(sortedIds(revision.candidate.semanticFacts.conversations));
-}
-
-function indexExecutions(revision: VerifiedProjectionRevisionV0): Map<string, RuntimeExecutionProjectionV0> {
-  return toIndex(sortedIds(revision.candidate.semanticFacts.runtimeExecutions));
-}
-
-function indexRelations(revision: VerifiedProjectionRevisionV0): Map<string, CollaborationRelationProjectionV0> {
-  return toIndex(sortedIds(revision.candidate.semanticFacts.collaborationRelations));
-}
-
-function indexArtifacts(revision: VerifiedProjectionRevisionV0): Map<string, ArtifactOrEvidenceProjectionV0> {
-  return toIndex(sortedIds(revision.candidate.semanticFacts.artifactsOrEvidence));
-}
-
-function indexEvidence(revision: VerifiedProjectionRevisionV0): Map<string, EvidenceRefV0> {
-  return toIndex(sortedIds(revision.candidate.semanticFacts.evidenceRefs));
+interface ConversationChangeOutcomeV0 {
+  changes: ProjectionDeltaConversationChangeV0[];
+  counts: ProjectionDeltaSummaryConversationCountsV0;
+  addedOrRemoved: boolean;
+  contentChanged: boolean;
+  evidenceOnlyChanged: boolean;
 }
 
 function conversationChanges(
   baseIndex: Map<string, ConversationProjectionV0>,
   headIndex: Map<string, ConversationProjectionV0>,
-): { changes: ProjectionDeltaConversationChangeV0[]; counts: ProjectionDeltaSummaryConversationCountsV0 } {
+): ConversationChangeOutcomeV0 {
   const counts: ProjectionDeltaSummaryConversationCountsV0 = { added: 0, removed: 0, changed: 0 };
   const changes: ProjectionDeltaConversationChangeV0[] = [];
   const ids = sortedStrings([...baseIndex.keys(), ...headIndex.keys()]);
+  let addedOrRemoved = false;
+  let contentChanged = false;
+  let evidenceOnlyChanged = false;
   for (const id of ids) {
     const base = baseIndex.get(id);
     const head = headIndex.get(id);
     if (!base && head) {
       counts.added += 1;
-      changes.push({
-        id,
-        status: 'added',
-        classifications: ['identity-metadata'],
-        changedFields: [],
-      });
+      addedOrRemoved = true;
+      contentChanged = true;
+      changes.push({ id, status: 'added', classifications: ['identity-metadata'], changedFields: [] });
       continue;
     }
     if (base && !head) {
       counts.removed += 1;
-      changes.push({
-        id,
-        status: 'removed',
-        classifications: ['identity-metadata'],
-        changedFields: [],
-      });
+      addedOrRemoved = true;
+      contentChanged = true;
+      changes.push({ id, status: 'removed', classifications: ['identity-metadata'], changedFields: [] });
       continue;
     }
     if (!base || !head) continue;
     const changedFields: ProjectionDeltaFieldChangeV0<'lifecycle' | 'task' | 'runtime' | 'attention' | 'identity-metadata' | 'evidence'>[] = [];
-    if (!strictEquals(base.lifecycleState, head.lifecycleState)) {
+    if (base.lifecycleState !== head.lifecycleState) {
       changedFields.push({ path: 'lifecycleState', kind: 'lifecycle', before: base.lifecycleState, after: head.lifecycleState });
     }
-    if (!strictEquals(base.taskState, head.taskState)) {
+    if (base.taskState !== head.taskState) {
       changedFields.push({ path: 'taskState', kind: 'task', before: base.taskState, after: head.taskState });
     }
-    if (!strictEquals(base.runtimeState, head.runtimeState)) {
+    if (base.runtimeState !== head.runtimeState) {
       changedFields.push({ path: 'runtimeState', kind: 'runtime', before: base.runtimeState, after: head.runtimeState });
     }
-    if (!strictEquals(base.attentionState, head.attentionState)) {
+    if (base.attentionState !== head.attentionState) {
       changedFields.push({ path: 'attentionState', kind: 'attention', before: base.attentionState, after: head.attentionState });
     }
-    if (!strictEquals(base.role, head.role)
-      || !strictEquals(base.level ?? null, head.level ?? null)
-      || !strictEquals(base.platform, head.platform)
-      || !strictEquals(base.conversationKey, head.conversationKey)
-      || !strictEquals(base.canonicalConversationId ?? null, head.canonicalConversationId ?? null)) {
-      changedFields.push({
-        path: 'identity-metadata',
-        kind: 'identity-metadata',
-        before: {
-          role: base.role,
-          level: base.level ?? null,
-          platform: base.platform,
-          conversationKey: base.conversationKey,
-          canonicalConversationId: base.canonicalConversationId ?? null,
-        },
-        after: {
-          role: head.role,
-          level: head.level ?? null,
-          platform: head.platform,
-          conversationKey: head.conversationKey,
-          canonicalConversationId: head.canonicalConversationId ?? null,
-        },
-      });
+    const identityBefore = {
+      role: base.role,
+      level: base.level ?? null,
+      platform: base.platform,
+      conversationKey: base.conversationKey,
+      canonicalConversationId: base.canonicalConversationId ?? null,
+    };
+    const identityAfter = {
+      role: head.role,
+      level: head.level ?? null,
+      platform: head.platform,
+      conversationKey: head.conversationKey,
+      canonicalConversationId: head.canonicalConversationId ?? null,
+    };
+    if (!structuralEqual(identityBefore, identityAfter)) {
+      changedFields.push({ path: 'identity-metadata', kind: 'identity-metadata', before: identityBefore, after: identityAfter });
     }
     if (!arraysOfSameElements(base.evidenceRefs, head.evidenceRefs)) {
-      changedFields.push({
-        path: 'evidenceRefs',
-        kind: 'evidence',
-        before: sortedStrings(base.evidenceRefs),
-        after: sortedStrings(head.evidenceRefs),
-      });
+      changedFields.push({ path: 'evidenceRefs', kind: 'evidence', before: sortedStrings(base.evidenceRefs), after: sortedStrings(head.evidenceRefs) });
     }
     if (changedFields.length > 0) {
       counts.changed += 1;
-      const seen = new Set<string>();
+      const onlyEvidence = changedFields.every((field) => field.kind === 'evidence');
+      if (onlyEvidence) {
+        evidenceOnlyChanged = true;
+      } else {
+        contentChanged = true;
+      }
+      const seenKinds = new Set<string>();
       const classifications: Array<'lifecycle' | 'task' | 'runtime' | 'attention' | 'identity-metadata' | 'evidence'> = [];
       for (const field of changedFields) {
-        if (seen.has(field.kind)) continue;
-        seen.add(field.kind);
+        if (seenKinds.has(field.kind)) continue;
+        seenKinds.add(field.kind);
         classifications.push(field.kind);
       }
       changes.push({ id, status: 'changed', classifications, changedFields });
     }
   }
-  return { changes, counts };
+  return { changes, counts, addedOrRemoved, contentChanged, evidenceOnlyChanged };
+}
+
+interface ExecutionChangeOutcomeV0 {
+  changes: ProjectionDeltaRuntimeExecutionChangeV0[];
+  counts: ProjectionDeltaSummaryRuntimeExecutionCountsV0;
+  addedOrRemoved: boolean;
+  contentChanged: boolean;
+  evidenceOnlyChanged: boolean;
 }
 
 function executionChanges(
   baseIndex: Map<string, RuntimeExecutionProjectionV0>,
   headIndex: Map<string, RuntimeExecutionProjectionV0>,
-): { changes: ProjectionDeltaRuntimeExecutionChangeV0[]; counts: ProjectionDeltaSummaryRuntimeExecutionCountsV0 } {
+): ExecutionChangeOutcomeV0 {
   const counts: ProjectionDeltaSummaryRuntimeExecutionCountsV0 = { added: 0, removed: 0, changed: 0 };
   const changes: ProjectionDeltaRuntimeExecutionChangeV0[] = [];
   const ids = sortedStrings([...baseIndex.keys(), ...headIndex.keys()]);
+  let addedOrRemoved = false;
+  let contentChanged = false;
+  let evidenceOnlyChanged = false;
   for (const id of ids) {
     const base = baseIndex.get(id);
     const head = headIndex.get(id);
     if (!base && head) {
       counts.added += 1;
+      addedOrRemoved = true;
+      contentChanged = true;
       changes.push({ id, status: 'added', classifications: ['runtimeState'], changedFields: [] });
       continue;
     }
     if (base && !head) {
       counts.removed += 1;
+      addedOrRemoved = true;
+      contentChanged = true;
       changes.push({ id, status: 'removed', classifications: ['runtimeState'], changedFields: [] });
       continue;
     }
     if (!base || !head) continue;
     const changedFields: ProjectionDeltaFieldChangeV0<'runtimeState' | 'live' | 'binding' | 'intentState' | 'receipt' | 'conversationRef' | 'evidence'>[] = [];
-    if (!strictEquals(base.runtimeState, head.runtimeState)) {
+    if (base.runtimeState !== head.runtimeState) {
       changedFields.push({ path: 'runtimeState', kind: 'runtimeState', before: base.runtimeState, after: head.runtimeState });
     }
-    if (!strictEquals(base.live, head.live)) {
+    if (base.live !== head.live) {
       changedFields.push({ path: 'live', kind: 'live', before: base.live, after: head.live });
     }
-    if (!strictEquals(base.binding, head.binding)) {
+    if (!structuralEqual(base.binding, head.binding)) {
       changedFields.push({ path: 'binding', kind: 'binding', before: base.binding, after: head.binding });
     }
-    if (!strictEquals(base.intentState, head.intentState)) {
+    if (base.intentState !== head.intentState) {
       changedFields.push({ path: 'intentState', kind: 'intentState', before: base.intentState, after: head.intentState });
     }
-    if (!strictEquals(base.receipt, head.receipt)) {
+    if (!structuralEqual(base.receipt, head.receipt)) {
       changedFields.push({ path: 'receipt', kind: 'receipt', before: base.receipt, after: head.receipt });
     }
-    if (!strictEquals(base.conversationRef, head.conversationRef)) {
+    if ((base.conversationRef ?? null) !== (head.conversationRef ?? null)) {
       changedFields.push({ path: 'conversationRef', kind: 'conversationRef', before: base.conversationRef, after: head.conversationRef });
     }
     if (!arraysOfSameElements(base.evidenceRefs, head.evidenceRefs)) {
@@ -292,46 +403,72 @@ function executionChanges(
     }
     if (changedFields.length > 0) {
       counts.changed += 1;
-      const seen = new Set<string>();
+      const onlyEvidence = changedFields.every((field) => field.kind === 'evidence');
+      if (onlyEvidence) {
+        evidenceOnlyChanged = true;
+      } else {
+        contentChanged = true;
+      }
+      const seenKinds = new Set<string>();
       const classifications: Array<'runtimeState' | 'live' | 'binding' | 'intentState' | 'receipt' | 'conversationRef' | 'evidence'> = [];
       for (const field of changedFields) {
-        if (seen.has(field.kind)) continue;
-        seen.add(field.kind);
+        if (seenKinds.has(field.kind)) continue;
+        seenKinds.add(field.kind);
         classifications.push(field.kind);
       }
       changes.push({ id, status: 'changed', classifications, changedFields });
     }
   }
-  return { changes, counts };
+  return { changes, counts, addedOrRemoved, contentChanged, evidenceOnlyChanged };
+}
+
+interface RelationChangeOutcomeV0 {
+  changes: ProjectionDeltaCollaborationRelationChangeV0[];
+  counts: ProjectionDeltaSummaryRelationCountsV0;
+  addedOrRemoved: boolean;
+  semanticOrTopologyChanged: boolean;
+  evidenceOnlyChanged: boolean;
 }
 
 function relationChanges(
   baseIndex: Map<string, CollaborationRelationProjectionV0>,
   headIndex: Map<string, CollaborationRelationProjectionV0>,
-): { changes: ProjectionDeltaCollaborationRelationChangeV0[]; counts: ProjectionDeltaSummaryRelationCountsV0 } {
+): RelationChangeOutcomeV0 {
   const counts: ProjectionDeltaSummaryRelationCountsV0 = { added: 0, removed: 0, changed: 0 };
   const changes: ProjectionDeltaCollaborationRelationChangeV0[] = [];
   const ids = sortedStrings([...baseIndex.keys(), ...headIndex.keys()]);
+  let addedOrRemoved = false;
+  let semanticOrTopologyChanged = false;
+  let evidenceOnlyChanged = false;
   for (const id of ids) {
     const base = baseIndex.get(id);
     const head = headIndex.get(id);
     if (!base && head) {
       counts.added += 1;
+      addedOrRemoved = true;
+      semanticOrTopologyChanged = true;
       changes.push({ id, status: 'added', classifications: ['topology'], changedFields: [] });
       continue;
     }
     if (base && !head) {
       counts.removed += 1;
+      addedOrRemoved = true;
+      semanticOrTopologyChanged = true;
       changes.push({ id, status: 'removed', classifications: ['topology'], changedFields: [] });
       continue;
     }
     if (!base || !head) continue;
     const changedFields: ProjectionDeltaFieldChangeV0<'topology' | 'semantic' | 'evidence'>[] = [];
+    const markTopologyOrSemantic = () => {
+      semanticOrTopologyChanged = true;
+    };
     if (base.kind !== head.kind) {
+      markTopologyOrSemantic();
       changedFields.push({ path: 'kind', kind: 'semantic', before: base.kind, after: head.kind });
     }
     if (base.kind === 'parallel' && head.kind === 'parallel') {
       if (!arraysOfSameElements(base.executionRefs, head.executionRefs)) {
+        markTopologyOrSemantic();
         changedFields.push({
           path: 'executionRefs',
           kind: 'topology',
@@ -340,13 +477,16 @@ function relationChanges(
         });
       }
     } else if (base.kind === 'handoff' && head.kind === 'handoff') {
-      if (!strictEquals(base.sourceExecutionRef, head.sourceExecutionRef)) {
+      if (base.sourceExecutionRef !== head.sourceExecutionRef) {
+        markTopologyOrSemantic();
         changedFields.push({ path: 'sourceExecutionRef', kind: 'topology', before: base.sourceExecutionRef, after: head.sourceExecutionRef });
       }
-      if (!strictEquals(base.targetExecutionRef, head.targetExecutionRef)) {
+      if (base.targetExecutionRef !== head.targetExecutionRef) {
+        markTopologyOrSemantic();
         changedFields.push({ path: 'targetExecutionRef', kind: 'topology', before: base.targetExecutionRef, after: head.targetExecutionRef });
       }
-      if (!strictEquals(base.usedResultRef, head.usedResultRef)) {
+      if (base.usedResultRef !== head.usedResultRef) {
+        markTopologyOrSemantic();
         changedFields.push({ path: 'usedResultRef', kind: 'semantic', before: base.usedResultRef, after: head.usedResultRef });
       }
     }
@@ -355,47 +495,77 @@ function relationChanges(
     }
     if (changedFields.length > 0) {
       counts.changed += 1;
-      const seen = new Set<string>();
+      const onlyEvidence = changedFields.every((field) => field.kind === 'evidence');
+      if (onlyEvidence) {
+        evidenceOnlyChanged = true;
+      }
+      const seenKinds = new Set<string>();
       const classifications: Array<'topology' | 'semantic' | 'evidence'> = [];
       for (const field of changedFields) {
-        if (seen.has(field.kind)) continue;
-        seen.add(field.kind);
+        if (seenKinds.has(field.kind)) continue;
+        seenKinds.add(field.kind);
         classifications.push(field.kind);
       }
       changes.push({ id, status: 'changed', classifications, changedFields });
     }
   }
-  return { changes, counts };
+  return { changes, counts, addedOrRemoved, semanticOrTopologyChanged, evidenceOnlyChanged };
+}
+
+interface ArtifactChangeOutcomeV0 {
+  changes: ProjectionDeltaArtifactOrEvidenceChangeV0[];
+  counts: ProjectionDeltaSummaryArtifactCountsV0;
+  addedOrRemoved: boolean;
+  contentChanged: boolean;
+  evidenceOnlyChanged: boolean;
 }
 
 function artifactChanges(
   baseIndex: Map<string, ArtifactOrEvidenceProjectionV0>,
   headIndex: Map<string, ArtifactOrEvidenceProjectionV0>,
-): { changes: ProjectionDeltaArtifactOrEvidenceChangeV0[]; counts: ProjectionDeltaSummaryArtifactCountsV0 } {
+): ArtifactChangeOutcomeV0 {
   const counts: ProjectionDeltaSummaryArtifactCountsV0 = { added: 0, removed: 0, changed: 0, evidenceChanged: 0 };
   const changes: ProjectionDeltaArtifactOrEvidenceChangeV0[] = [];
   const ids = sortedStrings([...baseIndex.keys(), ...headIndex.keys()]);
+  let addedOrRemoved = false;
+  let contentChanged = false;
+  let evidenceOnlyChanged = false;
   for (const id of ids) {
     const base = baseIndex.get(id);
     const head = headIndex.get(id);
     if (!base && head) {
       counts.added += 1;
+      addedOrRemoved = true;
+      contentChanged = true;
       changes.push({ id, status: 'added', classifications: ['content'], changedFields: [] });
       continue;
     }
     if (base && !head) {
       counts.removed += 1;
+      addedOrRemoved = true;
+      contentChanged = true;
       changes.push({ id, status: 'removed', classifications: ['content'], changedFields: [] });
       continue;
     }
     if (!base || !head) continue;
     const changedFields: ProjectionDeltaFieldChangeV0<'content' | 'evidence'>[] = [];
-    if (!strictEquals(base.title, head.title)
-      || !strictEquals(base.content ?? null, head.content ?? null)
-      || !strictEquals(base.kind, head.kind)
-      || !strictEquals(base.executionRef ?? null, head.executionRef ?? null)
-      || !strictEquals(base.eventRef ?? null, head.eventRef ?? null)) {
-      changedFields.push({ path: 'content', kind: 'content', before: serializeContentForArtifact(base), after: serializeContentForArtifact(head) });
+    const contentBefore = {
+      kind: base.kind,
+      title: base.title,
+      content: base.content ?? null,
+      executionRef: base.executionRef ?? null,
+      eventRef: base.eventRef ?? null,
+    };
+    const contentAfter = {
+      kind: head.kind,
+      title: head.title,
+      content: head.content ?? null,
+      executionRef: head.executionRef ?? null,
+      eventRef: head.eventRef ?? null,
+    };
+    if (!structuralEqual(contentBefore, contentAfter)) {
+      contentChanged = true;
+      changedFields.push({ path: 'content', kind: 'content', before: contentBefore, after: contentAfter });
     }
     if (!arraysOfSameElements(base.evidenceRefs, head.evidenceRefs)) {
       changedFields.push({ path: 'evidenceRefs', kind: 'evidence', before: sortedStrings(base.evidenceRefs), after: sortedStrings(head.evidenceRefs) });
@@ -404,11 +574,14 @@ function artifactChanges(
     const onlyEvidence = changedFields.every((field) => field.kind === 'evidence');
     counts.changed += onlyEvidence ? 0 : 1;
     counts.evidenceChanged += onlyEvidence ? 1 : 0;
-    const seen = new Set<string>();
-    const classifications: ('content' | 'evidence')[] = [];
+    if (onlyEvidence) {
+      evidenceOnlyChanged = true;
+    }
+    const seenKinds = new Set<string>();
+    const classifications: Array<'content' | 'evidence'> = [];
     for (const field of changedFields) {
-      if (seen.has(field.kind)) continue;
-      seen.add(field.kind);
+      if (seenKinds.has(field.kind)) continue;
+      seenKinds.add(field.kind);
       classifications.push(field.kind);
     }
     changes.push({
@@ -418,45 +591,44 @@ function artifactChanges(
       changedFields,
     });
   }
-  return { changes, counts };
+  return { changes, counts, addedOrRemoved, contentChanged, evidenceOnlyChanged };
 }
 
-function serializeContentForArtifact(artifact: ArtifactOrEvidenceProjectionV0): Record<string, unknown> {
-  return {
-    kind: artifact.kind,
-    title: artifact.title,
-    content: artifact.content ?? null,
-    executionRef: artifact.executionRef ?? null,
-    eventRef: artifact.eventRef ?? null,
-  };
+interface EvidenceChangeOutcomeV0 {
+  changes: ProjectionDeltaEvidenceRefChangeV0[];
+  counts: ProjectionDeltaSummaryEvidenceCountsV0;
+  provenanceChanged: boolean;
 }
 
 function evidenceChanges(
   baseIndex: Map<string, EvidenceRefV0>,
   headIndex: Map<string, EvidenceRefV0>,
-): { changes: ProjectionDeltaEvidenceRefChangeV0[]; counts: ProjectionDeltaSummaryEvidenceCountsV0 } {
+): EvidenceChangeOutcomeV0 {
   const counts: ProjectionDeltaSummaryEvidenceCountsV0 = { changed: 0 };
   const changes: ProjectionDeltaEvidenceRefChangeV0[] = [];
   const ids = sortedStrings([...baseIndex.keys(), ...headIndex.keys()]);
+  let provenanceChanged = false;
   for (const id of ids) {
     const base = baseIndex.get(id);
     const head = headIndex.get(id);
     if (!base && head) {
       counts.changed += 1;
+      provenanceChanged = true;
       changes.push({ id, status: 'added', classifications: ['source'], changedFields: [] });
       continue;
     }
     if (base && !head) {
       counts.changed += 1;
+      provenanceChanged = true;
       changes.push({ id, status: 'removed', classifications: ['source'], changedFields: [] });
       continue;
     }
     if (!base || !head) continue;
     const changedFields: ProjectionDeltaFieldChangeV0<'verification' | 'currentness' | 'revision' | 'source'>[] = [];
-    if (!strictEquals(base.verification, head.verification)) {
+    if (base.verification !== head.verification) {
       changedFields.push({ path: 'verification', kind: 'verification', before: base.verification, after: head.verification });
     }
-    if (!strictEquals(base.currentness, head.currentness)) {
+    if (base.currentness !== head.currentness) {
       changedFields.push({ path: 'currentness', kind: 'currentness', before: base.currentness, after: head.currentness });
     }
     if ((base.revision?.kind ?? null) !== (head.revision?.kind ?? null)
@@ -468,7 +640,7 @@ function evidenceChanges(
         after: head.revision ?? null,
       });
     }
-    if (!strictEquals(base.source, head.source) || !strictEquals(base.sourceRef, head.sourceRef)) {
+    if (base.source !== head.source || base.sourceRef !== head.sourceRef) {
       changedFields.push({
         path: 'source',
         kind: 'source',
@@ -478,23 +650,29 @@ function evidenceChanges(
     }
     if (changedFields.length > 0) {
       counts.changed += 1;
-      const seen = new Set<string>();
+      provenanceChanged = true;
+      const seenKinds = new Set<string>();
       const classifications: Array<'verification' | 'currentness' | 'revision' | 'source'> = [];
       for (const field of changedFields) {
-        if (seen.has(field.kind)) continue;
-        seen.add(field.kind);
+        if (seenKinds.has(field.kind)) continue;
+        seenKinds.add(field.kind);
         classifications.push(field.kind);
       }
       changes.push({ id, status: 'changed', classifications, changedFields });
     }
   }
-  return { changes, counts };
+  return { changes, counts, provenanceChanged };
+}
+
+interface LayoutChangeOutcomeV0 {
+  changes: ProjectionDeltaLayoutChangeV0[];
+  counts: ProjectionDeltaSummaryLayoutCountsV0;
 }
 
 function layoutChanges(
   base: VerifiedProjectionRevisionV0,
   head: VerifiedProjectionRevisionV0,
-): { changes: ProjectionDeltaLayoutChangeV0[]; counts: ProjectionDeltaSummaryLayoutCountsV0 } {
+): LayoutChangeOutcomeV0 {
   const counts: ProjectionDeltaSummaryLayoutCountsV0 = { moved: 0, viewportChanged: 0 };
   const changes: ProjectionDeltaLayoutChangeV0[] = [];
   const basePositions = base.candidate.layoutState.nodePositions;
@@ -503,28 +681,25 @@ function layoutChanges(
   for (const id of ids) {
     const basePos = basePositions[id];
     const headPos = headPositions[id];
-    if (!basePos && !headPos) continue;
-    if (!basePos || !headPos) {
-      changes.push({ id, status: 'changed', classifications: ['nodePosition'], changedFields: [] });
-      continue;
+    if (basePos === headPos) continue;
+    if (!basePos || !headPos || basePos.x !== headPos.x || basePos.y !== headPos.y) {
+      changes.push({
+        id,
+        status: 'moved',
+        classifications: ['nodePosition'],
+        changedFields: [{
+          path: 'nodePosition',
+          kind: 'nodePosition',
+          before: basePos ?? null,
+          after: headPos ?? null,
+        }],
+      });
+      counts.moved += 1;
     }
-    if (basePos.x === headPos.x && basePos.y === headPos.y) continue;
-    changes.push({
-      id,
-      status: 'moved',
-      classifications: ['nodePosition'],
-      changedFields: [{
-        path: 'nodePosition',
-        kind: 'nodePosition',
-        before: basePos,
-        after: headPos,
-      }],
-    });
-    counts.moved += 1;
   }
   const baseViewport = base.candidate.layoutState.viewport ?? null;
   const headViewport = head.candidate.layoutState.viewport ?? null;
-  if (!strictEquals(baseViewport, headViewport)) {
+  if (!structuralEqual(baseViewport, headViewport)) {
     changes.push({
       id: 'viewport',
       status: 'viewport-changed',
@@ -540,6 +715,8 @@ function layoutChanges(
   }
   return { changes, counts };
 }
+
+// ===== main comparator =====
 
 export function compareProjectionRevisions(
   base: VerifiedProjectionRevisionV0,
@@ -567,6 +744,22 @@ export function compareProjectionRevisions(
       ['compare only revisions produced by the same Workbench projectionKind'],
     );
   }
+
+  // Re-trust both sides against Foundation itself.
+  const diagnostics: ProjectionDiagnosticV0[] = [];
+  trustVerifiedRevision('base', base, diagnostics);
+  trustVerifiedRevision('head', head, diagnostics);
+  if (diagnostics.length > 0) {
+    const first = diagnostics[0];
+    return failure(
+      'delta/invalid-revision',
+      first.message,
+      first.subject,
+      first.evidence,
+      first.supportedFixes,
+    );
+  }
+
   if (base.candidate.scope.projectId !== head.candidate.scope.projectId) {
     return failure(
       'delta/project-mismatch',
@@ -577,11 +770,11 @@ export function compareProjectionRevisions(
     );
   }
 
-  const diagnostics: ProjectionDiagnosticV0[] = [];
-  checkRevisionsForDuplicates(base, diagnostics);
-  checkRevisionsForDuplicates(head, diagnostics);
-  if (diagnostics.length > 0) {
-    const first = diagnostics[0];
+  const duplicateDiagnostics: ProjectionDiagnosticV0[] = [];
+  deduplicateIdsAcrossCollections(base, duplicateDiagnostics);
+  deduplicateIdsAcrossCollections(head, duplicateDiagnostics);
+  if (duplicateDiagnostics.length > 0) {
+    const first = duplicateDiagnostics[0];
     return failure(
       'delta/duplicate-id',
       first.message,
@@ -604,27 +797,45 @@ export function compareProjectionRevisions(
 
   const conversations = conversationChanges(baseConversations, headConversations);
   const runtimeExecutions = executionChanges(baseExecutions, headExecutions);
-  const collaborationRelations = relationChanges(baseRelations, headRelations);
-  const artifactsOrEvidence = artifactChanges(baseArtifacts, headArtifacts);
-  const evidenceRefs = evidenceChanges(baseEvidence, headEvidence);
+  const relations = relationChanges(baseRelations, headRelations);
+  const artifacts = artifactChanges(baseArtifacts, headArtifacts);
+  const evidence = evidenceChanges(baseEvidence, headEvidence);
   const layout = layoutChanges(base, head);
 
-  const semanticChanged = conversations.counts.changed > 0
-    || runtimeExecutions.counts.changed > 0
-    || collaborationRelations.counts.changed > 0
-    || artifactsOrEvidence.counts.changed > 0
-    || artifactsOrEvidence.counts.added > 0
-    || artifactsOrEvidence.counts.removed > 0
-    || evidenceRefs.counts.changed > 0;
-  const provenanceChanged = conversations.counts.changed > 0 || evidenceRefs.counts.changed > 0;
+// semanticChanged: any added/removed or content / topology / state change.
+// Evidence-only changes never set semanticChanged.
+  const semanticChanged =
+    conversations.addedOrRemoved
+    || conversations.contentChanged
+    || runtimeExecutions.addedOrRemoved
+    || runtimeExecutions.contentChanged
+    || relations.addedOrRemoved
+    || relations.semanticOrTopologyChanged
+    || artifacts.addedOrRemoved
+    || artifacts.contentChanged;
+
+  // provenanceChanged: EvidenceRef any change, OR a per-entity `evidence`
+  // classification fired (including the evidence-only case). Plain lifecycle
+  // / task / runtime / attention do not qualify.
+  const conversationEvidenceTouched = conversations.changes.some((c) => c.classifications.includes('evidence'));
+  const executionEvidenceTouched = runtimeExecutions.changes.some((c) => c.classifications.includes('evidence'));
+  const relationEvidenceTouched = relations.changes.some((c) => c.classifications.includes('evidence'));
+  const artifactEvidenceTouched = artifacts.changes.some((c) => c.classifications.includes('evidence'));
+  const provenanceChanged =
+    evidence.provenanceChanged
+    || conversationEvidenceTouched
+    || executionEvidenceTouched
+    || relationEvidenceTouched
+    || artifactEvidenceTouched;
+
   const layoutChanged = layout.counts.moved > 0 || layout.counts.viewportChanged > 0;
 
   const summary: ProjectionDeltaSummaryV0 = {
     conversations: conversations.counts,
     runtimeExecutions: runtimeExecutions.counts,
-    relations: collaborationRelations.counts,
-    artifacts: artifactsOrEvidence.counts,
-    evidence: evidenceRefs.counts,
+    relations: relations.counts,
+    artifacts: artifacts.counts,
+    evidence: evidence.counts,
     layout: layout.counts,
     semanticChanged,
     layoutChanged,
@@ -634,15 +845,17 @@ export function compareProjectionRevisions(
   const changes: ProjectionDeltaChangesV0 = {
     conversations: conversations.changes,
     runtimeExecutions: runtimeExecutions.changes,
-    collaborationRelations: collaborationRelations.changes,
-    artifactsOrEvidence: artifactsOrEvidence.changes,
-    evidenceRefs: evidenceRefs.changes,
+    collaborationRelations: relations.changes,
+    artifactsOrEvidence: artifacts.changes,
+    evidenceRefs: evidence.changes,
     layout: layout.changes,
   };
 
   const limitations = [
     'Workbench Projection Delta v0 is a deterministic field-level comparison of two verified revisions; it never infers runtime impact, downstream impact, causality, risk, or mergeability.',
     'A collection that shares no stable IDs between sides is reported as added / removed only; rename-by-label and move-by-geometry heuristics are deliberately rejected.',
+    'Object-valued fields are compared structurally: two separately-built yet semantically identical bindings, receipts, and viewports do not produce a phantom Delta.',
+    'summary booleans are derived strictly from per-entity classifications: evidence-only changes set provenanceChanged but not semanticChanged; layout-only changes set layoutChanged but not semanticChanged.',
   ];
 
   const delta: ProjectionDeltaV0 = {
@@ -661,7 +874,7 @@ export function compareProjectionRevisions(
     proofLevel: 'verified-projection',
     identity: {
       conversations: 'id',
-      runtimeExecutions: 'executionId',
+      runtimeExecutions: 'id',
       collaborationRelations: 'id',
       artifactsOrEvidence: 'id',
       evidenceRefs: 'id',

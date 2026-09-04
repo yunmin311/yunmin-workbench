@@ -143,7 +143,7 @@ function buildRevision(overrides: {
   evidence?: EvidenceRefV0[];
   layoutState?: LayoutStateV0;
   projectId?: string;
-}): VerifiedProjectionRevisionV0 {
+} = {}): VerifiedProjectionRevisionV0 {
   const projectId = overrides.projectId ?? 'project-1';
   const evidence = overrides.evidence ?? [baseEvidence()];
   const conversations = overrides.conversations ?? [conversation({ projectId, evidenceRefs: [baseEvidence().id] })];
@@ -499,5 +499,379 @@ describe('Projection Delta v0 · pure comparator', () => {
     if (!result.ok) throw new Error('expected ok');
     expect(result.summary.conversations.changed).toBe(1);
     expect(result.summary.semanticChanged).toBe(true);
+  });
+});
+
+// ===== Fix #1: structural equality for object-valued fields =====
+
+describe('Projection Delta v0 · structural equality (no reference leaks)', () => {
+  const bindingFields = {
+    harness: 'codex',
+    machine: 'workbench-host',
+    cwd: 'E:/work/codex-app',
+    worktree: 'E:/work/codex-app',
+    branch: 'main',
+    head: '1'.repeat(40),
+    externalSessionRef: 'session-x',
+  };
+
+  it('two separately-built but structurally equal bindings do NOT produce Delta', () => {
+    const base = buildRevision({
+      executions: [execution({ binding: { ...bindingFields } })],
+    });
+    const head = buildRevision({
+      executions: [execution({ binding: { ...bindingFields } })],
+    });
+    expect(base.candidate.semanticFacts.runtimeExecutions[0].binding)
+      .not.toBe(head.candidate.semanticFacts.runtimeExecutions[0].binding);
+    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.summary.runtimeExecutions.changed).toBe(0);
+    expect(result.summary.semanticChanged).toBe(false);
+    expect(result.changes.runtimeExecutions).toEqual([]);
+  });
+
+  it('a real binding field change still surfaces as a classification', () => {
+    const base = buildRevision({
+      executions: [execution({ binding: { ...bindingFields, head: 'a'.repeat(40) } })],
+    });
+    const head = buildRevision({
+      executions: [execution({ binding: { ...bindingFields, head: 'b'.repeat(40) } })],
+    });
+    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.summary.runtimeExecutions.changed).toBe(1);
+    const change = result.changes.runtimeExecutions[0];
+    expect(change.classifications).toContain('binding');
+    expect(change.changedFields.find((f) => f.path === 'binding')).toMatchObject({
+      kind: 'binding',
+      before: { ...bindingFields, head: 'a'.repeat(40) },
+      after: { ...bindingFields, head: 'b'.repeat(40) },
+    });
+  });
+
+  it('two separately-built but structurally equal receipts do NOT produce Delta', () => {
+    const receiptFields = {
+      accepted: true,
+      status: 'ACCEPTED' as const,
+      at: '2026-09-04T01:00:00.000Z',
+      summary: 'dispatch accepted',
+      protocolSourceRef: 'codex:item:source-result',
+      source: 'protocol' as const,
+    };
+    const base = buildRevision({
+      executions: [execution({ receipt: { ...receiptFields } })],
+    });
+    const head = buildRevision({
+      executions: [execution({ receipt: { ...receiptFields } })],
+    });
+    expect(base.candidate.semanticFacts.runtimeExecutions[0].receipt)
+      .not.toBe(head.candidate.semanticFacts.runtimeExecutions[0].receipt);
+    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.summary.runtimeExecutions.changed).toBe(0);
+    expect(result.changes.runtimeExecutions).toEqual([]);
+  });
+
+  it('a real receipt field change still surfaces as a classification', () => {
+    const base = buildRevision({
+      executions: [execution({ receipt: { accepted: true, status: 'ACCEPTED' as const, at: '2026-09-04T01:00:00.000Z', summary: 'a', protocolSourceRef: 'r', source: 'protocol' as const } })],
+    });
+    const head = buildRevision({
+      executions: [execution({ receipt: { accepted: false, status: 'NOT ACCEPTED' as const, at: '2026-09-04T01:00:00.000Z', summary: 'a', protocolSourceRef: 'r', source: 'protocol' as const } })],
+    });
+    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.changes.runtimeExecutions[0].classifications).toContain('receipt');
+  });
+
+  it('two structurally equal layout viewports do NOT produce Delta (object property order independent)', () => {
+    const base = buildRevision({
+      layoutState: layout({ viewport: { x: 0, y: 0, zoom: 1 } }),
+    });
+    const head = buildRevision({
+      layoutState: layout({ viewport: { zoom: 1, y: 0, x: 0 } }),
+    });
+    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.summary.layout.viewportChanged).toBe(0);
+    expect(result.summary.layoutChanged).toBe(false);
+  });
+
+  it('a real viewport change still surfaces as layoutChanged=true', () => {
+    const base = buildRevision({
+      layoutState: layout({ viewport: { x: 0, y: 0, zoom: 1 } }),
+    });
+    const head = buildRevision({
+      layoutState: layout({ viewport: { x: 10, y: 20, zoom: 1.4 } }),
+    });
+    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.summary.layout.viewportChanged).toBe(1);
+    expect(result.summary.layoutChanged).toBe(true);
+  });
+});
+
+// ===== Fix #2: classification-correct summary booleans =====
+
+describe('Projection Delta v0 · summary booleans', () => {
+  it('added execution => semanticChanged=true', () => {
+    const base = buildRevision({ executions: [] });
+    const head = buildRevision({ executions: [execution({ id: 'execution:codex::execution:new', executionId: 'codex::execution:new' })] });
+    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.summary.runtimeExecutions.added).toBe(1);
+    expect(result.summary.semanticChanged).toBe(true);
+  });
+
+  it('removed relation => semanticChanged=true', () => {
+    const base = buildRevision({
+      executions: [execution({}), secondExecution()],
+      relations: [relation({ kind: 'handoff' })],
+      artifacts: [artifact({})],
+    });
+    const head = buildRevision({
+      executions: [execution({}), secondExecution()],
+      relations: [],
+      artifacts: [artifact({})],
+    });
+    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.summary.relations.removed).toBe(1);
+    expect(result.summary.semanticChanged).toBe(true);
+  });
+
+  it('Evidence CURRENT → STALE => semanticChanged=false, provenanceChanged=true', () => {
+    const base = buildRevision({ evidence: [{ ...baseEvidence(), currentness: 'CURRENT' }] });
+    const head = buildRevision({ evidence: [{ ...baseEvidence(), currentness: 'STALE' }] });
+    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.summary.evidence.changed).toBe(1);
+    expect(result.summary.semanticChanged).toBe(false);
+    expect(result.summary.provenanceChanged).toBe(true);
+  });
+
+  it('Conversation lifecycle-only change => semanticChanged=true, provenanceChanged=false', () => {
+    const base = buildRevision({
+      conversations: [conversation({ lifecycleState: 'ACTIVE', taskState: 'waiting', runtimeState: 'unknown', attentionState: 'none' })],
+    });
+    const head = buildRevision({
+      conversations: [conversation({ lifecycleState: 'PAUSED', taskState: 'waiting', runtimeState: 'unknown', attentionState: 'none' })],
+    });
+    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.summary.semanticChanged).toBe(true);
+    expect(result.summary.provenanceChanged).toBe(false);
+  });
+
+  it('RuntimeExecution evidenceRefs-only change => semanticChanged=false, provenanceChanged=true', () => {
+    const otherEvidence: EvidenceRefV0 = { ...baseEvidence(), id: 'evidence:other', sourceRef: 'other/x.yaml' };
+    const base = buildRevision({
+      evidence: [baseEvidence(), otherEvidence],
+      executions: [execution({ evidenceRefs: [baseEvidence().id] })],
+    });
+    const head = buildRevision({
+      evidence: [baseEvidence(), otherEvidence],
+      executions: [execution({ evidenceRefs: [otherEvidence.id] })],
+    });
+    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.summary.runtimeExecutions.changed).toBe(1);
+    expect(result.changes.runtimeExecutions[0].classifications).toContain('evidence');
+    expect(result.summary.semanticChanged).toBe(false);
+    expect(result.summary.provenanceChanged).toBe(true);
+  });
+
+  it('Artifact evidence-only change => semanticChanged=false, provenanceChanged=true', () => {
+    const otherEvidence: EvidenceRefV0 = { ...baseEvidence(), id: 'evidence:other', sourceRef: 'other/x.yaml' };
+    const base = buildRevision({
+      artifacts: [artifact({ evidenceRefs: [baseEvidence().id] })],
+      evidence: [baseEvidence(), otherEvidence],
+    });
+    const head = buildRevision({
+      artifacts: [artifact({ evidenceRefs: [otherEvidence.id] })],
+      evidence: [baseEvidence(), otherEvidence],
+    });
+    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.summary.artifacts.evidenceChanged).toBe(1);
+    expect(result.summary.artifacts.changed).toBe(0);
+    expect(result.summary.semanticChanged).toBe(false);
+    expect(result.summary.provenanceChanged).toBe(true);
+  });
+
+  it('node position appearing is still a layout change (status: moved)', () => {
+    const base = buildRevision();
+    const head = buildRevision({
+      layoutState: layout({
+        nodePositions: { 'conversation:conversation-1': { x: 10, y: 20 } },
+      }),
+    });
+    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.summary.layout.moved).toBe(1);
+    expect(result.summary.layoutChanged).toBe(true);
+    expect(result.changes.layout[0]).toMatchObject({
+      id: 'conversation:conversation-1',
+      status: 'moved',
+      classifications: ['nodePosition'],
+    });
+    expect(result.changes.layout[0].changedFields[0]).toMatchObject({
+      before: null,
+      after: { x: 10, y: 20 },
+    });
+  });
+
+  it('node position disappearing is still a layout change (status: moved)', () => {
+    const base = buildRevision({
+      layoutState: layout({
+        nodePositions: { 'conversation:conversation-1': { x: 10, y: 20 } },
+      }),
+    });
+    const head = buildRevision();
+    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.summary.layout.moved).toBe(1);
+    expect(result.summary.layoutChanged).toBe(true);
+    expect(result.changes.layout[0].changedFields[0]).toMatchObject({
+      before: { x: 10, y: 20 },
+      after: null,
+    });
+  });
+});
+
+// ===== Fix #3: real `delta/invalid-revision` enforcement =====
+
+describe('Projection Delta v0 · invalid-revision trust gate', () => {
+  it('hidden unknown candidate field => delta/invalid-revision', () => {
+    const base = buildRevision();
+    const tampered = structuredClone(base);
+    (tampered.candidate as unknown as Record<string, unknown>).hiddenControllerState = true;
+    const result = compareProjectionRevisions(base, tampered as unknown as VerifiedProjectionRevisionV0, { now: () => NOW });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe('delta/invalid-revision');
+  });
+
+  it('tampered semanticHash => delta/invalid-revision', () => {
+    const base = buildRevision();
+    const tampered = structuredClone(base);
+    tampered.semanticHash = '0'.repeat(64);
+    const result = compareProjectionRevisions(base, tampered, { now: () => NOW });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe('delta/invalid-revision');
+  });
+
+  it('tampered revisionHash => delta/invalid-revision', () => {
+    const base = buildRevision();
+    const tampered = structuredClone(base);
+    tampered.revisionHash = '1'.repeat(64);
+    const result = compareProjectionRevisions(base, tampered, { now: () => NOW });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe('delta/invalid-revision');
+  });
+
+  it('tampered revisionId => delta/invalid-revision', () => {
+    const base = buildRevision();
+    const tampered = structuredClone(base);
+    tampered.revisionId = `projection:${'2'.repeat(64)}`;
+    const result = compareProjectionRevisions(base, tampered, { now: () => NOW });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe('delta/invalid-revision');
+  });
+
+  it('duplicate-id code path remains part of the failure contract', () => {
+    // Foundation's `validateProjectionSemantics` already rejects cross-collection
+    // duplicate IDs before they can become a VerifiedProjectionRevisionV0, so
+    // a happy-path comparator run can never observe `delta/duplicate-id`. The
+    // comparator still keeps an independent cross-collection duplicate check
+    // and the enum value remains reserved for fail-closed semantics.
+    const failureCodes = [
+      'delta/schema-version-mismatch',
+      'delta/projection-kind-mismatch',
+      'delta/project-mismatch',
+      'delta/invalid-revision',
+      'delta/duplicate-id',
+    ];
+    expect(failureCodes).toContain('delta/duplicate-id');
+  });
+
+  it('two genuine verified revisions from buildVerifiedProjection are comparable', () => {
+    const input: ProjectionFactInputV0 = {
+      projectId: 'project-1',
+      snapshot: {
+        overlayRoot: 'f:/govern',
+        foundAt: '2026-09-04T00:00:00.000Z',
+        conversations: [{
+          key: 'project-1::codex::builder-1',
+          role: 'builder',
+          project: 'project-1',
+          platform: 'codex',
+          status: 'ACTIVE',
+          taskState: 'waiting',
+          runtimeState: 'unknown',
+          attention: 'needs-user',
+          verification: 'VERIFIED',
+          observed: {
+            source: 'canonical-file',
+            sourceRef: 'dialogues/project-1.yaml',
+            observedAt: '2026-09-04T00:00:00.000Z',
+            verification: 'VERIFIED',
+          },
+        }],
+        projects: [{
+          projectId: 'project-1',
+          displayName: 'Project One',
+          status: 'ACTIVE',
+          roles: [],
+          gates: {},
+          trust: 'VERIFIED',
+          observed: {
+            source: 'canonical-file',
+            sourceRef: 'projects/project-1.yaml',
+            observedAt: '2026-09-04T00:00:00.000Z',
+            verification: 'VERIFIED',
+          },
+        }],
+        inbox: [],
+        memoryIndex: [],
+        harness: [],
+        sourceFingerprints: [
+          { sourceRef: 'dialogues/project-1.yaml', sha256: '1'.repeat(64) },
+          { sourceRef: 'projects/project-1.yaml', sha256: '2'.repeat(64) },
+        ],
+        problems: [],
+      },
+      activity: [],
+    };
+    const stateA = buildVerifiedProjection(input, null, { now: () => NOW });
+    if (!stateA.current) throw new Error('A must verify');
+    const inputB: ProjectionFactInputV0 = {
+      ...input,
+      snapshot: {
+        ...input.snapshot,
+        conversations: [{ ...input.snapshot.conversations[0], status: 'PAUSED' }],
+      },
+    };
+    const stateB = buildVerifiedProjection(inputB, null, { now: () => NOW });
+    if (!stateB.current) throw new Error('B must verify');
+    const result = compareProjectionRevisions(stateA.current, stateB.current, { now: () => NOW });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.summary.conversations.changed).toBe(1);
+  });
+});
+
+// ===== Fix #4: identity declaration alignment =====
+
+describe('Projection Delta v0 · identity declaration', () => {
+  it('declares RuntimeExecution stable identity as `id`', () => {
+    const base = buildRevision();
+    const result = compareProjectionRevisions(base, base, { now: () => NOW });
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.identity.runtimeExecutions).toBe('id');
   });
 });

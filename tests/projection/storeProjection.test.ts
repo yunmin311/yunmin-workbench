@@ -1,6 +1,12 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { useWorkbench } from '../../src/renderer/src/store';
 import { compareProjectionRevisions } from '../../src/core/projection/delta';
+import { emptyProjectionBuildState, verifyProjectionCandidate } from '../../src/core/projection/revision';
+import type {
+  ProjectionCandidateV0,
+  VerifiedProjectionRevisionV0,
+} from '../../src/core/projection/types';
+import { compileProjectionCandidate, type ProjectionFactInputV0 } from '../../src/core/projection/compiler';
 
 beforeAll(() => {
   Object.defineProperty(globalThis, 'window', {
@@ -99,5 +105,130 @@ describe('renderer Projection ownership', () => {
     if (!result.ok) return;
     expect(result.summary.semanticChanged).toBe(false);
     expect(result.summary.layoutChanged).toBe(false);
+  });
+
+  it('CompareView Delta: a real Delta is produced when previous and current are both VERIFIED', () => {
+    useWorkbench.getState().enterDemo();
+    useWorkbench.getState().selectProject('creative-os');
+    const firstRevision = useWorkbench.getState().projection.current;
+    if (!firstRevision) throw new Error('demo must verify');
+    // Build a synthetic second revision by mutating one verifiable fact in a
+    // strictly structural way; we re-verify so the candidate is a true
+    // VerifiedProjectionRevisionV0 with a different revisionHash.
+    const input: ProjectionFactInputV0 = {
+      projectId: firstRevision.candidate.scope.projectId,
+      snapshot: {
+        overlayRoot: 'f:/govern',
+        foundAt: '2026-09-04T00:00:00.000Z',
+        conversations: firstRevision.candidate.semanticFacts.conversations.map((c) => ({
+          key: c.conversationKey,
+          role: c.role,
+          project: c.projectId,
+          platform: c.platform,
+          status: c.lifecycleState,
+          taskState: c.taskState,
+          runtimeState: c.runtimeState,
+          attention: c.attentionState,
+          verification: c.verification,
+          observed: {
+            source: 'canonical-file',
+            sourceRef: `dialogues/${c.projectId}.yaml`,
+            observedAt: '2026-09-04T00:00:00.000Z',
+            verification: 'VERIFIED',
+          },
+        })),
+        projects: [],
+        inbox: [],
+        memoryIndex: [],
+        harness: [],
+        sourceFingerprints: [{
+          sourceRef: `dialogues/${firstRevision.candidate.scope.projectId}.yaml`,
+          sha256: '1'.repeat(64),
+        }],
+        problems: [],
+      },
+      activity: [],
+    };
+    void input;
+    const candidate: ProjectionCandidateV0 = {
+      schemaVersion: 0,
+      projectionKind: firstRevision.candidate.projectionKind,
+      scope: { projectId: firstRevision.candidate.scope.projectId },
+      sourceBinding: { sourceDigest: firstRevision.sourceDigest },
+      semanticFacts: {
+        conversations: firstRevision.candidate.semanticFacts.conversations.map((c, index) =>
+          index === 0
+            ? { ...c, lifecycleState: c.lifecycleState === 'ACTIVE' ? 'PAUSED' : 'ACTIVE' }
+            : c,
+        ),
+        runtimeExecutions: firstRevision.candidate.semanticFacts.runtimeExecutions,
+        collaborationRelations: firstRevision.candidate.semanticFacts.collaborationRelations,
+        artifactsOrEvidence: firstRevision.candidate.semanticFacts.artifactsOrEvidence,
+        evidenceRefs: firstRevision.candidate.semanticFacts.evidenceRefs,
+      },
+      layoutState: firstRevision.candidate.layoutState,
+    };
+    const state = verifyProjectionCandidate(candidate, null, {
+      recheckSourceDigest: () => firstRevision.sourceDigest,
+      now: () => '2026-09-04T02:00:00.000Z',
+    });
+    if (!state.current) throw new Error('second revision must verify');
+    useWorkbench.setState({
+      projectionPrevious: firstRevision,
+      projection: {
+        ...emptyProjectionBuildState(),
+        status: 'VERIFIED',
+        current: state.current,
+        diagnostics: [],
+      },
+    });
+    const result = compareProjectionRevisions(
+      useWorkbench.getState().projectionPrevious!,
+      useWorkbench.getState().projection.current!,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.summary.conversations.changed).toBe(1);
+  });
+
+  it('CompareView Delta: STALE/NEEDS_FIX current build must not present a Delta', () => {
+    useWorkbench.getState().enterDemo();
+    useWorkbench.getState().selectProject('creative-os');
+    const previous = useWorkbench.getState().projection.current;
+    if (!previous) throw new Error('demo must verify');
+    // Force the current build into STALE; the previous remains, but the
+    // CompareView surface must not present the failed build as a fresh
+    // comparison and must never fall back to raw Snapshot/Activity.
+    useWorkbench.setState({
+      projectionPrevious: previous,
+      projection: {
+        status: 'STALE',
+        current: null,
+        diagnostics: [{
+          code: 'projection/input-changed',
+          severity: 'error',
+          message: 'Projection source facts changed while the candidate was being verified.',
+          subject: { projectId: previous.candidate.scope.projectId },
+          evidence: {},
+          supportedFixes: ['compile a fresh candidate from the latest source facts'],
+        }],
+        receipt: null,
+      },
+    });
+    const state = useWorkbench.getState();
+    expect(state.projection.status).toBe('STALE');
+    expect(state.projection.current).toBeNull();
+    expect(state.projectionPrevious).not.toBeNull();
+    // The CompareView surface guard: never produce a Delta without both a
+    // current verified revision and a same-Project previous with a different
+    // revisionHash.
+    const canCompare = Boolean(
+      state.projection.status === 'VERIFIED'
+      && state.projection.current
+      && state.projectionPrevious
+      && state.projectionPrevious.candidate.scope.projectId === state.projection.current.candidate.scope.projectId
+      && state.projectionPrevious.revisionHash !== state.projection.current.revisionHash,
+    );
+    expect(canCompare).toBe(false);
   });
 });

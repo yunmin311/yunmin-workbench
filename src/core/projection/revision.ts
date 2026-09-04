@@ -87,6 +87,37 @@ function semanticFactsForHash(candidate: ProjectionCandidateV0): unknown {
   };
 }
 
+/**
+ * Deterministic hashes for a structurally valid candidate. These are the same
+ * inputs `verifyProjectionCandidate` uses to compute its envelope, so they let
+ * downstream consumers (e.g. Projection Delta v0) cross-check a claimed
+ * VerifiedProjectionRevisionV0 without re-implementing the hash math.
+ */
+export function computeProjectionSemanticHash(candidate: ProjectionCandidateV0): string {
+  return computePacketHash(semanticFactsForHash(candidate));
+}
+
+export function computeProjectionLayoutHash(candidate: ProjectionCandidateV0): string {
+  return computePacketHash(candidate.layoutState);
+}
+
+export interface ProjectionRevisionHashInputV0 {
+  scope: ProjectionCandidateV0['scope'];
+  sourceDigest: string;
+  semanticHash: string;
+  layoutHash: string;
+}
+
+export function computeProjectionRevisionHash(input: ProjectionRevisionHashInputV0): string {
+  return computePacketHash({
+    schemaVersion: 0,
+    scope: input.scope,
+    sourceDigest: input.sourceDigest,
+    semanticHash: input.semanticHash,
+    layoutHash: input.layoutHash,
+  });
+}
+
 function receipt(input: {
   outcome: ProjectionReceiptV0['outcome'];
   candidateHash: string;
@@ -185,10 +216,9 @@ export function verifyProjectionCandidate(
     );
   }
 
-  const semanticHash = computePacketHash(semanticFactsForHash(structural.candidate));
-  const layoutHash = computePacketHash(structural.candidate.layoutState);
-  const revisionHash = computePacketHash({
-    schemaVersion: 0,
+  const semanticHash = computeProjectionSemanticHash(structural.candidate);
+  const layoutHash = computeProjectionLayoutHash(structural.candidate);
+  const revisionHash = computeProjectionRevisionHash({
     scope: structural.candidate.scope,
     sourceDigest: structural.candidate.sourceBinding.sourceDigest,
     semanticHash,
