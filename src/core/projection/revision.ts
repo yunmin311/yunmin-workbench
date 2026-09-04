@@ -253,4 +253,3 @@ export function buildVerifiedProjection(
     ...(options.now ? { now: options.now } : {}),
   });
 }
-

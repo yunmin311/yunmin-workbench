@@ -52,4 +52,3 @@ export function normalizeProjectionDiagnostics(inputs: readonly unknown[]): Proj
   }
   return normalized;
 }
-
