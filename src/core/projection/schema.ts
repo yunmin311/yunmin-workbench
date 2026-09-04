@@ -4,6 +4,7 @@ import type {
   ProjectionCandidateValidationV0,
   ProjectionDiagnosticV0,
 } from './types';
+import { normalizeProjectionDiagnostic } from './diagnostics';
 
 const idSchema = z.string().min(1).max(1_024);
 const digestSchema = z.string().regex(/^[a-f0-9]{64}$/);
@@ -152,14 +153,14 @@ function issueFix(issue: ZodIssue): string[] {
 }
 
 function issueDiagnostic(issue: ZodIssue): ProjectionDiagnosticV0 {
-  return {
+  return normalizeProjectionDiagnostic({
     code: `schema/${issue.code}`,
     severity: 'error',
     message: issue.message.trim(),
     subject: { path: issue.path },
     evidence: { issue: issue.code },
     supportedFixes: issueFix(issue),
-  };
+  });
 }
 
 export function validateProjectionCandidate(input: unknown): ProjectionCandidateValidationV0 {
@@ -173,4 +174,3 @@ export function validateProjectionCandidate(input: unknown): ProjectionCandidate
     diagnostics: [],
   };
 }
-

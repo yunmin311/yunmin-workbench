@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import {
+  normalizeProjectionDiagnostic,
+  normalizeProjectionDiagnostics,
+} from '../../src/core/projection/diagnostics';
 import { validateProjectionCandidate } from '../../src/core/projection/schema';
 
 function minimalCandidate(): Record<string, unknown> {
@@ -77,5 +81,35 @@ describe('ProjectionCandidateV0 strict schema', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.diagnostics.some((diagnostic) => diagnostic.code.startsWith('schema/'))).toBe(true);
+  });
+});
+
+describe('projection diagnostic normalization', () => {
+  it('normalizes plain data and deduplicates fixes without global recording', () => {
+    const normalized = normalizeProjectionDiagnostic({
+      code: ' semantic/missing-ref ',
+      severity: 'warning',
+      message: '  Missing reference  ',
+      subject: { id: 'relation-1', absent: undefined },
+      evidence: ['not', 'a', 'plain', 'object'],
+      supportedFixes: [' repair the reference ', 'repair the reference', '', 42],
+    });
+    expect(normalized).toEqual({
+      code: 'semantic/missing-ref',
+      severity: 'warning',
+      message: 'Missing reference',
+      subject: { id: 'relation-1' },
+      evidence: {},
+      supportedFixes: ['repair the reference', '42'],
+    });
+  });
+
+  it('deduplicates within one call and keeps no process-global recorder', () => {
+    const input = [
+      { code: 'semantic/a', message: 'Same failure' },
+      { code: 'semantic/b', message: 'Same failure' },
+    ];
+    expect(normalizeProjectionDiagnostics(input)).toHaveLength(1);
+    expect(normalizeProjectionDiagnostics(input)).toHaveLength(1);
   });
 });
