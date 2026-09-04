@@ -79,11 +79,16 @@ export function compileProjectionCandidate(input: ProjectionFactInputV0): Projec
   const addEvidence = (
     observed: Observation,
     revision?: EvidenceRevisionV0,
-    currentness: EvidenceRefV0['currentness'] = 'UNKNOWN',
+    currentness?: EvidenceRefV0['currentness'],
   ): string => {
     const fingerprint = fingerprints.get(observed.sourceRef);
-    const resolvedRevision = revision ?? (fingerprint ? { kind: 'sha256' as const, value: fingerprint } : undefined);
-    const resolvedCurrentness = currentness === 'UNKNOWN' && fingerprint ? 'CURRENT' : currentness;
+    const validFingerprint = fingerprint && /^[a-f0-9]{64}$/i.test(fingerprint)
+      ? fingerprint.toLowerCase()
+      : undefined;
+    const resolvedRevision = revision ?? (validFingerprint
+      ? { kind: 'sha256' as const, value: validFingerprint }
+      : undefined);
+    const resolvedCurrentness = currentness ?? (validFingerprint ? 'CURRENT' : 'UNKNOWN');
     const id = `evidence:${computePacketHash({ observed, revision: resolvedRevision ?? null })}`;
     evidenceById.set(id, {
       id,
@@ -329,4 +334,3 @@ export function compileProjectionCandidate(input: ProjectionFactInputV0): Projec
     layoutState: normalizedLayout(input.layoutState),
   };
 }
-

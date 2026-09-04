@@ -112,9 +112,14 @@ describe('Workbench facts to ProjectionCandidateV0', () => {
   });
 
   it('preserves evidence provenance and does not guess currentness', () => {
+    const facts = snapshot();
+    facts.sourceFingerprints.push({
+      sourceRef: 'codex:item:source-result',
+      sha256: '3'.repeat(64),
+    });
     const candidate = compileProjectionCandidate({
       projectId: 'project-1',
-      snapshot: snapshot(),
+      snapshot: facts,
       activity: [event({})],
     });
     const conversationEvidence = candidate.semanticFacts.evidenceRefs.find(
@@ -137,6 +142,21 @@ describe('Workbench facts to ProjectionCandidateV0', () => {
       currentness: 'UNKNOWN',
       revision: { kind: 'activity-event', value: 'source-result' },
     });
+  });
+
+  it('does not promote a malformed source fingerprint into revision-pinned evidence', () => {
+    const facts = snapshot();
+    facts.sourceFingerprints[0].sha256 = 'demo-placeholder-not-a-sha256';
+    const candidate = compileProjectionCandidate({
+      projectId: 'project-1',
+      snapshot: facts,
+      activity: [],
+    });
+    const evidence = candidate.semanticFacts.evidenceRefs.find(
+      (item) => item.sourceRef === 'dialogues/project-1.yaml',
+    );
+    expect(evidence).toMatchObject({ currentness: 'UNKNOWN' });
+    expect(evidence).not.toHaveProperty('revision');
   });
 
   it('creates Parallel and Handoff only from explicit group and used-result facts', () => {

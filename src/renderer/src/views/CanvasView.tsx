@@ -15,10 +15,9 @@ const EDGE_LABEL: Record<WbEdgeKind, string> = {
 };
 
 export function CanvasView() {
-  const snapshot = useWorkbench((state) => state.snapshot);
   const projectId = useWorkbench((state) => state.projectId);
   const projection = useWorkbench((state) => state.projection);
-  const selectConversation = useWorkbench((state) => state.selectConversation);
+  const selectProjectedConversation = useWorkbench((state) => state.selectProjectedConversation);
   const setView = useWorkbench((state) => state.setView);
   const openRuntimeInspector = useWorkbench((state) => state.openRuntimeInspector);
 
@@ -86,18 +85,13 @@ export function CanvasView() {
         nodesDraggable
         nodesConnectable={false}
         onNodeClick={(_event, node) => {
-          if (!snapshot) return;
           if (node.id.startsWith('execution:')) {
             openRuntimeInspector({ executionId: node.id.slice('execution:'.length) });
             return;
           }
           if (!node.id.startsWith('conversation:')) return;
-          const conversationKey = node.id.slice('conversation:'.length);
-          const next = snapshot.conversations.find((conversation) => conversation.key === conversationKey);
-          if (next) {
-            selectConversation(next);
-            setView('control');
-          }
+          selectProjectedConversation(node.id);
+          setView('control');
         }}
       >
         <Background color="var(--prototype-grid)" gap={22} size={1} />

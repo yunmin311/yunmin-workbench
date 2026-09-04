@@ -143,6 +143,7 @@ interface WorkbenchState {
   reloadAndRecheck: () => Promise<void>;
   selectProject: (projectId: string) => void;
   selectConversation: (c: Conversation) => void;
+  selectProjectedConversation: (conversationRef: string) => void;
   setView: (v: View) => void;
   setStagingState: (id: string, state: ContextItem['state']) => void;
   togglePin: (id: string) => Promise<void>;
@@ -912,6 +913,18 @@ load: async (refresh) => {
       }));
       get().syncIslandAttention();
     }
+  },
+
+  selectProjectedConversation: (conversationRef) => {
+    const { projection, snapshot, projectId } = get();
+    if (!projection.current || !snapshot || !projectId) return;
+    if (projection.current.candidate.scope.projectId !== projectId) return;
+    const projected = projection.current.candidate.semanticFacts.conversations
+      .find((item) => item.id === conversationRef);
+    if (!projected) return;
+    const conversation = snapshot.conversations.find((item) =>
+      item.project === projectId && item.key === projected.conversationKey);
+    if (conversation) get().selectConversation(conversation);
   },
 
   freezePacket: async (packet) => {

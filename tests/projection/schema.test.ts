@@ -82,6 +82,18 @@ describe('ProjectionCandidateV0 strict schema', () => {
     if (result.ok) return;
     expect(result.diagnostics.some((diagnostic) => diagnostic.code.startsWith('schema/'))).toBe(true);
   });
+
+  it('rejects malformed revision-pinned evidence hashes', () => {
+    const input = minimalCandidate();
+    const semantic = input.semanticFacts as { evidenceRefs: Array<{ revision?: { kind: string; value: string } }> };
+    semantic.evidenceRefs[0].revision = { kind: 'sha256', value: 'not-a-sha256' };
+    const result = validateProjectionCandidate(input);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'schema/invalid_string' }),
+    ]));
+  });
 });
 
 describe('projection diagnostic normalization', () => {

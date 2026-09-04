@@ -21,10 +21,15 @@ const runtimeBindingSchema = z.object({
   externalSessionRef: z.string().optional(),
 }).strict();
 
-const evidenceRevisionSchema = z.object({
-  kind: z.enum(['sha256', 'git-commit', 'activity-event', 'history-session']),
-  value: z.string().min(1),
-}).strict();
+const evidenceRevisionSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('sha256'), value: digestSchema }).strict(),
+  z.object({
+    kind: z.literal('git-commit'),
+    value: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i),
+  }).strict(),
+  z.object({ kind: z.literal('activity-event'), value: z.string().min(1) }).strict(),
+  z.object({ kind: z.literal('history-session'), value: z.string().min(1) }).strict(),
+]);
 
 const evidenceRefSchema = z.object({
   id: idSchema,

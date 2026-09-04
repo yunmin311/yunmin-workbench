@@ -25,4 +25,23 @@ describe('renderer Projection ownership', () => {
     expect(state.projection.current?.candidate.scope.projectId).toBe('governance');
     expect(state.projection.current?.revisionId).not.toBe(firstRevision);
   });
+
+  it('selects a Conversation only through a verified semantic ref', () => {
+    useWorkbench.getState().enterDemo();
+    useWorkbench.getState().selectProject('creative-os');
+    expect(useWorkbench.getState().conversation).toBeNull();
+
+    const conversationRef = useWorkbench.getState().projection.current
+      ?.candidate.semanticFacts.conversations[0]?.id;
+    if (!conversationRef) throw new Error('fixture must include a verified Conversation');
+    useWorkbench.getState().selectProjectedConversation(conversationRef);
+    expect(useWorkbench.getState().conversation?.key).toBe(
+      useWorkbench.getState().projection.current
+        ?.candidate.semanticFacts.conversations[0]?.conversationKey,
+    );
+
+    useWorkbench.getState().selectProject('creative-os');
+    useWorkbench.getState().selectProjectedConversation('conversation:not-verified');
+    expect(useWorkbench.getState().conversation).toBeNull();
+  });
 });

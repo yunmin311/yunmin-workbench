@@ -16,10 +16,11 @@ export type ProjectionCurrentness = 'CURRENT' | 'STALE' | 'INVALID' | 'UNKNOWN';
 export type ProjectionBuildStatus = 'VERIFIED' | 'NEEDS_FIX' | 'STALE';
 export type ProjectionDiagnosticSeverity = 'error' | 'warning';
 
-export interface EvidenceRevisionV0 {
-  kind: 'sha256' | 'git-commit' | 'activity-event' | 'history-session';
-  value: string;
-}
+export type EvidenceRevisionV0 =
+  | { kind: 'sha256'; value: string }
+  | { kind: 'git-commit'; value: string }
+  | { kind: 'activity-event'; value: string }
+  | { kind: 'history-session'; value: string };
 
 export interface EvidenceRefV0 {
   id: string;
@@ -192,4 +193,3 @@ export interface ProjectionBuildStateV0 {
 export type ProjectionCandidateValidationV0 =
   | { ok: true; candidate: ProjectionCandidateV0; diagnostics: [] }
   | { ok: false; diagnostics: ProjectionDiagnosticV0[] };
-
