@@ -249,7 +249,8 @@ export function buildVerifiedProjection(
 ): ProjectionBuildStateV0 {
   const candidate = compileProjectionCandidate(input);
   return verifyProjectionCandidate(candidate, previous, {
-    recheckSourceDigest: options.recheckSourceDigest ?? (() => computeProjectionSourceDigest(input)),
+    recheckSourceDigest: options.recheckSourceDigest
+      ?? (() => computeProjectionSourceDigest(input, candidate)),
     ...(options.now ? { now: options.now } : {}),
   });
 }

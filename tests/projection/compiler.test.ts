@@ -213,18 +213,18 @@ describe('Workbench facts to ProjectionCandidateV0', () => {
 
   it('excludes layout from the source digest', () => {
     const input = { projectId: 'project-1', snapshot: snapshot(), activity: [event({})] };
-    const first = computeProjectionSourceDigest({
+    const first = compileProjectionCandidate({
       ...input,
       layoutState: { schemaVersion: 0, nodePositions: {} },
     });
-    const second = computeProjectionSourceDigest({
+    const second = compileProjectionCandidate({
       ...input,
       layoutState: {
         schemaVersion: 0,
         nodePositions: { 'conversation:project-1::codex::builder': { x: 50, y: 60 } },
       },
     });
-    expect(second).toBe(first);
+    expect(second.sourceBinding.sourceDigest).toBe(first.sourceBinding.sourceDigest);
   });
 
   it('reports duplicate IDs and broken references without repairing the candidate', () => {

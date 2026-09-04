@@ -113,8 +113,8 @@ Expected: exit 0.
 - Create: `tests/projection/compiler.test.ts`
 
 **Interfaces:**
-- Produces: `ProjectionFactInputV0`, `computeProjectionSourceDigest(input)`, and `compileProjectionCandidate(input)`.
-- Consumes: `OverlaySnapshot`, `ActivityEvent`, optional `GitFacts`, `HistorySession`, `LayoutStateV0`, existing `projectRuntimeExecutions`, `projectCompareGroups`, `projectTrajectory`, and `resultSourceRef`.
+- Produces: `ProjectionFactInputV0`, `computeProjectionSourceDigest(input, candidate)`, and `compileProjectionCandidate(input)`.
+- Consumes: `OverlaySnapshot`, `ActivityEvent`, optional `GitFacts`, `LayoutStateV0`, existing `projectRuntimeExecutions`, `projectCompareGroups`, `projectTrajectory`, and `resultSourceRef`. HistorySession is intentionally not consumed: v0 forbids turning an unbound/global History session into a Project-scoped fact.
 
 - [ ] **Step 1: Write failing compiler tests**
 
@@ -134,7 +134,9 @@ Expected: FAIL because compiler module does not exist.
 Filter all inputs to `projectId`, derive runtime identity only through the
 existing runtime projection, construct artifacts only from exact content/ref
 facts, deduplicate evidence by stable ID, sort every semantic array by ID, and
-calculate source digest from facts only (never layout).
+calculate source digest from facts only (never layout). The digest depends on
+the sourceRef set the compiled candidate actually referenced, not on the entire
+OverlaySnapshot fingerprint set.
 
 - [ ] **Step 4: Add semantic validation cases**
 

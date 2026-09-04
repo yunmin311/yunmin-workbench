@@ -88,10 +88,15 @@ interface ProjectionCandidateV0 {
 
 ### ArtifactOrEvidenceProjectionV0
 
-The v0 kinds are limited to existing facts: `agent-result`, `tool-evidence`,
-`file-evidence`, `runtime-receipt`, `governance-record`, `git-fact`,
-`history-fact`, and `memory-index`. Each item has a stable ID, project scope,
-optional exact execution/event refs, bounded title/content, and evidence refs.
+The v0 kinds that v0 actually emits are: `agent-result`, `tool-evidence`,
+`file-evidence`, `runtime-receipt`, `governance-record`, `git-fact`, and
+`memory-index`. Each item has a stable ID, project scope, optional exact
+execution/event refs, bounded title/content, and evidence refs.
+
+`history-fact` remains a reserved enum kind only. v0 does not emit it: History
+has no canonical Project binding, and v0 forbids inferring one from cwd,
+provider, or time proximity. History can return to Projection only when an
+explicit trusted Project binding exists.
 
 ### EvidenceRefV0
 
@@ -99,7 +104,7 @@ optional exact execution/event refs, bounded title/content, and evidence refs.
 revision are retained. `currentness` is one of `CURRENT`, `STALE`, `INVALID`, or
 `UNKNOWN`. A compiler cannot turn missing currentness into CURRENT. Revision
 kinds are limited to `sha256`, `git-commit`, `activity-event`, and
-`history-session`.
+`history-session` (reserved).
 
 ### LayoutStateV0
 
@@ -147,8 +152,36 @@ as current state.
 | tool/file event with `evidenceRef` | evidence artifact | missing ref produces no artifact |
 | runtime receipt | receipt artifact and execution receipt | receipt never proves task completion |
 | Observation / SourceFingerprint | EvidenceRef | provenance and currentness remain visible |
-| ProjectAdapter / GitFacts / HistorySession | corresponding evidence artifact | history is never live Runtime truth |
+| ProjectAdapter / GitFacts | corresponding evidence artifact | only when scoped to the projection project |
 | Canvas positions | LayoutState only | positions never create or alter lineage |
+
+## sourceDigest dependency scope
+
+`sourceDigest` for a Project A candidate is the hash of the dependency set the
+candidate actually consumed, not of every fingerprint the snapshot happened to
+read. Unrelated Project B canonical files must not change Project A's digest.
+
+Allowed dependencies:
+
+- Project A Conversations and their observations;
+- Project A ProjectAdapter observation;
+- Project A Activity;
+- Project A GitFacts when present;
+- sourceFingerprints restricted to the exact `sourceRef` set the compiled
+  candidate referenced (conversations, ProjectAdapter, Memory, git-commit,
+  activity protocol refs);
+- global Memory Vault dependencies, because the present product mounts the
+  shared/global Memory Vault into every Project Canvas.
+
+If a fingerprint cannot be proven to belong to a consumed dependency, the
+compiler omits it; UNKNOWN is preferred to guessing. Path-name heuristics are
+never used to guess Project ownership.
+
+## Deferred explicitly
+
+Route/Reach UI, Projection Delta UI, Semantic Passport, guided views, complex
+repository evidence, revision browser/persistence expansion, export/share-card,
+and Canvas redesign are outside this phase.
 
 ## Archify reuse map
 

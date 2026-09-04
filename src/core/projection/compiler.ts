@@ -1,4 +1,3 @@
-import type { HistorySession } from '../history/types';
 import { computePacketHash, canonicalPacketJson } from '../project/canonical';
 import { projectCompareGroups, projectTrajectory, resultSourceRef } from '../project/executionRelations';
 import { executionIdForEvent, projectRuntimeExecutions } from '../project/runtimeInspector';
@@ -15,15 +14,26 @@ import type {
   EvidenceRevisionV0,
   LayoutStateV0,
   ProjectionCandidateV0,
+  ProjectionSemanticFactsV0,
 } from './types';
 
+/**
+ * Projection IR v0 has no History input.
+ *
+ * History is derived transcript evidence. History sessions have no canonical
+ * project identity, and a session's observed cwd is metadata/filter only —
+ * never identity. v0 therefore does not accept HistorySession in its fact
+ * input, and the compiler does not emit project-scoped `history-fact`
+ * artifacts. History can return to Projection only when an explicit trusted
+ * Project binding exists; until then `history-fact` is a reserved enum kind
+ * only and `history-session` is a reserved `EvidenceRevisionV0` kind only.
+ */
 export interface ProjectionFactInputV0 {
   projectId: string;
   snapshot: OverlaySnapshot;
   activity: ActivityEvent[];
   liveExecutionIds?: readonly string[];
   gitFacts?: GitFacts | null;
-  historySessions?: readonly HistorySession[];
   layoutState?: LayoutStateV0;
 }
 
@@ -35,7 +45,33 @@ function sorted<T>(items: readonly T[], key: (item: T) => string): T[] {
   return [...items].sort((left, right) => key(left).localeCompare(key(right)));
 }
 
-function sourceDigestFacts(input: ProjectionFactInputV0): unknown {
+/**
+ * sourceDigestFacts: dependency set is "what the candidate actually consumes",
+ * not "every fingerprint the OverlaySnapshot read".
+ *
+ * - Conversations / ProjectAdapter / Activity / GitFacts are already filtered
+ *   to `input.projectId`; including them scopes dependencies to Project A.
+ * - sourceFingerprints are restricted to the exact sourceRefs the compiled
+ *   candidate referenced. Unrelated Project B canonical files therefore
+ *   cannot influence Project A's digest.
+ * - The shared/global Memory Vault is a current intentional product mount,
+ *   so its fingerprints are included when memoryIndex has entries.
+ *
+ * No path-name heuristics are used to guess Project ownership.
+ */
+function sourceDigestFacts(
+  input: ProjectionFactInputV0,
+  candidate: ProjectionCandidateV0,
+): unknown {
+  const consumedSourceRefs = [...new Set(candidate.semanticFacts.evidenceRefs.map((item) => item.sourceRef))].sort();
+  const consumedFingerprints = sorted(
+    input.snapshot.sourceFingerprints.filter((item) => consumedSourceRefs.includes(item.sourceRef)),
+    (item) => item.sourceRef,
+  );
+  const memoryIndex = sorted(
+    input.snapshot.memoryIndex.filter((item) => consumedSourceRefs.includes(item.sourceRef)),
+    (item) => item.id,
+  );
   return {
     projectId: input.projectId,
     conversations: sorted(
@@ -47,16 +83,18 @@ function sourceDigestFacts(input: ProjectionFactInputV0): unknown {
       input.activity.filter((item) => item.projectId === input.projectId),
       (item) => item.id,
     ),
-    sourceFingerprints: sorted(input.snapshot.sourceFingerprints, (item) => item.sourceRef),
-    memoryIndex: sorted(input.snapshot.memoryIndex, (item) => item.id),
+    sourceFingerprints: consumedFingerprints,
+    memoryIndex,
     liveExecutionIds: [...(input.liveExecutionIds ?? [])].sort(),
     gitFacts: input.gitFacts?.projectId === input.projectId ? input.gitFacts : null,
-    historySessions: sorted(input.historySessions ?? [], (item) => item.sessionId),
   };
 }
 
-export function computeProjectionSourceDigest(input: ProjectionFactInputV0): string {
-  return computePacketHash(sourceDigestFacts(input));
+export function computeProjectionSourceDigest(
+  input: ProjectionFactInputV0,
+  candidate: ProjectionCandidateV0,
+): string {
+  return computePacketHash(sourceDigestFacts(input, candidate));
 }
 
 function normalizedLayout(layout?: LayoutStateV0): LayoutStateV0 {
@@ -256,22 +294,6 @@ export function compileProjectionCandidate(input: ProjectionFactInputV0): Projec
     });
   }
 
-  for (const session of input.historySessions ?? []) {
-    const evidenceRef = addEvidence(
-      session.observed,
-      { kind: 'history-session', value: session.sessionId },
-      'UNKNOWN',
-    );
-    artifacts.push({
-      id: `history:${session.sessionId}`,
-      kind: 'history-fact',
-      projectId: input.projectId,
-      title: session.title ?? session.nativeId,
-      content: session.preview,
-      evidenceRefs: [evidenceRef],
-    });
-  }
-
   artifacts.sort(byId);
   const artifactById = new Map(artifacts.map((item) => [item.id, item]));
   const relations: CollaborationRelationProjectionV0[] = [];
@@ -319,18 +341,22 @@ export function compileProjectionCandidate(input: ProjectionFactInputV0): Projec
 
   relations.sort(byId);
 
-  return {
+  const semanticFacts: ProjectionSemanticFactsV0 = {
+    conversations,
+    runtimeExecutions,
+    collaborationRelations: relations,
+    artifactsOrEvidence: artifacts,
+    evidenceRefs: [...evidenceById.values()].sort(byId),
+  };
+
+  const candidate: ProjectionCandidateV0 = {
     schemaVersion: 0,
     projectionKind: 'workbench',
     scope: { projectId: input.projectId },
-    sourceBinding: { sourceDigest: computeProjectionSourceDigest(input) },
-    semanticFacts: {
-      conversations,
-      runtimeExecutions,
-      collaborationRelations: relations,
-      artifactsOrEvidence: artifacts,
-      evidenceRefs: [...evidenceById.values()].sort(byId),
-    },
+    sourceBinding: { sourceDigest: '0'.repeat(64) },
+    semanticFacts,
     layoutState: normalizedLayout(input.layoutState),
   };
+  candidate.sourceBinding = { sourceDigest: computeProjectionSourceDigest(input, candidate) };
+  return candidate;
 }

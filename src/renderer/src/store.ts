@@ -65,6 +65,7 @@ import { buildDispatchPlan, settleDispatchPlan, type DispatchOutcome } from '../
 import { useMemo } from 'react';
 import { contextFromAgentResult } from '../../core/project/executionRelations';
 import {
+  compileProjectionCandidate,
   computeProjectionSourceDigest,
   type ProjectionFactInputV0,
 } from '../../core/projection/compiler';
@@ -446,10 +447,12 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       set({ projection: emptyProjectionBuildState() });
       return;
     }
-    const projection = buildVerifiedProjection(input, before.projection.current, {
+const projection = buildVerifiedProjection(input, before.projection.current, {
       recheckSourceDigest: () => {
         const latest = projectionInput(get());
-        return latest ? computeProjectionSourceDigest(latest) : '0'.repeat(64);
+        return latest
+          ? computeProjectionSourceDigest(latest, compileProjectionCandidate(latest))
+          : '0'.repeat(64);
       },
     });
     set({ projection });

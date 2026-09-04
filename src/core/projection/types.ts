@@ -22,6 +22,12 @@ export type EvidenceRevisionV0 =
   | { kind: 'activity-event'; value: string }
   | { kind: 'history-session'; value: string };
 
+/**
+ * `history-session` is reserved. v0 does not emit EvidenceRefV0 with this
+ * revision kind; it remains in the union so a future explicit trusted Project
+ * binding can introduce History without an IR break.
+ */
+
 export interface EvidenceRefV0 {
   id: string;
   source: ObservationSource;
@@ -106,6 +112,13 @@ export type ArtifactOrEvidenceKindV0 =
   | 'git-fact'
   | 'history-fact'
   | 'memory-index';
+
+/**
+ * `history-fact` is reserved. v0 does not emit ArtifactOrEvidenceProjectionV0
+ * with this kind: History has no canonical Project binding, and v0 forbids
+ * inferring it from cwd, provider, or time proximity. The kind stays in the
+ * union so the IR does not break when a future explicit binding exists.
+ */
 
 export interface ArtifactOrEvidenceProjectionV0 {
   id: string;
