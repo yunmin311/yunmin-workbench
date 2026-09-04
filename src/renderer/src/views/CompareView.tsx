@@ -2,17 +2,36 @@ import { useMemo } from 'react';
 import { projectCompareGroups } from '../../../core/project/executionRelations';
 import { useWorkbench } from '../store';
 
+function shortRevision(id: string | undefined): string {
+  if (!id) return '—';
+  return id.length > 30 ? `${id.slice(0, 28)}…` : id;
+}
+
 export function CompareView() {
   const activity = useWorkbench((state) => state.activity);
   const projectId = useWorkbench((state) => state.projectId);
   const conversation = useWorkbench((state) => state.conversation);
   const openRuntimeInspector = useWorkbench((state) => state.openRuntimeInspector);
   const addResultToContext = useWorkbench((state) => state.addResultToContext);
+  const projection = useWorkbench((state) => state.projection);
+  const projectionPrevious = useWorkbench((state) => state.projectionPrevious);
+
   const groups = useMemo(() => projectCompareGroups(activity.filter((event) =>
     event.projectId === projectId)),
   [activity, projectId]);
   const visible = groups.filter((group) => group.executions.length > 1
     && group.executions.some((execution) => execution.result || execution.failed));
+
+  // Projection Delta is purely a field-level comparison; this surface never
+  // invents impact, causality, or risk, and never falls back to raw Snapshot.
+  const delta = useMemo(() => {
+    if (!projection.current || !projectionPrevious) return null;
+    if (projectionPrevious.candidate.scope.projectId !== projection.current.candidate.scope.projectId) {
+      return null;
+    }
+    if (projectionPrevious.revisionHash === projection.current.revisionHash) return null;
+    return { previous: projectionPrevious, current: projection.current };
+  }, [projection.current, projectionPrevious]);
 
   return (
     <section className="compare-surface" aria-label="Compare real Agent results">
@@ -21,6 +40,25 @@ export function CompareView() {
         <h1>Compare results</h1>
         <span>Results, tools, and files are shown as observed. Workbench does not choose a winner.</span>
       </header>
+      <article className="compare-delta" aria-label="Verified Projection Delta">
+        <header>
+          <span>Projection Delta</span>
+          <strong>
+            {delta
+              ? `${shortRevision(delta.previous.revisionId)} → ${shortRevision(delta.current.revisionId)}`
+              : 'No previous verified revision in this session'}
+          </strong>
+        </header>
+        {!delta ? (
+          <p className="compare-delta-empty">
+            Verified revisions accumulate only inside the current Project scope; switching Project clears them, and an identical verified revision does not advance the seam.
+          </p>
+        ) : (
+          <p className="compare-delta-summary">
+            Both revisions passed Workbench Verified Projection validation. This surface exposes only the bounded previous → current delta for the active Project; it does not read raw Snapshot / Activity and never infers runtime impact, downstream impact, causality, or mergeability.
+          </p>
+        )}
+      </article>
       {visible.length === 0 ? (
         <div className="compare-empty">
           <strong>No comparable results yet</strong>
@@ -53,6 +91,11 @@ export function CompareView() {
           </div>
         </article>
       ))}
+      {conversation && projectId && (
+        <p className="compare-session-meta">
+          Session <code>{conversation.key}</code> · Project <code>{projectId}</code> · Verified projection status <code>{projection.status}</code>
+        </p>
+      )}
     </section>
   );
 }

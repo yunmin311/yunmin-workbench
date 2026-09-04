@@ -69,11 +69,15 @@ import {
   computeProjectionSourceDigest,
   type ProjectionFactInputV0,
 } from '../../core/projection/compiler';
+import { compareProjectionRevisions } from '../../core/projection/delta';
 import {
   buildVerifiedProjection,
   emptyProjectionBuildState,
 } from '../../core/projection/revision';
-import type { ProjectionBuildStateV0 } from '../../core/projection/types';
+import type {
+  ProjectionBuildStateV0,
+  VerifiedProjectionRevisionV0,
+} from '../../core/projection/types';
 
 export type View = 'projects' | 'control' | 'canvas' | 'compare' | 'context' | 'packet';
 export type DraftSaveState = 'clean' | 'dirty' | 'saving' | 'saved' | 'error';
@@ -125,8 +129,15 @@ interface WorkbenchState {
   attentionItems: AttentionItem[];
   attentionLocal: AttentionLocalState;
   attentionProblem: string | null;
-  /** Current verification outcome plus the last-known-good Projection revision. */
+/** Current verification outcome plus the last-known-good Projection revision. */
   projection: ProjectionBuildStateV0;
+  /**
+   * Bounded in-memory previous verified revision seam. Holds only the most
+   * recent verified revision for the current Project; cleared on Project
+   * switch / demo enter / exit / reset. Invalid or stale candidates never
+   * become previous. App restart drops it. Never persisted.
+   */
+  projectionPrevious: VerifiedProjectionRevisionV0 | null;
   draftSaveState: DraftSaveState;
   packetValidity: 'CURRENT' | 'STALE' | 'INVALID' | 'UNKNOWN';
   handoffStatus: string;
@@ -425,9 +436,10 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   runtimeTarget: null,
   harnessCapabilities: {},
   attentionItems: [],
-  attentionLocal: EMPTY_ATTENTION_LOCAL,
+attentionLocal: EMPTY_ATTENTION_LOCAL,
   attentionProblem: null,
   projection: emptyProjectionBuildState(),
+  projectionPrevious: null,
   draftSaveState: 'clean',
   packetValidity: 'UNKNOWN',
   handoffStatus: 'IDLE',
@@ -440,14 +452,14 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       void window.wb.syncIslandAttention(items);
     }
   },
-  refreshProjection: () => {
+refreshProjection: () => {
     const before = get();
     const input = projectionInput(before);
     if (!input) {
-      set({ projection: emptyProjectionBuildState() });
+      set({ projection: emptyProjectionBuildState(), projectionPrevious: null });
       return;
     }
-const projection = buildVerifiedProjection(input, before.projection.current, {
+    const projection = buildVerifiedProjection(input, before.projection.current, {
       recheckSourceDigest: () => {
         const latest = projectionInput(get());
         return latest
@@ -455,7 +467,25 @@ const projection = buildVerifiedProjection(input, before.projection.current, {
           : '0'.repeat(64);
       },
     });
-    set({ projection });
+    // Maintain the bounded previous/current seam: a fresh verified revision
+    // for the same Project that has a different revisionHash from the prior
+    // verified revision becomes the new "previous". INVALID/STALE never
+    // promote previous; cross-project prior revisions are evicted.
+    let projectionPrevious: VerifiedProjectionRevisionV0 | null = before.projectionPrevious;
+    if (projectionPrevious
+      && projectionPrevious.candidate.scope.projectId !== input.projectId) {
+      projectionPrevious = null;
+    }
+    const priorVerified = before.projection.current;
+    if (projection.status === 'VERIFIED'
+      && projection.current
+      && projection.current.candidate.scope.projectId === input.projectId
+      && priorVerified
+      && priorVerified.candidate.scope.projectId === input.projectId
+      && priorVerified.revisionHash !== projection.current.revisionHash) {
+      projectionPrevious = priorVerified;
+    }
+    set({ projection, projectionPrevious });
   },
 
   initialize: async () => {
@@ -503,12 +533,13 @@ const projection = buildVerifiedProjection(input, before.projection.current, {
       activityHasEarlier: false,
       runtimeSessions: DEMO_RUNTIME_SESSIONS as RuntimeSession[],
       activityProblem: null,
-      liveExecutions: [],
+liveExecutions: [],
       attentionItems: DEMO_ATTENTION,
       handoffSourceRef: null,
       lastDispatchGroupId: null,
       lastDispatchOutcomes: [],
       harnessCapabilities: DEMO_HARNESS_CAPABILITIES,
+      projectionPrevious: null,
     });
     get().refreshProjection();
     get().syncIslandAttention();
@@ -522,7 +553,7 @@ const projection = buildVerifiedProjection(input, before.projection.current, {
     demoMemoryUse.clear();
     demoDraftState = null;
     demoWorkspaceSession = EMPTY_WORKSPACE_SESSION;
-    set({
+set({
       demoMode: false,
       demoSessionId: null,
       snapshot: null,
@@ -537,6 +568,7 @@ const projection = buildVerifiedProjection(input, before.projection.current, {
       lastDispatchGroupId: null,
       lastDispatchOutcomes: [],
       projection: emptyProjectionBuildState(),
+      projectionPrevious: null,
     });
     await get().initialize();
   },
@@ -562,12 +594,13 @@ const projection = buildVerifiedProjection(input, before.projection.current, {
       attentionItems: DEMO_ATTENTION,
       packetValidity: 'CURRENT',
       draftSaveState: 'clean',
-      contextMessage: null,
+contextMessage: null,
       handoffStatus: 'IDLE',
       handoffSourceRef: null,
       lastDispatchGroupId: null,
       lastDispatchOutcomes: [],
       harnessCapabilities: DEMO_HARNESS_CAPABILITIES,
+      projectionPrevious: null,
     });
     get().refreshProjection();
     get().syncIslandAttention();
@@ -677,7 +710,7 @@ load: async (refresh) => {
     await get().recheckSources();
   },
 
-  selectProject: (projectId) => {
+selectProject: (projectId) => {
     const { snapshot, demoMode } = get();
     set({
       projectId,
@@ -698,6 +731,7 @@ load: async (refresh) => {
       draftSaveState: 'clean',
       packetValidity: 'UNKNOWN',
       handoffStatus: 'IDLE',
+      projectionPrevious: null,
     });
     get().refreshProjection();
     set((state) => ({ attentionItems: projectAttention(state) }));
@@ -1542,4 +1576,32 @@ export function useGovernanceView(): GovernanceSnapshot {
     () => projectGovernanceView(snapshot ?? null, projectId, conversation),
     [snapshot, projectId, conversation],
   );
+}
+
+export type UseProjectionDeltaResultV0 =
+  | { kind: 'none'; reason: 'no-previous-verified-revision' | 'no-current-verified-revision' }
+  | { kind: 'failure'; failure: import('../../core/projection/types').ProjectionDeltaFailureV0 }
+  | { kind: 'delta'; delta: import('../../core/projection/types').ProjectionDeltaV0 };
+
+/**
+ * Selector hook: compute the ProjectionDeltaV0 between the bounded previous
+ * and current verified revisions for the active Project. Pure derivation;
+ * never mutates state and never falls back to raw Snapshot/Activity.
+ */
+export function useProjectionDelta(): UseProjectionDeltaResultV0 {
+  const projection = useWorkbench((state) => state.projection);
+  const previous = useWorkbench((state) => state.projectionPrevious);
+  return useMemo<UseProjectionDeltaResultV0>(() => {
+    if (!projection.current) {
+      return { kind: 'none', reason: 'no-current-verified-revision' };
+    }
+    if (!previous) {
+      return { kind: 'none', reason: 'no-previous-verified-revision' };
+    }
+    const result = compareProjectionRevisions(previous, projection.current);
+    if (!result.ok) {
+      return { kind: 'failure', failure: result };
+    }
+    return { kind: 'delta', delta: result };
+  }, [projection.current, previous]);
 }

@@ -206,3 +206,193 @@ export interface ProjectionBuildStateV0 {
 export type ProjectionCandidateValidationV0 =
   | { ok: true; candidate: ProjectionCandidateV0; diagnostics: [] }
   | { ok: false; diagnostics: ProjectionDiagnosticV0[] };
+
+// ===== Projection Delta v0 =====
+//
+// Pure comparator output for two `VerifiedProjectionRevisionV0` revisions
+// of the same Project scope. Delta is Workbench-owned and never infers
+// runtime impact, causality, risk, or mergeability.
+
+export const PROJECTION_DELTA_SCHEMA_VERSION = 0 as const;
+export const PROJECTION_DELTA_COMPARATOR_VERSION = 0 as const;
+
+export type ProjectionDeltaProofLevelV0 = 'verified-projection';
+
+export type ProjectionDeltaFailureCodeV0 =
+  | 'delta/schema-version-mismatch'
+  | 'delta/projection-kind-mismatch'
+  | 'delta/project-mismatch'
+  | 'delta/invalid-revision'
+  | 'delta/duplicate-id';
+
+export interface ProjectionDeltaFailureV0 {
+  ok: false;
+  code: ProjectionDeltaFailureCodeV0;
+  message: string;
+  subject: Record<string, unknown>;
+  evidence: Record<string, unknown>;
+  supportedFixes: string[];
+}
+
+export type ConversationFieldKindV0 =
+  | 'lifecycle'
+  | 'task'
+  | 'runtime'
+  | 'attention'
+  | 'identity-metadata'
+  | 'evidence';
+
+export type RuntimeExecutionFieldKindV0 =
+  | 'runtimeState'
+  | 'live'
+  | 'binding'
+  | 'intentState'
+  | 'receipt'
+  | 'conversationRef'
+  | 'evidence';
+
+export type CollaborationRelationFieldKindV0 =
+  | 'topology'
+  | 'semantic'
+  | 'evidence';
+
+export type ArtifactOrEvidenceFieldKindV0 =
+  | 'content'
+  | 'evidence';
+
+export type EvidenceRefFieldKindV0 =
+  | 'verification'
+  | 'currentness'
+  | 'revision'
+  | 'source';
+
+export type LayoutFieldKindV0 =
+  | 'nodePosition'
+  | 'viewport';
+
+export interface ProjectionDeltaFieldChangeV0<K extends string> {
+  path: string;
+  kind: K;
+  before: unknown;
+  after: unknown;
+}
+
+export interface ProjectionDeltaConversationChangeV0 {
+  id: string;
+  status: 'added' | 'removed' | 'changed';
+  classifications: ConversationFieldKindV0[];
+  changedFields: ProjectionDeltaFieldChangeV0<ConversationFieldKindV0>[];
+}
+
+export interface ProjectionDeltaRuntimeExecutionChangeV0 {
+  id: string;
+  status: 'added' | 'removed' | 'changed';
+  classifications: RuntimeExecutionFieldKindV0[];
+  changedFields: ProjectionDeltaFieldChangeV0<RuntimeExecutionFieldKindV0>[];
+}
+
+export interface ProjectionDeltaCollaborationRelationChangeV0 {
+  id: string;
+  status: 'added' | 'removed' | 'changed';
+  classifications: CollaborationRelationFieldKindV0[];
+  changedFields: ProjectionDeltaFieldChangeV0<CollaborationRelationFieldKindV0>[];
+}
+
+export interface ProjectionDeltaArtifactOrEvidenceChangeV0 {
+  id: string;
+  status: 'added' | 'removed' | 'changed' | 'evidence-changed';
+  classifications: ArtifactOrEvidenceFieldKindV0[];
+  changedFields: ProjectionDeltaFieldChangeV0<ArtifactOrEvidenceFieldKindV0>[];
+}
+
+export interface ProjectionDeltaEvidenceRefChangeV0 {
+  id: string;
+  status: 'added' | 'removed' | 'changed';
+  classifications: EvidenceRefFieldKindV0[];
+  changedFields: ProjectionDeltaFieldChangeV0<EvidenceRefFieldKindV0>[];
+}
+
+export interface ProjectionDeltaLayoutChangeV0 {
+  id: string;
+  status: 'moved' | 'viewport-changed' | 'changed';
+  classifications: LayoutFieldKindV0[];
+  changedFields: ProjectionDeltaFieldChangeV0<LayoutFieldKindV0>[];
+}
+
+export interface ProjectionDeltaChangesV0 {
+  conversations: ProjectionDeltaConversationChangeV0[];
+  runtimeExecutions: ProjectionDeltaRuntimeExecutionChangeV0[];
+  collaborationRelations: ProjectionDeltaCollaborationRelationChangeV0[];
+  artifactsOrEvidence: ProjectionDeltaArtifactOrEvidenceChangeV0[];
+  evidenceRefs: ProjectionDeltaEvidenceRefChangeV0[];
+  layout: ProjectionDeltaLayoutChangeV0[];
+}
+
+export interface ProjectionDeltaSummaryCountsV0 {
+  added: number;
+  removed: number;
+  changed: number;
+}
+
+export interface ProjectionDeltaSummaryArtifactCountsV0 extends ProjectionDeltaSummaryCountsV0 {
+  evidenceChanged: number;
+}
+
+export interface ProjectionDeltaSummaryEvidenceCountsV0 {
+  changed: number;
+}
+
+export interface ProjectionDeltaSummaryLayoutCountsV0 {
+  moved: number;
+  viewportChanged: number;
+}
+
+export interface ProjectionDeltaSummaryRelationCountsV0 extends ProjectionDeltaSummaryCountsV0 {}
+
+export interface ProjectionDeltaSummaryRuntimeExecutionCountsV0 extends ProjectionDeltaSummaryCountsV0 {}
+
+export interface ProjectionDeltaSummaryConversationCountsV0 extends ProjectionDeltaSummaryCountsV0 {}
+
+export interface ProjectionDeltaSummaryV0 {
+  conversations: ProjectionDeltaSummaryConversationCountsV0;
+  runtimeExecutions: ProjectionDeltaSummaryRuntimeExecutionCountsV0;
+  relations: ProjectionDeltaSummaryRelationCountsV0;
+  artifacts: ProjectionDeltaSummaryArtifactCountsV0;
+  evidence: ProjectionDeltaSummaryEvidenceCountsV0;
+  layout: ProjectionDeltaSummaryLayoutCountsV0;
+  semanticChanged: boolean;
+  layoutChanged: boolean;
+  provenanceChanged: boolean;
+}
+
+export interface ProjectionDeltaIdentityDeclarationV0 {
+  conversations: 'id';
+  runtimeExecutions: 'executionId';
+  collaborationRelations: 'id';
+  artifactsOrEvidence: 'id';
+  evidenceRefs: 'id';
+  layoutNodes: 'id';
+}
+
+export interface ProjectionDeltaV0 {
+  ok: true;
+  schemaVersion: typeof PROJECTION_DELTA_SCHEMA_VERSION;
+  comparatorVersion: typeof PROJECTION_DELTA_COMPARATOR_VERSION;
+  projectId: string;
+  baseRevisionId: string;
+  headRevisionId: string;
+  baseSemanticHash: string;
+  headSemanticHash: string;
+  baseLayoutHash: string;
+  headLayoutHash: string;
+  baseSourceDigest: string;
+  headSourceDigest: string;
+  proofLevel: ProjectionDeltaProofLevelV0;
+  identity: ProjectionDeltaIdentityDeclarationV0;
+  summary: ProjectionDeltaSummaryV0;
+  changes: ProjectionDeltaChangesV0;
+  limitations: string[];
+  computedAt: string;
+}
+
+export type ProjectionDeltaResultV0 = ProjectionDeltaV0 | ProjectionDeltaFailureV0;
