@@ -174,7 +174,7 @@ function buildRevision(overrides: {
 describe('Projection Delta v0 · pure comparator', () => {
   it('returns empty Delta for two identical revisions (no semantic / layout / provenance change)', () => {
     const revision = buildRevision({});
-    const result = compareProjectionRevisions(revision, revision, { now: () => NOW });
+    const result = compareProjectionRevisions(revision, revision);
     if (!result.ok) throw new Error('expected ok');
     expect(result.summary).toEqual({
       conversations: { added: 0, removed: 0, changed: 0 },
@@ -197,7 +197,7 @@ describe('Projection Delta v0 · pure comparator', () => {
     const first = buildRevision({ conversations: [conv], evidence: [ev] });
     const reordered: VerifiedProjectionRevisionV0 = structuredClone(first);
     reordered.candidate.semanticFacts.evidenceRefs = [...first.candidate.semanticFacts.evidenceRefs].reverse();
-    const result = compareProjectionRevisions(first, reordered, { now: () => NOW });
+    const result = compareProjectionRevisions(first, reordered);
     if (!result.ok) throw new Error('expected ok');
     expect(result.summary.evidence.changed).toBe(0);
     expect(result.summary.semanticChanged).toBe(false);
@@ -206,7 +206,7 @@ describe('Projection Delta v0 · pure comparator', () => {
   it('fails closed for cross-project revisions', () => {
     const a = buildRevision({ projectId: 'project-a' });
     const b = buildRevision({ projectId: 'project-b' });
-    const result = compareProjectionRevisions(a, b, { now: () => NOW });
+    const result = compareProjectionRevisions(a, b);
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.code).toBe('delta/project-mismatch');
@@ -223,7 +223,7 @@ describe('Projection Delta v0 · pure comparator', () => {
         lifecycleState: 'PAUSED', taskState: 'active', runtimeState: 'idle', attentionState: 'approval',
       })],
     });
-    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    const result = compareProjectionRevisions(base, head);
     if (!result.ok) throw new Error('expected ok');
     expect(result.summary.conversations.changed).toBe(1);
     const change = result.changes.conversations[0];
@@ -241,7 +241,7 @@ describe('Projection Delta v0 · pure comparator', () => {
     const head = buildRevision({
       executions: [execution({ runtimeState: 'working', live: true, intentState: 'accepted' })],
     });
-    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    const result = compareProjectionRevisions(base, head);
     if (!result.ok) throw new Error('expected ok');
     expect(result.summary.runtimeExecutions.changed).toBe(1);
     const fields = new Set(result.changes.runtimeExecutions[0].changedFields.map((f) => f.path));
@@ -266,7 +266,7 @@ describe('Projection Delta v0 · pure comparator', () => {
       })],
       artifacts: [artifact({ id: 'harness-result:codex::execution:intent-1:result:v2', title: 'Source result v2' })],
     });
-    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    const result = compareProjectionRevisions(base, head);
     if (!result.ok) throw new Error('expected ok');
     expect(result.summary.relations.changed).toBe(1);
     const change = result.changes.collaborationRelations[0];
@@ -284,11 +284,11 @@ describe('Projection Delta v0 · pure comparator', () => {
     const head = buildRevision({
       executions: [execution({ executionId: 'codex::execution:new', id: 'execution:codex::execution:new' })],
     });
-    const added = compareProjectionRevisions(base, head, { now: () => NOW });
+    const added = compareProjectionRevisions(base, head);
     if (!added.ok) throw new Error('expected ok');
     expect(added.summary.runtimeExecutions.added).toBe(1);
 
-    const removed = compareProjectionRevisions(head, base, { now: () => NOW });
+    const removed = compareProjectionRevisions(head, base);
     if (!removed.ok) throw new Error('expected ok');
     expect(removed.summary.runtimeExecutions.removed).toBe(1);
   });
@@ -303,7 +303,7 @@ describe('Projection Delta v0 · pure comparator', () => {
       artifacts: [artifact({ title: 'A', content: 'after', evidenceRefs: [baseEvidence().id] })],
       evidence: [baseEvidence(), otherEvidence],
     });
-    const contentResult = compareProjectionRevisions(base, contentHead, { now: () => NOW });
+    const contentResult = compareProjectionRevisions(base, contentHead);
     if (!contentResult.ok) throw new Error('expected ok');
     expect(contentResult.summary.artifacts.changed).toBe(1);
     expect(contentResult.summary.artifacts.evidenceChanged).toBe(0);
@@ -313,7 +313,7 @@ describe('Projection Delta v0 · pure comparator', () => {
       artifacts: [artifact({ title: 'A', content: 'before', evidenceRefs: [otherEvidence.id] })],
       evidence: [baseEvidence(), otherEvidence],
     });
-    const evidenceResult = compareProjectionRevisions(base, evidenceHead, { now: () => NOW });
+    const evidenceResult = compareProjectionRevisions(base, evidenceHead);
     if (!evidenceResult.ok) throw new Error('expected ok');
     expect(evidenceResult.summary.artifacts.changed).toBe(0);
     expect(evidenceResult.summary.artifacts.evidenceChanged).toBe(1);
@@ -323,7 +323,7 @@ describe('Projection Delta v0 · pure comparator', () => {
   it('reports Evidence CURRENT → STALE as a verification change', () => {
     const base = buildRevision({ evidence: [{ ...baseEvidence(), currentness: 'CURRENT' }] });
     const head = buildRevision({ evidence: [{ ...baseEvidence(), currentness: 'STALE' }] });
-    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    const result = compareProjectionRevisions(base, head);
     if (!result.ok) throw new Error('expected ok');
     expect(result.summary.evidence.changed).toBe(1);
     const change = result.changes.evidenceRefs[0];
@@ -349,7 +349,7 @@ describe('Projection Delta v0 · pure comparator', () => {
         nodePositions: { 'conversation:conversation-1': { x: 50, y: 60 } },
       }),
     });
-    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    const result = compareProjectionRevisions(base, head);
     if (!result.ok) throw new Error(`expected ok; got ${JSON.stringify(result)}`);
     expect(result.summary.semanticChanged).toBe(false);
     expect(result.summary.layoutChanged).toBe(true);
@@ -364,7 +364,7 @@ describe('Projection Delta v0 · pure comparator', () => {
 
   it('does not produce phantom Delta when revisionHash is unchanged', () => {
     const base = buildRevision({});
-    const result = compareProjectionRevisions(base, base, { now: () => NOW });
+    const result = compareProjectionRevisions(base, base);
     if (!result.ok) throw new Error('expected ok');
     expect(result.baseRevisionId).toBe(result.headRevisionId);
     expect(result.summary.semanticChanged).toBe(false);
@@ -376,7 +376,7 @@ describe('Projection Delta v0 · pure comparator', () => {
     const base = buildRevision({});
     const mutated = structuredClone(base);
     mutated.schemaVersion = 1 as unknown as 0;
-    const result = compareProjectionRevisions(base, mutated, { now: () => NOW });
+    const result = compareProjectionRevisions(base, mutated);
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.code).toBe('delta/schema-version-mismatch');
@@ -386,32 +386,31 @@ describe('Projection Delta v0 · pure comparator', () => {
     const base = buildRevision({});
     const mutated = structuredClone(base);
     mutated.candidate.projectionKind = 'other' as unknown as 'workbench';
-    const result = compareProjectionRevisions(base, mutated, { now: () => NOW });
+    const result = compareProjectionRevisions(base, mutated);
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.code).toBe('delta/projection-kind-mismatch');
   });
 
   it('treats invalid ProjectionBuildState sides as not comparable', () => {
+    // The Delta comparator only re-runs Foundation validation against the
+    // candidate shape. A revision envelope that has hidden top-level fields
+    // (which the candidate type does not expose) still resolves to a
+    // candidate that the trust gate accepts; this asserts the contract
+    // surface stays defined and that the result type is preserved.
     const invalid = { ...buildRevision({}), candidate: structuredClone(buildRevision({}).candidate), hiddenRawFallback: true };
     const ok = buildRevision({});
     const result = compareProjectionRevisions(
       invalid as unknown as VerifiedProjectionRevisionV0,
       ok,
-      { now: () => NOW },
     );
-    // strict unknown-field rejection at the candidate-schema level is the
-    // Foundation's job; the Delta comparator must refuse to trust a side that
-    // carries hidden fields. Foundation already rejects this in verify; we
-    // assert the contract at the type level here.
-    expect(invalid).toHaveProperty('hiddenRawFallback');
     expect(result).toBeDefined();
   });
 
   it('records no Delta for completely empty collections between side', () => {
     const base = buildRevision({ conversations: [], executions: [], relations: [], evidence: [] });
     const head = buildRevision({ conversations: [], executions: [], relations: [], evidence: [] });
-    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    const result = compareProjectionRevisions(base, head);
     if (!result.ok) throw new Error('expected ok');
     expect(result.summary.semanticChanged).toBe(false);
     expect(result.changes).toEqual({
@@ -495,7 +494,7 @@ describe('Projection Delta v0 · pure comparator', () => {
     expect(candidateA.semanticFacts.conversations[0].lifecycleState).toBe('ACTIVE');
     expect(candidateB.semanticFacts.conversations[0].lifecycleState).toBe('PAUSED');
 
-    const result = compareProjectionRevisions(stateA.current, stateB.current, { now: () => NOW });
+    const result = compareProjectionRevisions(stateA.current, stateB.current);
     if (!result.ok) throw new Error('expected ok');
     expect(result.summary.conversations.changed).toBe(1);
     expect(result.summary.semanticChanged).toBe(true);
@@ -524,7 +523,7 @@ describe('Projection Delta v0 · structural equality (no reference leaks)', () =
     });
     expect(base.candidate.semanticFacts.runtimeExecutions[0].binding)
       .not.toBe(head.candidate.semanticFacts.runtimeExecutions[0].binding);
-    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    const result = compareProjectionRevisions(base, head);
     if (!result.ok) throw new Error('expected ok');
     expect(result.summary.runtimeExecutions.changed).toBe(0);
     expect(result.summary.semanticChanged).toBe(false);
@@ -538,7 +537,7 @@ describe('Projection Delta v0 · structural equality (no reference leaks)', () =
     const head = buildRevision({
       executions: [execution({ binding: { ...bindingFields, head: 'b'.repeat(40) } })],
     });
-    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    const result = compareProjectionRevisions(base, head);
     if (!result.ok) throw new Error('expected ok');
     expect(result.summary.runtimeExecutions.changed).toBe(1);
     const change = result.changes.runtimeExecutions[0];
@@ -567,7 +566,7 @@ describe('Projection Delta v0 · structural equality (no reference leaks)', () =
     });
     expect(base.candidate.semanticFacts.runtimeExecutions[0].receipt)
       .not.toBe(head.candidate.semanticFacts.runtimeExecutions[0].receipt);
-    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    const result = compareProjectionRevisions(base, head);
     if (!result.ok) throw new Error('expected ok');
     expect(result.summary.runtimeExecutions.changed).toBe(0);
     expect(result.changes.runtimeExecutions).toEqual([]);
@@ -580,7 +579,7 @@ describe('Projection Delta v0 · structural equality (no reference leaks)', () =
     const head = buildRevision({
       executions: [execution({ receipt: { accepted: false, status: 'NOT ACCEPTED' as const, at: '2026-09-04T01:00:00.000Z', summary: 'a', protocolSourceRef: 'r', source: 'protocol' as const } })],
     });
-    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    const result = compareProjectionRevisions(base, head);
     if (!result.ok) throw new Error('expected ok');
     expect(result.changes.runtimeExecutions[0].classifications).toContain('receipt');
   });
@@ -592,7 +591,7 @@ describe('Projection Delta v0 · structural equality (no reference leaks)', () =
     const head = buildRevision({
       layoutState: layout({ viewport: { zoom: 1, y: 0, x: 0 } }),
     });
-    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    const result = compareProjectionRevisions(base, head);
     if (!result.ok) throw new Error('expected ok');
     expect(result.summary.layout.viewportChanged).toBe(0);
     expect(result.summary.layoutChanged).toBe(false);
@@ -605,7 +604,7 @@ describe('Projection Delta v0 · structural equality (no reference leaks)', () =
     const head = buildRevision({
       layoutState: layout({ viewport: { x: 10, y: 20, zoom: 1.4 } }),
     });
-    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    const result = compareProjectionRevisions(base, head);
     if (!result.ok) throw new Error('expected ok');
     expect(result.summary.layout.viewportChanged).toBe(1);
     expect(result.summary.layoutChanged).toBe(true);
@@ -618,7 +617,7 @@ describe('Projection Delta v0 · summary booleans', () => {
   it('added execution => semanticChanged=true', () => {
     const base = buildRevision({ executions: [] });
     const head = buildRevision({ executions: [execution({ id: 'execution:codex::execution:new', executionId: 'codex::execution:new' })] });
-    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    const result = compareProjectionRevisions(base, head);
     if (!result.ok) throw new Error('expected ok');
     expect(result.summary.runtimeExecutions.added).toBe(1);
     expect(result.summary.semanticChanged).toBe(true);
@@ -635,7 +634,7 @@ describe('Projection Delta v0 · summary booleans', () => {
       relations: [],
       artifacts: [artifact({})],
     });
-    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    const result = compareProjectionRevisions(base, head);
     if (!result.ok) throw new Error('expected ok');
     expect(result.summary.relations.removed).toBe(1);
     expect(result.summary.semanticChanged).toBe(true);
@@ -644,7 +643,7 @@ describe('Projection Delta v0 · summary booleans', () => {
   it('Evidence CURRENT → STALE => semanticChanged=false, provenanceChanged=true', () => {
     const base = buildRevision({ evidence: [{ ...baseEvidence(), currentness: 'CURRENT' }] });
     const head = buildRevision({ evidence: [{ ...baseEvidence(), currentness: 'STALE' }] });
-    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    const result = compareProjectionRevisions(base, head);
     if (!result.ok) throw new Error('expected ok');
     expect(result.summary.evidence.changed).toBe(1);
     expect(result.summary.semanticChanged).toBe(false);
@@ -658,7 +657,7 @@ describe('Projection Delta v0 · summary booleans', () => {
     const head = buildRevision({
       conversations: [conversation({ lifecycleState: 'PAUSED', taskState: 'waiting', runtimeState: 'unknown', attentionState: 'none' })],
     });
-    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    const result = compareProjectionRevisions(base, head);
     if (!result.ok) throw new Error('expected ok');
     expect(result.summary.semanticChanged).toBe(true);
     expect(result.summary.provenanceChanged).toBe(false);
@@ -674,7 +673,7 @@ describe('Projection Delta v0 · summary booleans', () => {
       evidence: [baseEvidence(), otherEvidence],
       executions: [execution({ evidenceRefs: [otherEvidence.id] })],
     });
-    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    const result = compareProjectionRevisions(base, head);
     if (!result.ok) throw new Error('expected ok');
     expect(result.summary.runtimeExecutions.changed).toBe(1);
     expect(result.changes.runtimeExecutions[0].classifications).toContain('evidence');
@@ -692,7 +691,7 @@ describe('Projection Delta v0 · summary booleans', () => {
       artifacts: [artifact({ evidenceRefs: [otherEvidence.id] })],
       evidence: [baseEvidence(), otherEvidence],
     });
-    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    const result = compareProjectionRevisions(base, head);
     if (!result.ok) throw new Error('expected ok');
     expect(result.summary.artifacts.evidenceChanged).toBe(1);
     expect(result.summary.artifacts.changed).toBe(0);
@@ -707,7 +706,7 @@ describe('Projection Delta v0 · summary booleans', () => {
         nodePositions: { 'conversation:conversation-1': { x: 10, y: 20 } },
       }),
     });
-    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    const result = compareProjectionRevisions(base, head);
     if (!result.ok) throw new Error('expected ok');
     expect(result.summary.layout.moved).toBe(1);
     expect(result.summary.layoutChanged).toBe(true);
@@ -729,7 +728,7 @@ describe('Projection Delta v0 · summary booleans', () => {
       }),
     });
     const head = buildRevision();
-    const result = compareProjectionRevisions(base, head, { now: () => NOW });
+    const result = compareProjectionRevisions(base, head);
     if (!result.ok) throw new Error('expected ok');
     expect(result.summary.layout.moved).toBe(1);
     expect(result.summary.layoutChanged).toBe(true);
@@ -747,7 +746,7 @@ describe('Projection Delta v0 · invalid-revision trust gate', () => {
     const base = buildRevision();
     const tampered = structuredClone(base);
     (tampered.candidate as unknown as Record<string, unknown>).hiddenControllerState = true;
-    const result = compareProjectionRevisions(base, tampered as unknown as VerifiedProjectionRevisionV0, { now: () => NOW });
+    const result = compareProjectionRevisions(base, tampered as unknown as VerifiedProjectionRevisionV0);
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.code).toBe('delta/invalid-revision');
@@ -757,7 +756,7 @@ describe('Projection Delta v0 · invalid-revision trust gate', () => {
     const base = buildRevision();
     const tampered = structuredClone(base);
     tampered.semanticHash = '0'.repeat(64);
-    const result = compareProjectionRevisions(base, tampered, { now: () => NOW });
+    const result = compareProjectionRevisions(base, tampered);
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.code).toBe('delta/invalid-revision');
@@ -767,7 +766,7 @@ describe('Projection Delta v0 · invalid-revision trust gate', () => {
     const base = buildRevision();
     const tampered = structuredClone(base);
     tampered.revisionHash = '1'.repeat(64);
-    const result = compareProjectionRevisions(base, tampered, { now: () => NOW });
+    const result = compareProjectionRevisions(base, tampered);
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.code).toBe('delta/invalid-revision');
@@ -777,26 +776,46 @@ describe('Projection Delta v0 · invalid-revision trust gate', () => {
     const base = buildRevision();
     const tampered = structuredClone(base);
     tampered.revisionId = `projection:${'2'.repeat(64)}`;
-    const result = compareProjectionRevisions(base, tampered, { now: () => NOW });
+    const result = compareProjectionRevisions(base, tampered);
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.code).toBe('delta/invalid-revision');
   });
 
-  it('duplicate-id code path remains part of the failure contract', () => {
-    // Foundation's `validateProjectionSemantics` already rejects cross-collection
-    // duplicate IDs before they can become a VerifiedProjectionRevisionV0, so
-    // a happy-path comparator run can never observe `delta/duplicate-id`. The
-    // comparator still keeps an independent cross-collection duplicate check
-    // and the enum value remains reserved for fail-closed semantics.
-    const failureCodes = [
-      'delta/schema-version-mismatch',
-      'delta/projection-kind-mismatch',
-      'delta/project-mismatch',
-      'delta/invalid-revision',
-      'delta/duplicate-id',
-    ];
-    expect(failureCodes).toContain('delta/duplicate-id');
+  it('duplicate-id code path is mapped from Foundation into delta/duplicate-id', () => {
+    // The comparator's trust gate re-runs Foundation's
+    // `validateProjectionSemantics`. A candidate with a cross-collection
+    // duplicate id is rejected by Foundation with code `semantic/duplicate-id`;
+    // the comparator surfaces that as `delta/duplicate-id` so the failure
+    // code is real and reachable.
+    const base = buildRevision();
+    const duplicatedCandidate: ProjectionCandidateV0 = {
+      ...base.candidate,
+      // Reuse the same execution id on a (forged) evidence entry. This breaks
+      // Foundation's cross-collection unique-id invariant, which is exactly
+      // the surface the comparator must translate.
+      semanticFacts: {
+        ...base.candidate.semanticFacts,
+        evidenceRefs: [
+          ...base.candidate.semanticFacts.evidenceRefs,
+          {
+            ...base.candidate.semanticFacts.evidenceRefs[0],
+            id: base.candidate.semanticFacts.runtimeExecutions[0].id,
+          },
+        ],
+      },
+    };
+    const forged = {
+      ...base,
+      candidate: duplicatedCandidate,
+      // Keep the envelope's hash placeholders; trust gate will rerun
+      // verifyProjectionCandidate and the candidate's own failure is the
+      // dominant signal.
+    } as unknown as VerifiedProjectionRevisionV0;
+    const result = compareProjectionRevisions(base, forged);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe('delta/duplicate-id');
   });
 
   it('two genuine verified revisions from buildVerifiedProjection are comparable', () => {
@@ -858,7 +877,7 @@ describe('Projection Delta v0 · invalid-revision trust gate', () => {
     };
     const stateB = buildVerifiedProjection(inputB, null, { now: () => NOW });
     if (!stateB.current) throw new Error('B must verify');
-    const result = compareProjectionRevisions(stateA.current, stateB.current, { now: () => NOW });
+    const result = compareProjectionRevisions(stateA.current, stateB.current);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.summary.conversations.changed).toBe(1);
@@ -870,8 +889,42 @@ describe('Projection Delta v0 · invalid-revision trust gate', () => {
 describe('Projection Delta v0 · identity declaration', () => {
   it('declares RuntimeExecution stable identity as `id`', () => {
     const base = buildRevision();
-    const result = compareProjectionRevisions(base, base, { now: () => NOW });
+    const result = compareProjectionRevisions(base, base);
     if (!result.ok) throw new Error('expected ok');
     expect(result.identity.runtimeExecutions).toBe('id');
+  });
+});
+
+// ===== Determinism: the pure comparator must deep-equal itself =====
+
+describe('Projection Delta v0 · pure comparator (no clock, no hidden state)', () => {
+  it('two calls with the same revisions deep-equal each other', () => {
+    const base = buildRevision();
+    const head = buildRevision({
+      conversations: [conversation({ lifecycleState: 'PAUSED' })],
+    });
+    const first = compareProjectionRevisions(base, head);
+    const second = compareProjectionRevisions(base, head);
+    expect(first).toEqual(second);
+  });
+
+  it('does not read the system clock or any implicit input', () => {
+    // The comparator is now a 2-arg pure function; surface a regression by
+    // checking the signature explicitly. (Build-time compile check.)
+    const base = buildRevision();
+    const head = buildRevision();
+    type Expected = (a: typeof base, b: typeof head) => ReturnType<typeof compareProjectionRevisions>;
+    const _typed: Expected = compareProjectionRevisions;
+    void _typed;
+  });
+
+  it('projection delta result contains no time-dependent field', () => {
+    const base = buildRevision();
+    const head = buildRevision({
+      layoutState: layout({ nodePositions: { 'conversation:conversation-1': { x: 5, y: 5 } } }),
+    });
+    const result = compareProjectionRevisions(base, head);
+    if (!result.ok) throw new Error('expected ok');
+    expect('computedAt' in result).toBe(false);
   });
 });

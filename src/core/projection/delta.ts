@@ -132,9 +132,10 @@ function failure(
 /**
  * Trust only verified projections. Re-uses Foundation's
  * `verifyProjectionCandidate` so the comparator never invents a second
- * hash/validator. Any structural, semantic, sourceDigest, hash, or envelope
- * mismatch becomes `delta/invalid-revision`. Duplicate stable IDs keep their
- * own code.
+ * hash/validator. Diagnostics are forwarded with a per-side prefix so the
+ * main comparator can map Foundation codes onto the right Delta failure
+ * code (duplicate-id stays `delta/duplicate-id`; everything else collapses
+ * to `delta/invalid-revision`).
  */
 function trustVerifiedRevision(
   side: 'base' | 'head',
@@ -151,9 +152,6 @@ function trustVerifiedRevision(
     for (const diagnostic of verified.diagnostics) {
       diagnostics.push({
         ...diagnostic,
-        code: diagnostic.code.startsWith('schema/')
-          ? 'delta/invalid-revision'
-          : diagnostic.code,
         message: `${side} revision failed Workbench Verified Projection validation: ${diagnostic.message}`,
         subject: { side, ...diagnostic.subject },
         evidence: { side, ...diagnostic.evidence },
@@ -219,36 +217,6 @@ function indexArtifacts(revision: VerifiedProjectionRevisionV0): Map<string, Art
 
 function indexEvidence(revision: VerifiedProjectionRevisionV0): Map<string, EvidenceRefV0> {
   return toIndex(revision.candidate.semanticFacts.evidenceRefs);
-}
-
-function deduplicateIdsAcrossCollections(
-  revision: VerifiedProjectionRevisionV0,
-  diagnostics: ProjectionDiagnosticV0[],
-): void {
-  const seen = new Set<string>();
-  const collections: Array<{ kind: 'conversation' | 'runtimeExecution' | 'collaborationRelation' | 'artifact' | 'evidence'; items: Array<{ id: string }> }> = [
-    { kind: 'conversation', items: revision.candidate.semanticFacts.conversations },
-    { kind: 'runtimeExecution', items: revision.candidate.semanticFacts.runtimeExecutions },
-    { kind: 'collaborationRelation', items: revision.candidate.semanticFacts.collaborationRelations },
-    { kind: 'artifact', items: revision.candidate.semanticFacts.artifactsOrEvidence },
-    { kind: 'evidence', items: revision.candidate.semanticFacts.evidenceRefs },
-  ];
-  for (const collection of collections) {
-    for (const item of collection.items) {
-      if (seen.has(item.id)) {
-        diagnostics.push({
-          code: 'delta/duplicate-id',
-          severity: 'error',
-          message: `Stable Projection ID appears more than once across collections: ${item.id}`,
-          subject: { id: item.id, kind: collection.kind },
-          evidence: { duplicatedId: item.id, kind: collection.kind },
-          supportedFixes: ['reject the candidate upstream; verified revisions require unique stable IDs across collections'],
-        });
-        continue;
-      }
-      seen.add(item.id);
-    }
-  }
 }
 
 // ===== per-collection comparators =====
@@ -721,9 +689,7 @@ function layoutChanges(
 export function compareProjectionRevisions(
   base: VerifiedProjectionRevisionV0,
   head: VerifiedProjectionRevisionV0,
-  options?: { now?: () => string },
 ): ProjectionDeltaResultV0 {
-  const checkedAt = options?.now?.() ?? new Date().toISOString();
 
   if (base.schemaVersion !== PROJECTION_DELTA_SCHEMA_VERSION
     || head.schemaVersion !== PROJECTION_DELTA_SCHEMA_VERSION) {
@@ -745,14 +711,20 @@ export function compareProjectionRevisions(
     );
   }
 
-  // Re-trust both sides against Foundation itself.
+  // Re-trust both sides against Foundation itself. Foundation's duplicate-id
+  // diagnostic keeps its own Delta code so the comparator exposes it as a
+  // real failure path instead of silently collapsing into invalid-revision.
   const diagnostics: ProjectionDiagnosticV0[] = [];
   trustVerifiedRevision('base', base, diagnostics);
   trustVerifiedRevision('head', head, diagnostics);
   if (diagnostics.length > 0) {
-    const first = diagnostics[0];
+    const duplicate = diagnostics.find((d) => d.code === 'semantic/duplicate-id');
+    const first = duplicate ?? diagnostics[0];
+    const code: ProjectionDeltaFailureV0['code'] = duplicate
+      ? 'delta/duplicate-id'
+      : 'delta/invalid-revision';
     return failure(
-      'delta/invalid-revision',
+      code,
       first.message,
       first.subject,
       first.evidence,
@@ -767,20 +739,6 @@ export function compareProjectionRevisions(
       { base: base.candidate.scope.projectId, head: head.candidate.scope.projectId },
       {},
       ['compare only revisions of the same Project scope; cross-project Delta is rejected'],
-    );
-  }
-
-  const duplicateDiagnostics: ProjectionDiagnosticV0[] = [];
-  deduplicateIdsAcrossCollections(base, duplicateDiagnostics);
-  deduplicateIdsAcrossCollections(head, duplicateDiagnostics);
-  if (duplicateDiagnostics.length > 0) {
-    const first = duplicateDiagnostics[0];
-    return failure(
-      'delta/duplicate-id',
-      first.message,
-      first.subject,
-      first.evidence,
-      first.supportedFixes,
     );
   }
 
@@ -883,7 +841,6 @@ export function compareProjectionRevisions(
     summary,
     changes,
     limitations,
-    computedAt: checkedAt,
   };
   return delta;
 }

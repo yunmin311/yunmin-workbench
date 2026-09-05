@@ -392,7 +392,6 @@ export interface ProjectionDeltaV0 {
   summary: ProjectionDeltaSummaryV0;
   changes: ProjectionDeltaChangesV0;
   limitations: string[];
-  computedAt: string;
 }
 
 export type ProjectionDeltaResultV0 = ProjectionDeltaV0 | ProjectionDeltaFailureV0;
