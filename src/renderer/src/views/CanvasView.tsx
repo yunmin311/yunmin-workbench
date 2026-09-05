@@ -48,7 +48,7 @@ export interface CanvasNodeClickCallbacksV0 {
   openRuntimeInspector: (target: { executionId: string }) => void;
   openPassport: (
     entityRef: SemanticPassportEntityRefV0,
-    source: 'canvas' | 'compare',
+    source: 'canvas' | 'compare' | 'reach',
   ) => void;
   /** Existing conversation navigation behaviour, preserved. */
   selectProjectedConversation: (conversationRef: string) => void;

@@ -395,7 +395,7 @@ describe('Canvas execution node opens Runtime Inspector + Semantic Passport', ()
     if (!executionId) throw new Error('fixture must include a runtimeExecution');
     let inspectorCalls = 0;
     let lastInspectorTarget: { executionId: string } | null = null;
-    const passportCalls: Array<{ ref: SemanticPassportEntityRefV0; source: 'canvas' | 'compare' }> = [];
+    const passportCalls: Array<{ ref: SemanticPassportEntityRefV0; source: 'canvas' | 'compare' | 'reach' }> = [];
     handleCanvasNodeClick(
       executionId,
       verified,
@@ -430,7 +430,7 @@ describe('Canvas execution node opens Runtime Inspector + Semantic Passport', ()
     // openPassport call with the exact verified mapper result.
     const verified = verifiedFromInput(buildInput());
     let inspectorCalls = 0;
-    const passportCalls: Array<{ ref: SemanticPassportEntityRefV0; source: 'canvas' | 'compare' }> = [];
+    const passportCalls: Array<{ ref: SemanticPassportEntityRefV0; source: 'canvas' | 'compare' | 'reach' }> = [];
     handleCanvasNodeClick(
       'execution:codex::forged',
       verified,
@@ -452,7 +452,7 @@ describe('Canvas execution node opens Runtime Inspector + Semantic Passport', ()
     if (!conversationId) throw new Error('fixture must include a conversation');
     let selectCalls = 0;
     let viewCalls: string[] = [];
-    const passportCalls: Array<{ ref: SemanticPassportEntityRefV0; source: 'canvas' | 'compare' }> = [];
+    const passportCalls: Array<{ ref: SemanticPassportEntityRefV0; source: 'canvas' | 'compare' | 'reach' }> = [];
     handleCanvasNodeClick(
       conversationId,
       verified,
