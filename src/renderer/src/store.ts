@@ -71,6 +71,8 @@ import {
 } from '../../core/projection/compiler';
 import { compareProjectionRevisions } from '../../core/projection/delta';
 import { buildSemanticPassport } from '../../core/projection/passport';
+import { computeProjectionReach } from '../../core/projection/reach';
+import { computeProjectionRoute } from '../../core/projection/route';
 import {
   buildVerifiedProjection,
   emptyProjectionBuildState,
@@ -201,13 +203,40 @@ interface WorkbenchState {
    */
   passportOpen: {
     entityRef: import('../../core/projection/types').SemanticPassportEntityRefV0;
-    source: 'canvas' | 'compare';
+    source: 'canvas' | 'compare' | 'reach';
   } | null;
   openPassport: (
     entityRef: import('../../core/projection/types').SemanticPassportEntityRefV0,
-    source: 'canvas' | 'compare',
+    source: 'canvas' | 'compare' | 'reach',
   ) => void;
   closePassport: () => void;
+  /**
+   * Projection Reach: an on-demand, viewer-only navigation surface for one
+   * verified Projection entity. `null` means no reach surface is open. The
+   * seam records intent only; the derivation reads the verified revision.
+   */
+  reachOpen: {
+    entityRef: import('../../core/projection/types').SemanticPassportEntityRefV0;
+    direction: import('../../core/projection/types').ProjectionReachDirectionV0;
+  } | null;
+  openReach: (
+    entityRef: import('../../core/projection/types').SemanticPassportEntityRefV0,
+    direction: import('../../core/projection/types').ProjectionReachDirectionV0,
+  ) => void;
+  closeReach: () => void;
+  /**
+   * Projection Route: an on-demand, viewer-only shortest-path surface
+   * between two verified Projection entities. Never mutates the revision.
+   */
+  routeOpen: {
+    from: import('../../core/projection/types').SemanticPassportEntityRefV0;
+    to: import('../../core/projection/types').SemanticPassportEntityRefV0;
+  } | null;
+  openRoute: (
+    from: import('../../core/projection/types').SemanticPassportEntityRefV0,
+    to: import('../../core/projection/types').SemanticPassportEntityRefV0,
+  ) => void;
+  closeRoute: () => void;
 }
 
 const draftTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -458,6 +487,8 @@ attentionLocal: EMPTY_ATTENTION_LOCAL,
   projection: emptyProjectionBuildState(),
   projectionPrevious: null,
   passportOpen: null,
+  reachOpen: null,
+  routeOpen: null,
   draftSaveState: 'clean',
   packetValidity: 'UNKNOWN',
   handoffStatus: 'IDLE',
@@ -474,7 +505,7 @@ refreshProjection: () => {
     const before = get();
     const input = projectionInput(before);
     if (!input) {
-      set({ projection: emptyProjectionBuildState(), projectionPrevious: null, passportOpen: null });
+      set({ projection: emptyProjectionBuildState(), projectionPrevious: null, passportOpen: null, reachOpen: null, routeOpen: null });
       return;
     }
     const projection = buildVerifiedProjection(input, before.projection.current, {
@@ -559,6 +590,8 @@ liveExecutions: [],
       harnessCapabilities: DEMO_HARNESS_CAPABILITIES,
       projectionPrevious: null,
       passportOpen: null,
+      reachOpen: null,
+      routeOpen: null,
     });
     get().refreshProjection();
     get().syncIslandAttention();
@@ -589,6 +622,8 @@ set({
       projection: emptyProjectionBuildState(),
       projectionPrevious: null,
       passportOpen: null,
+      reachOpen: null,
+      routeOpen: null,
     });
     await get().initialize();
   },
@@ -622,6 +657,8 @@ contextMessage: null,
       harnessCapabilities: DEMO_HARNESS_CAPABILITIES,
       projectionPrevious: null,
       passportOpen: null,
+      reachOpen: null,
+      routeOpen: null,
     });
     get().refreshProjection();
     get().syncIslandAttention();
@@ -754,6 +791,8 @@ selectProject: (projectId) => {
       handoffStatus: 'IDLE',
       projectionPrevious: null,
       passportOpen: null,
+      reachOpen: null,
+      routeOpen: null,
     });
     get().refreshProjection();
     set((state) => ({ attentionItems: projectAttention(state) }));
@@ -1592,6 +1631,22 @@ selectProject: (projectId) => {
    */
   openPassport: (entityRef, source) => set({ passportOpen: { entityRef, source } }),
   closePassport: () => set({ passportOpen: null }),
+
+  /**
+   * Open the on-demand Reach surface for one verified Projection entity.
+   * Intent only; the derivation gates on VERIFIED and re-trusts the
+   * revision, never the raw sources.
+   */
+  openReach: (entityRef, direction) => set({ reachOpen: { entityRef, direction } }),
+  closeReach: () => set({ reachOpen: null }),
+
+  /**
+   * Open the on-demand Route surface between two verified Projection
+   * entities. Opening a Route leaves an open Reach surface untouched so the
+   * user returns to it on close.
+   */
+  openRoute: (from, to) => set({ routeOpen: { from, to } }),
+  closeRoute: () => set({ routeOpen: null }),
 }));
 
 /**
@@ -1650,7 +1705,7 @@ export type UseSemanticPassportResultV0 =
 export interface DeriveSemanticPassportStateInputV0 {
   passportOpen: {
     entityRef: import('../../core/projection/types').SemanticPassportEntityRefV0;
-    source: 'canvas' | 'compare';
+    source: 'canvas' | 'compare' | 'reach';
   } | null;
   projection: import('../../core/projection/types').ProjectionBuildStateV0;
   previous: import('../../core/projection/types').VerifiedProjectionRevisionV0 | null;
@@ -1708,5 +1763,106 @@ export function useSemanticPassport(): UseSemanticPassportResultV0 {
   return useMemo<UseSemanticPassportResultV0>(
     () => deriveSemanticPassportState({ passportOpen, projection, previous }),
     [passportOpen, projection, previous],
+  );
+}
+
+export type UseProjectionReachResultV0 =
+  | { kind: 'closed' }
+  | { kind: 'unavailable'; reason: 'no-verified-revision' }
+  | { kind: 'failure'; failure: import('../../core/projection/types').ProjectionReachFailureV0 }
+  | { kind: 'reach'; reach: import('../../core/projection/types').ProjectionReachV0 };
+
+export interface DeriveProjectionReachStateInputV0 {
+  reachOpen: {
+    entityRef: import('../../core/projection/types').SemanticPassportEntityRefV0;
+    direction: import('../../core/projection/types').ProjectionReachDirectionV0;
+  } | null;
+  projection: import('../../core/projection/types').ProjectionBuildStateV0;
+}
+
+/**
+ * Pure derivation behind `useProjectionReach`. Exported so the rule
+ * (current build must be VERIFIED; a retained STALE / NEEDS_FIX
+ * last-known-good is never exposed as fresh Reach truth) is directly
+ * testable without calling a React hook from outside a render context.
+ * The production hook must use this exact helper.
+ */
+export function deriveProjectionReachState(
+  input: DeriveProjectionReachStateInputV0,
+): UseProjectionReachResultV0 {
+  const { reachOpen, projection } = input;
+  if (!reachOpen) {
+    return { kind: 'closed' };
+  }
+  if (projection.status !== 'VERIFIED' || !projection.current) {
+    return { kind: 'unavailable', reason: 'no-verified-revision' };
+  }
+  const result = computeProjectionReach(projection.current, reachOpen.entityRef, reachOpen.direction);
+  if (!result.ok) {
+    return { kind: 'failure', failure: result };
+  }
+  return { kind: 'reach', reach: result };
+}
+
+/**
+ * Selector hook: compute the ProjectionReachV0 for the entity currently
+ * selected via the store seam, using the active VerifiedProjectionRevisionV0.
+ * Pure derivation; never falls back to raw Snapshot / Activity and never
+ * reads the system clock.
+ */
+export function useProjectionReach(): UseProjectionReachResultV0 {
+  const reachOpen = useWorkbench((state) => state.reachOpen);
+  const projection = useWorkbench((state) => state.projection);
+  return useMemo<UseProjectionReachResultV0>(
+    () => deriveProjectionReachState({ reachOpen, projection }),
+    [reachOpen, projection],
+  );
+}
+
+export type UseProjectionRouteResultV0 =
+  | { kind: 'closed' }
+  | { kind: 'unavailable'; reason: 'no-verified-revision' }
+  | { kind: 'failure'; failure: import('../../core/projection/types').ProjectionRouteFailureV0 }
+  | { kind: 'route'; route: import('../../core/projection/types').ProjectionRouteV0 };
+
+export interface DeriveProjectionRouteStateInputV0 {
+  routeOpen: {
+    from: import('../../core/projection/types').SemanticPassportEntityRefV0;
+    to: import('../../core/projection/types').SemanticPassportEntityRefV0;
+  } | null;
+  projection: import('../../core/projection/types').ProjectionBuildStateV0;
+}
+
+/**
+ * Pure derivation behind `useProjectionRoute`; same VERIFIED gate as Reach.
+ * Unreachable is a normal route result, not a failure.
+ */
+export function deriveProjectionRouteState(
+  input: DeriveProjectionRouteStateInputV0,
+): UseProjectionRouteResultV0 {
+  const { routeOpen, projection } = input;
+  if (!routeOpen) {
+    return { kind: 'closed' };
+  }
+  if (projection.status !== 'VERIFIED' || !projection.current) {
+    return { kind: 'unavailable', reason: 'no-verified-revision' };
+  }
+  const result = computeProjectionRoute(projection.current, routeOpen.from, routeOpen.to);
+  if (!result.ok) {
+    return { kind: 'failure', failure: result };
+  }
+  return { kind: 'route', route: result };
+}
+
+/**
+ * Selector hook: compute the ProjectionRouteV0 for the pair currently
+ * selected via the store seam, using the active VerifiedProjectionRevisionV0.
+ */
+export function useProjectionRoute(): UseProjectionRouteResultV0 {
+  const routeOpen = useWorkbench((state) => state.routeOpen);
+  const projection = useWorkbench((state) => state.projection);
+  return useMemo<UseProjectionRouteResultV0>(
+    () => deriveProjectionRouteState({ routeOpen, projection }),
+    [routeOpen, projection],
   );
 }

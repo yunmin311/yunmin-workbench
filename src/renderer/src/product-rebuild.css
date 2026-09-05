@@ -4005,3 +4005,109 @@ select:focus-visible {
   color: #ff8585;
   font-family: var(--prototype-mono, ui-monospace, monospace);
 }
+
+/* ===== Projection Reach / Route focused surfaces (viewer-only) ===== */
+.reach-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.8rem;
+}
+.reach-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.02);
+  flex-wrap: wrap;
+}
+.reach-depth {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  opacity: 0.8;
+}
+.reach-kind {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.6;
+}
+.reach-id {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font-family: var(--prototype-mono, ui-monospace, monospace);
+  font-size: 0.75rem;
+  text-align: left;
+  word-break: break-all;
+  flex: 1;
+  padding: 0;
+}
+.reach-id:hover { text-decoration: underline; }
+.reach-action {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.7rem;
+  padding: 2px 8px;
+}
+.reach-action:hover { border-color: rgba(255, 255, 255, 0.45); }
+.reach-origin-chip {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.5;
+}
+.reach-edge {
+  font-family: var(--prototype-mono, ui-monospace, monospace);
+  font-size: 0.72rem;
+  word-break: break-all;
+}
+.reach-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.reach-actions button {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 4px 10px;
+}
+.reach-actions button:hover { border-color: rgba(255, 255, 255, 0.45); }
+.route-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.8rem;
+}
+.route-step {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.route-step > header {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 4px;
+}

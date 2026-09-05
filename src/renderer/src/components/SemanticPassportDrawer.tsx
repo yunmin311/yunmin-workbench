@@ -1,7 +1,11 @@
+import { useMemo } from 'react';
 import { useWorkbench, useSemanticPassport } from '../store';
+import { computeProjectionReach } from '../../../core/projection/reach';
 import type {
+  ProjectionReachDirectionV0,
   SemanticPassportCurrentV0,
   SemanticPassportDeltaChangeV0,
+  SemanticPassportEntityRefV0,
   SemanticPassportEvidenceEntryV0,
   SemanticPassportIdentityV0,
   SemanticPassportV0,
@@ -218,7 +222,7 @@ function renderDelta(delta: SemanticPassportDeltaChangeV0): JSX.Element {
   );
 }
 
-function renderPassport(passport: SemanticPassportV0): JSX.Element {
+function renderPassport(passport: SemanticPassportV0, reachSection?: JSX.Element | null): JSX.Element {
   return (
     <div className="passport-content">
       <header>
@@ -244,6 +248,13 @@ function renderPassport(passport: SemanticPassportV0): JSX.Element {
           delta revision <code>{passport.deltaRevisionId ?? 'none'}</code>
         </p>
       </section>
+      {reachSection ? (
+        <section>
+          <h4>Reach</h4>
+          {reachSection}
+          <p className="passport-meta">Navigation over exact verified relations only; never impact or risk.</p>
+        </section>
+      ) : null}
       <section>
         <h4>Limitations</h4>
         <ul className="passport-limitations">
@@ -259,8 +270,41 @@ function renderPassport(passport: SemanticPassportV0): JSX.Element {
 export function SemanticPassportDrawer() {
   const passportOpen = useWorkbench((state) => state.passportOpen);
   const closePassport = useWorkbench((state) => state.closePassport);
+  const openReach = useWorkbench((state) => state.openReach);
   const projection = useWorkbench((state) => state.projection);
   const result = useSemanticPassport();
+
+  // Deterministic reachable counts for the on-demand Reach actions. Only
+  // navigable entity kinds get the section; the counts come straight from
+  // the Reach core over the active verified revision (origin excluded).
+  const reachCounts = useMemo((): {
+    entityRef: SemanticPassportEntityRefV0;
+    upstream: number | null;
+    downstream: number | null;
+  } | null => {
+    if (result.kind !== 'passport' || !projection.current) return null;
+    const kind = result.passport.entityType;
+    if (kind !== 'conversation' && kind !== 'runtimeExecution' && kind !== 'artifactOrEvidence') {
+      return null;
+    }
+    const count = (direction: ProjectionReachDirectionV0): number | null => {
+      const reach = computeProjectionReach(projection.current!, result.passport.entityRef, direction);
+      return reach.ok ? reach.nodes.length - 1 : null;
+    };
+    return { entityRef: result.passport.entityRef, upstream: count('upstream'), downstream: count('downstream') };
+  }, [result, projection.current]);
+
+  const reachSection = reachCounts ? (
+    <div className="reach-actions">
+      <button type="button" onClick={() => openReach(reachCounts.entityRef, 'upstream')}>
+        Upstream ({reachCounts.upstream ?? '—'})
+      </button>
+      <button type="button" onClick={() => openReach(reachCounts.entityRef, 'downstream')}>
+        Downstream ({reachCounts.downstream ?? '—'})
+      </button>
+    </div>
+  ) : null;
+
   if (!passportOpen) return null;
   if (projection.status !== 'VERIFIED' || !projection.current) {
     return (
@@ -297,7 +341,7 @@ export function SemanticPassportDrawer() {
           </p>
         </div>
       ) : null}
-      {result.kind === 'passport' ? renderPassport(result.passport) : null}
+      {result.kind === 'passport' ? renderPassport(result.passport, reachSection) : null}
     </aside>
   );
 }
