@@ -20,7 +20,7 @@ const EDGE_LABEL: Record<WbEdgeKind, string> = {
  * semantic id) to a Semantic Passport entity ref. Returns `null` when the
  * id does not belong to one of the five supported Passport entity kinds.
  */
-function canvasNodeIdToPassportRef(
+export function canvasNodeIdToPassportRef(
   nodeId: string,
   revision: { candidate: import('../../../core/projection/types').VerifiedProjectionRevisionV0['candidate'] } | null,
 ): SemanticPassportEntityRefV0 | null {
@@ -119,8 +119,14 @@ export function CanvasView() {
           if (node.id.startsWith('execution:')) {
             // Runtime Inspector remains the surface for live execution
             // interaction; the Semantic Passport covers verified entity
-            // details, so we open both from the same canvas click.
+            // details, so the same canvas click opens both. The Passport
+            // is only opened for execution ids that exist verbatim in the
+            // active verified revision; identity inference is forbidden.
             openRuntimeInspector({ executionId: node.id.slice('execution:'.length) });
+            const passportRef = canvasNodeIdToPassportRef(node.id, projection.current);
+            if (passportRef && passportRef.kind === 'runtimeExecution') {
+              openPassport(passportRef, 'canvas');
+            }
             return;
           }
           if (!node.id.startsWith('conversation:')) {

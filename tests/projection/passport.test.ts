@@ -360,23 +360,14 @@ describe('Semantic Passport v0 · pure core', () => {
     expect(result.code).toBe('passport/entity-not-found');
   });
 
-  it('evidence-missing: code path is part of the fail-closed contract', () => {
-    // Foundation's `validateProjectionSemantics` already rejects an entity that
-    // references evidence not present in the revision, so a happy-path
-    // verified revision cannot exhibit the condition. The Passport still
-    // carries its own evidence-resolution guard so the surface stays
-    // explicit; the failure code is reserved and the lookup path exists.
-    const failureCodes: ReadonlyArray<unknown> = [
-      'passport/invalid-revision',
-      'passport/entity-not-found',
-      'passport/delta-mismatch',
-      'passport/evidence-missing',
-      'passport/unsupported-entity',
-    ];
-    expect(failureCodes).toContain('passport/evidence-missing');
-    // Direct semantic validation: a candidate that points at a ghost
-    // evidence id is rejected upstream by Foundation.
-    const rejectedCandidate: ProjectionCandidateV0 = {
+  it('evidence-missing: real Foundation-triggered path', () => {
+    // A verified revision can never contain a cross-collection ghost
+    // evidence ref, so this case is normally unreachable. Passport's own
+    // trust gate catches it via Foundation's semantic validator and
+    // translates the `semantic/missing-evidence` diagnostic into
+    // `passport/evidence-missing` so the code is a real reachable
+    // failure path.
+    const forgedCandidate: ProjectionCandidateV0 = {
       ...{
         schemaVersion: 0,
         projectionKind: 'workbench' as const,
@@ -395,11 +386,119 @@ describe('Semantic Passport v0 · pure core', () => {
         layoutState: { schemaVersion: 0, nodePositions: {} },
       },
     };
-    const state = verifyProjectionCandidate(rejectedCandidate, null, {
-      recheckSourceDigest: () => SOURCE_DIGEST,
-      now: () => NOW,
+    // Forge an envelope that would have matched a previous Passport that
+    // only recomputed hashes; with Foundation re-trust, the structural /
+    // semantic invalidation is now the dominant signal.
+    const forgedEnvelope: VerifiedProjectionRevisionV0 = {
+      schemaVersion: 0,
+      revisionId: 'projection:deadbeef',
+      revisionHash: 'd'.repeat(64),
+      semanticHash: 's'.repeat(64),
+      layoutHash: 'l'.repeat(64),
+      sourceDigest: SOURCE_DIGEST,
+      verifiedAt: '2026-09-04T02:00:00.000Z',
+      candidate: forgedCandidate,
+    };
+    const result = buildSemanticPassport(forgedEnvelope, {
+      kind: 'conversation',
+      id: 'conversation:conversation-1',
     });
-    expect(state.current).toBeNull();
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe('passport/evidence-missing');
+  });
+
+  it('hidden unknown candidate field + recomputed envelope fails closed', () => {
+    // A forged candidate that recomputes its own envelope hashes but
+    // carries a hidden structural field must be rejected by Foundation.
+    const base = buildRevision();
+    const forgedCandidate: ProjectionCandidateV0 = structuredClone(base.candidate);
+    (forgedCandidate as unknown as Record<string, unknown>).hiddenControllerState = true;
+    // Pretend the envelope was tampered to match a recomputed hash. With
+    // Foundation re-trust, the structural rejection must still surface as
+    // `passport/invalid-revision` because schema/unknown_keys is reported
+    // by Foundation.
+    const forgedEnvelope: VerifiedProjectionRevisionV0 = {
+      ...base,
+      candidate: forgedCandidate,
+      revisionHash: 'h'.repeat(64),
+      revisionId: `projection:${'h'.repeat(64)}`,
+    };
+    const result = buildSemanticPassport(forgedEnvelope, {
+      kind: 'conversation',
+      id: 'conversation:conversation-1',
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe('passport/invalid-revision');
+  });
+
+  it('semantic-invalid candidate + recomputed envelope fails closed', () => {
+    // A candidate that points at a missing evidence ref is rejected by
+    // Foundation semantic validation; with the envelope otherwise
+    // recomputed, only the Foundation trust gate can catch it. This is
+    // a real reachable path: an attacker that knows the hash algorithm
+    // can fake a matching envelope but cannot fake Foundation's
+    // structural / semantic invariants.
+    const forgedCandidate: ProjectionCandidateV0 = {
+      ...{
+        schemaVersion: 0,
+        projectionKind: 'workbench' as const,
+        scope: { projectId: 'project-1' },
+        sourceBinding: { sourceDigest: SOURCE_DIGEST },
+        semanticFacts: {
+          conversations: [{
+            ...conversation({ projectId: 'project-1' }),
+            evidenceRefs: ['evidence:ghost'],
+          }],
+          runtimeExecutions: [],
+          collaborationRelations: [],
+          artifactsOrEvidence: [],
+          evidenceRefs: [baseEvidence()],
+        },
+        layoutState: { schemaVersion: 0, nodePositions: {} },
+      },
+    };
+    const forgedEnvelope: VerifiedProjectionRevisionV0 = {
+      schemaVersion: 0,
+      revisionId: `projection:${'b'.repeat(64)}`,
+      revisionHash: 'b'.repeat(64),
+      semanticHash: 's'.repeat(64),
+      layoutHash: 'l'.repeat(64),
+      sourceDigest: SOURCE_DIGEST,
+      verifiedAt: '2026-09-04T02:00:00.000Z',
+      candidate: forgedCandidate,
+    };
+    const result = buildSemanticPassport(forgedEnvelope, {
+      kind: 'conversation',
+      id: 'conversation:conversation-1',
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe('passport/evidence-missing');
+  });
+
+  it('forged unsupported entity kind fails closed at runtime, never silently opens', () => {
+    // `passport/unsupported-entity` was removed from the public failure
+    // enum; a forged / non-Passport kind reaches the runtime as an
+    // unknown TS-narrowed value and the entity lookup correctly fails
+    // closed with `passport/entity-not-found`. The kind tag never
+    // escapes the union.
+    const revision = buildRevision();
+    const forgedRef = { kind: 'project' as never, id: 'project-1' };
+    const result = buildSemanticPassport(revision, forgedRef);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe('passport/entity-not-found');
+  });
+
+  it('valid Foundation revision still passes the re-trust gate', () => {
+    const revision = buildRevision();
+    const result = buildSemanticPassport(revision, {
+      kind: 'conversation',
+      id: 'conversation:conversation-1',
+    });
+    expect(result.ok).toBe(true);
   });
 
   it('invalid-revision: tampered envelope fails closed', () => {

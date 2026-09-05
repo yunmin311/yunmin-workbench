@@ -426,8 +426,7 @@ export type SemanticPassportFailureCodeV0 =
   | 'passport/invalid-revision'
   | 'passport/entity-not-found'
   | 'passport/delta-mismatch'
-  | 'passport/evidence-missing'
-  | 'passport/unsupported-entity';
+  | 'passport/evidence-missing';
 
 export interface SemanticPassportFailureV0 {
   ok: false;

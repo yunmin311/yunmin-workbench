@@ -39,11 +39,7 @@ import type {
   VerifiedProjectionRevisionV0,
 } from './types';
 import { SEMANTIC_PASSPORT_SCHEMA_VERSION } from './types';
-import {
-  computeProjectionLayoutHash,
-  computeProjectionRevisionHash,
-  computeProjectionSemanticHash,
-} from './revision';
+import { verifyProjectionCandidate } from './revision';
 
 function failure(
   code: SemanticPassportFailureV0['code'],
@@ -54,6 +50,15 @@ function failure(
 ): SemanticPassportFailureV0 {
   return { ok: false, code, message, subject, evidence, supportedFixes };
 }
+
+/**
+ * Internal deterministic clock used only by the Foundation trust call.
+ * Its value never reaches Passport output; it is consumed by Foundation
+ * to fill `receipt.checkedAt` / `verifiedAt` which the Passport never
+ * surfaces. Pinning it keeps the Passport call graph free of system
+ * clock reads.
+ */
+const PASSPORT_VALIDATION_CLOCK: string = '1970-01-01T00:00:00.000Z';
 
 function toEvidenceEntry(evidence: EvidenceRefV0): SemanticPassportEvidenceEntryV0 {
   return {
@@ -288,39 +293,50 @@ export function buildSemanticPassport(
       ['open a Passport only on a verified projection revision produced by Workbench Verified Projection Foundation'],
     );
   }
-  // Envelope integrity: the candidate hashes Foundation would have computed
-  // must equal the hashes on the envelope. We re-run the same pure helpers
-  // Delta uses, so the comparator and Passport stay consistent and the
-  // check needs no system clock.
-  const recomputedSemantic = computeProjectionSemanticHash(revision.candidate);
-  const recomputedLayout = computeProjectionLayoutHash(revision.candidate);
-  const recomputedRevision = computeProjectionRevisionHash({
-    scope: revision.candidate.scope,
-    sourceDigest: revision.candidate.sourceBinding.sourceDigest,
-    semanticHash: recomputedSemantic,
-    layoutHash: recomputedLayout,
+  // Re-trust through Foundation itself. This catches a forged candidate
+  // whose envelope hashes were recomputed to match a tampered envelope but
+  // whose structural / semantic invariants are broken. We pass a pinned
+  // `now` so the comparator stays clock-free; the candidate's own
+  // sourceDigest is the recheck anchor.
+  const foundation = verifyProjectionCandidate(revision.candidate, null, {
+    recheckSourceDigest: () => revision.candidate.sourceBinding.sourceDigest,
+    now: () => PASSPORT_VALIDATION_CLOCK,
   });
-  const recomputedRevisionId = `projection:${recomputedRevision}`;
-  if (recomputedSemantic !== revision.semanticHash
-    || recomputedLayout !== revision.layoutHash
-    || recomputedRevision !== revision.revisionHash
-    || recomputedRevisionId !== revision.revisionId
-    || revision.candidate.sourceBinding.sourceDigest !== revision.sourceDigest) {
+  if (!foundation.current) {
+    const duplicate = foundation.diagnostics.find((d) => d.code === 'semantic/duplicate-id');
+    const missingEvidence = foundation.diagnostics.find((d) => d.code === 'semantic/missing-evidence');
+    const first = missingEvidence ?? duplicate ?? foundation.diagnostics[0];
+    if (missingEvidence) {
+      return failure(
+        'passport/evidence-missing',
+        `Semantic Passport v0 rejected revision ${revision.revisionId} because Foundation validation found a missing evidence reference: ${missingEvidence.message}`,
+        missingEvidence.subject,
+        missingEvidence.evidence,
+        missingEvidence.supportedFixes,
+      );
+    }
     return failure(
       'passport/invalid-revision',
-      'Semantic Passport v0 refuses a revision whose envelope does not match its candidate after recomputation.',
+      `Semantic Passport v0 rejected revision ${revision.revisionId}: Foundation validation failed — ${first?.message ?? 'unknown'}`,
+      first?.subject ?? {},
+      first?.evidence ?? {},
+      first?.supportedFixes ?? ['discard the revision and rebuild from Foundation; only verified revisions are passable'],
+    );
+  }
+  if (foundation.current.revisionHash !== revision.revisionHash
+    || foundation.current.revisionId !== revision.revisionId
+    || foundation.current.semanticHash !== revision.semanticHash
+    || foundation.current.layoutHash !== revision.layoutHash
+    || foundation.current.sourceDigest !== revision.sourceDigest) {
+    return failure(
+      'passport/invalid-revision',
+      'Semantic Passport v0 refuses a revision whose envelope does not match Foundation recomputation.',
       { revisionId: revision.revisionId },
       {
-        revisionSemanticHash: revision.semanticHash,
-        recomputedSemanticHash: recomputedSemantic,
-        revisionLayoutHash: revision.layoutHash,
-        recomputedLayoutHash: recomputedLayout,
-        revisionRevisionHash: revision.revisionHash,
-        recomputedRevisionHash: recomputedRevision,
         revisionRevisionId: revision.revisionId,
-        recomputedRevisionId,
-        revisionSourceDigest: revision.sourceDigest,
-        candidateSourceDigest: revision.candidate.sourceBinding.sourceDigest,
+        foundationRevisionId: foundation.current.revisionId,
+        revisionRevisionHash: revision.revisionHash,
+        foundationRevisionHash: foundation.current.revisionHash,
       },
       ['discard the revision and rebuild from Foundation; only verified revisions produced by Workbench are passable'],
     );

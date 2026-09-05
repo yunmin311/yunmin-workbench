@@ -1618,12 +1618,16 @@ export type UseProjectionDeltaResultV0 =
  * Selector hook: compute the ProjectionDeltaV0 between the bounded previous
  * and current verified revisions for the active Project. Pure derivation;
  * never mutates state and never falls back to raw Snapshot/Activity.
+ *
+ * Rule: the current build must be VERIFIED. STALE / NEEDS_FIX may retain
+ * a last-known-good for other surfaces, but they are never exposed here
+ * as a fresh Delta.
  */
 export function useProjectionDelta(): UseProjectionDeltaResultV0 {
   const projection = useWorkbench((state) => state.projection);
   const previous = useWorkbench((state) => state.projectionPrevious);
   return useMemo<UseProjectionDeltaResultV0>(() => {
-    if (!projection.current) {
+    if (projection.status !== 'VERIFIED' || !projection.current) {
       return { kind: 'none', reason: 'no-current-verified-revision' };
     }
     if (!previous) {
@@ -1634,12 +1638,12 @@ export function useProjectionDelta(): UseProjectionDeltaResultV0 {
       return { kind: 'failure', failure: result };
     }
     return { kind: 'delta', delta: result };
-  }, [projection.current, previous]);
+  }, [projection.status, projection.current, previous]);
 }
 
 export type UseSemanticPassportResultV0 =
   | { kind: 'closed' }
-  | { kind: 'unavailable'; reason: 'no-verified-revision' | 'no-current-verified-revision' | 'no-bounded-delta' }
+  | { kind: 'unavailable'; reason: 'no-verified-revision' | 'no-bounded-delta' }
   | { kind: 'failure'; failure: import('../../core/projection/types').SemanticPassportFailureV0 }
   | { kind: 'passport'; passport: import('../../core/projection/types').SemanticPassportV0 };
 
@@ -1648,6 +1652,10 @@ export type UseSemanticPassportResultV0 =
  * selected via the store seam, using the active VerifiedProjectionRevisionV0
  * and, when present, the bounded Delta. Pure derivation; never falls back
  * to raw Snapshot / Activity and never reads the system clock.
+ *
+ * Rule: the current build must be VERIFIED. A retained last-known-good
+ * (STALE / NEEDS_FIX) is not exposed as current Passport truth; the
+ * drawer shows an explicit "unavailable" state instead.
  */
 export function useSemanticPassport(): UseSemanticPassportResultV0 {
   const passportOpen = useWorkbench((state) => state.passportOpen);
@@ -1657,8 +1665,8 @@ export function useSemanticPassport(): UseSemanticPassportResultV0 {
     if (!passportOpen) {
       return { kind: 'closed' };
     }
-    if (!projection.current) {
-      return { kind: 'unavailable', reason: 'no-current-verified-revision' };
+    if (projection.status !== 'VERIFIED' || !projection.current) {
+      return { kind: 'unavailable', reason: 'no-verified-revision' };
     }
     let delta: import('../../core/projection/types').ProjectionDeltaV0 | undefined;
     if (previous
@@ -1677,5 +1685,5 @@ export function useSemanticPassport(): UseSemanticPassportResultV0 {
       return { kind: 'failure', failure: result };
     }
     return { kind: 'passport', passport: result };
-  }, [passportOpen, projection.current, previous]);
+  }, [passportOpen, projection.status, projection.current, previous]);
 }
