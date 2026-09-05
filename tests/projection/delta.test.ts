@@ -927,4 +927,43 @@ describe('Projection Delta v0 · pure comparator (no clock, no hidden state)', (
     if (!result.ok) throw new Error('expected ok');
     expect('computedAt' in result).toBe(false);
   });
+
+  it('does not consult the system clock anywhere in the call graph', () => {
+    // The trust gate re-runs Foundation's `verifyProjectionCandidate`. If the
+    // comparator ever falls back to the system clock, Foundation's default
+    // `new Date().toISOString()` would be read and the throws below would
+    // fail the test. We assert the comparator never reads any clock.
+    const base = buildRevision();
+    const head = buildRevision({
+      conversations: [conversation({ lifecycleState: 'PAUSED' })],
+    });
+    const realDate = globalThis.Date;
+    let constructionCalls = 0;
+    let nowCalls = 0;
+    class ThrowDate {
+      constructor(..._args: unknown[]) {
+        constructionCalls += 1;
+        throw new Error('Projection Delta comparator must not call the Date constructor');
+      }
+      static now(): number {
+        nowCalls += 1;
+        throw new Error('Projection Delta comparator must not call Date.now()');
+      }
+    }
+    // Static block: ensure comparator path cannot bypass via the original.
+    // We override globalThis.Date for the duration of the call.
+    (globalThis as unknown as { Date: unknown }).Date = ThrowDate;
+    try {
+      const result = compareProjectionRevisions(base, head);
+      expect(constructionCalls).toBe(0);
+      expect(nowCalls).toBe(0);
+      // The result must still be a deterministic Delta; no time-based field
+      // ever appears.
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('expected ok');
+      expect('computedAt' in result).toBe(false);
+    } finally {
+      (globalThis as unknown as { Date: unknown }).Date = realDate;
+    }
+  });
 });

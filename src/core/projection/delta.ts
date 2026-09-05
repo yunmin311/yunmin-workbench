@@ -130,6 +130,16 @@ function failure(
 // ===== comparability gate =====
 
 /**
+ * Internal deterministic clock used only by the trust gate. The value is
+ * irrelevant to the Delta output: the timestamp is consumed by Foundation to
+ * fill `receipt.checkedAt` and `verifiedAt`, which the Delta comparator never
+ * surfaces. Pinning it eliminates the implicit `new Date().toISOString()`
+ * fallback that Foundation's `verifyProjectionCandidate` would otherwise
+ * read, keeping the entire comparator call graph free of system-clock reads.
+ */
+const DELTA_VALIDATION_CLOCK: string = '1970-01-01T00:00:00.000Z';
+
+/**
  * Trust only verified projections. Re-uses Foundation's
  * `verifyProjectionCandidate` so the comparator never invents a second
  * hash/validator. Diagnostics are forwarded with a per-side prefix so the
@@ -144,9 +154,11 @@ function trustVerifiedRevision(
 ): void {
   // Foundation's structural validator already rejects unknown fields and
   // schema mismatches. Strict schema means TS casts cannot smuggle extra
-  // fields past `verifyProjectionCandidate`.
+  // fields past `verifyProjectionCandidate`. We pass a pinned `now` so
+  // Foundation never falls back to the system clock from this call path.
   const verified = verifyProjectionCandidate(revision.candidate, null, {
     recheckSourceDigest: () => revision.candidate.sourceBinding.sourceDigest,
+    now: () => DELTA_VALIDATION_CLOCK,
   });
   if (!verified.current) {
     for (const diagnostic of verified.diagnostics) {
