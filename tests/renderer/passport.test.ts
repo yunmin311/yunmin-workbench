@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { useWorkbench } from '../../src/renderer/src/store';
-import { canvasNodeIdToPassportRef } from '../../src/renderer/src/views/CanvasView';
+import { deriveSemanticPassportState, useWorkbench } from '../../src/renderer/src/store';
+import { canvasNodeIdToPassportRef, handleCanvasNodeClick } from '../../src/renderer/src/views/CanvasView';
 import { compileProjectionCandidate, type ProjectionFactInputV0 } from '../../src/core/projection/compiler';
 import { buildVerifiedProjection, emptyProjectionBuildState, verifyProjectionCandidate } from '../../src/core/projection/revision';
 import { compareProjectionRevisions } from '../../src/core/projection/delta';
@@ -155,7 +155,7 @@ describe('renderer Semantic Passport v0 · seam', () => {
     void compileProjectionCandidate;
   });
 
-  it('STALE current with retained last-known-good: Passport is unavailable, no raw fallback', () => {
+  it('STALE current with retained last-known-good: deriveSemanticPassportState refuses Passport', () => {
     // Workbench retains the previous verified revision as a last-known-good
     // when a fresh build goes STALE. The selector must NOT promote that
     // retained revision into a fresh Passport surface; the canvas display
@@ -163,92 +163,140 @@ describe('renderer Semantic Passport v0 · seam', () => {
     // on `status === 'VERIFIED'`.
     const input = buildInput();
     const retained = verifiedFromInput(input);
-    useWorkbench.setState({
-      projection: {
-        ...emptyProjectionBuildState(),
-        status: 'STALE',
-        current: retained,
-        diagnostics: [{
-          code: 'projection/input-changed',
-          severity: 'error',
-          message: 'Projection source facts changed while the candidate was being verified.',
-          subject: { projectId: retained.candidate.scope.projectId },
-          evidence: {},
-          supportedFixes: ['compile a fresh candidate from the latest source facts'],
-        }],
-      },
-      projectionPrevious: null,
+    const projection: ReturnType<typeof emptyProjectionBuildState> = {
+      ...emptyProjectionBuildState(),
+      status: 'STALE',
+      current: retained,
+      diagnostics: [{
+        code: 'projection/input-changed',
+        severity: 'error',
+        message: 'Projection source facts changed while the candidate was being verified.',
+        subject: { projectId: retained.candidate.scope.projectId },
+        evidence: {},
+        supportedFixes: ['compile a fresh candidate from the latest source facts'],
+      }],
+    };
+    const result = deriveSemanticPassportState({
       passportOpen: {
         entityRef: { kind: 'conversation', id: 'conversation:project-a::codex::builder-1' },
         source: 'canvas',
       },
+      projection,
+      previous: null,
     });
-    const state = useWorkbench.getState();
-    expect(state.projection.status).toBe('STALE');
-    expect(state.projection.current).not.toBeNull();
-    // The selector contract: STALE current build must not be presented
-    // as a fresh Passport.
-    const passport = state.passportOpen
-      ? buildSemanticPassport({} as never, state.passportOpen.entityRef)
-      : null;
-    expect(passport === null || passport.ok === false).toBe(true);
+    expect(result.kind).toBe('unavailable');
+    if (result.kind !== 'unavailable') return;
+    expect(result.reason).toBe('no-verified-revision');
+    // The retained current is not promoted: buildSemanticPassport with the
+    // retained current would succeed (the previous test of "VERIFIED" path
+    // proved that), so the only thing blocking the Passport is the status
+    // gate. Removing the status gate must surface as a real regression.
+    const rawPass = buildSemanticPassport(retained, {
+      kind: 'conversation',
+      id: 'conversation:project-a::codex::builder-1',
+    });
+    expect(rawPass.ok).toBe(true);
   });
 
-  it('NEEDS_FIX current with retained last-known-good: Passport is unavailable, no raw fallback', () => {
+  it('NEEDS_FIX current with retained last-known-good: deriveSemanticPassportState refuses Passport', () => {
     const input = buildInput();
     const retained = verifiedFromInput(input);
-    useWorkbench.setState({
-      projection: {
-        ...emptyProjectionBuildState(),
-        status: 'NEEDS_FIX',
-        current: retained,
-        diagnostics: [{
-          code: 'schema/unrecognized_keys',
-          severity: 'error',
-          message: 'Forged revision did not pass structural validation.',
-          subject: { projectId: retained.candidate.scope.projectId },
-          evidence: {},
-          supportedFixes: ['rebuild the candidate from Foundation'],
-        }],
-      },
-      projectionPrevious: null,
+    const projection: ReturnType<typeof emptyProjectionBuildState> = {
+      ...emptyProjectionBuildState(),
+      status: 'NEEDS_FIX',
+      current: retained,
+      diagnostics: [{
+        code: 'schema/unrecognized_keys',
+        severity: 'error',
+        message: 'Forged revision did not pass structural validation.',
+        subject: { projectId: retained.candidate.scope.projectId },
+        evidence: {},
+        supportedFixes: ['rebuild the candidate from Foundation'],
+      }],
+    };
+    const result = deriveSemanticPassportState({
       passportOpen: {
         entityRef: { kind: 'conversation', id: 'conversation:project-a::codex::builder-1' },
         source: 'canvas',
       },
+      projection,
+      previous: null,
     });
-    const state = useWorkbench.getState();
-    expect(state.projection.status).toBe('NEEDS_FIX');
-    expect(state.projection.current).not.toBeNull();
-    // NEUTRAL: same as STALE — the retained current is not promoted to a
-    // fresh Passport.
-    const passport = state.passportOpen
-      ? buildSemanticPassport({} as never, state.passportOpen.entityRef)
-      : null;
-    expect(passport === null || passport.ok === false).toBe(true);
+    expect(result.kind).toBe('unavailable');
+    if (result.kind !== 'unavailable') return;
+    expect(result.reason).toBe('no-verified-revision');
+  });
+
+  it('VERIFIED previous/current: deriveSemanticPassportState produces a usable Passport', () => {
+    const baseInput = buildInput();
+    const headInput: ProjectionFactInputV0 = {
+      ...baseInput,
+      snapshot: {
+        ...baseInput.snapshot,
+        conversations: [{
+          ...baseInput.snapshot.conversations[0],
+          status: 'PAUSED',
+        }],
+      },
+    };
+    const base = verifiedFromInput(baseInput);
+    const head = verifiedFromInput(headInput);
+    const delta = compareProjectionRevisions(base, head);
+    if (!delta.ok) throw new Error('delta must be ok');
+    const result = deriveSemanticPassportState({
+      passportOpen: {
+        entityRef: { kind: 'conversation', id: 'conversation:project-a::codex::builder-1' },
+        source: 'canvas',
+      },
+      projection: { ...emptyProjectionBuildState(), status: 'VERIFIED', current: head, diagnostics: [] },
+      previous: base,
+    });
+    expect(result.kind).toBe('passport');
+    if (result.kind !== 'passport') return;
+    expect(result.passport.entityType).toBe('conversation');
+    expect(result.passport.delta).not.toBeNull();
+  });
+
+  it('no raw Snapshot / Activity fallback: deriveSemanticPassportState reads only the seam inputs', () => {
+    // The derivation only consumes passportOpen / projection / previous.
+    // If a future refactor accidentally falls back to raw Snapshot /
+    // Activity inputs that include the same ref, the result must remain
+    // exact. We exercise the helper with a project id that is not in the
+    // verified revision and assert the closed / unavailable / failure
+    // surface — never a "passport" with snapshot-derived fields.
+    const input = buildInput();
+    const verified = verifiedFromInput(input);
+    const closed = deriveSemanticPassportState({
+      passportOpen: null,
+      projection: { ...emptyProjectionBuildState(), status: 'VERIFIED', current: verified, diagnostics: [] },
+      previous: null,
+    });
+    expect(closed.kind).toBe('closed');
+
+    const notFound = deriveSemanticPassportState({
+      passportOpen: { entityRef: { kind: 'conversation', id: 'conversation:not-in-revision' }, source: 'canvas' },
+      projection: { ...emptyProjectionBuildState(), status: 'VERIFIED', current: verified, diagnostics: [] },
+      previous: null,
+    });
+    expect(notFound.kind).toBe('failure');
+    if (notFound.kind !== 'failure') return;
+    expect(notFound.failure.code).toBe('passport/entity-not-found');
   });
 
   it('the seam never falls back to raw Snapshot / Activity / Governance facts', () => {
-    // The selector only reads projection.current / projectionPrevious; any
-    // other state (snapshot, activity, frozen, ...) is intentionally
-    // ignored. This test asserts the selector's "closed" branch is reached
-    // when those surface-level sources are completely absent.
-    useWorkbench.setState({
-      snapshot: null,
-      activity: [],
-      frozen: [],
-      git: null,
-      attentionItems: [],
-      attentionLocal: { schemaVersion: 1, dismissed: {} },
-      attentionProblem: null,
-      staging: [],
-      conversation: null,
-      liveExecutions: [],
-      projection: emptyProjectionBuildState(),
-      projectionPrevious: null,
+    // The selector only reads passportOpen / projection / previous. We
+    // exercise the derivation with passportOpen=null and assert the
+    // closed branch; a future refactor that pulls in raw snapshot /
+    // activity / frozen would have to widen the input, which this test
+    // makes visible.
+    const input = buildInput();
+    const verified = verifiedFromInput(input);
+    const closed = deriveSemanticPassportState({
       passportOpen: null,
+      projection: { ...emptyProjectionBuildState(), status: 'VERIFIED', current: verified, diagnostics: [] },
+      previous: null,
     });
-    expect(useWorkbench.getState().passportOpen).toBeNull();
+    expect(closed.kind).toBe('closed');
   });
 });
 
@@ -337,38 +385,89 @@ describe('Canvas execution node opens Runtime Inspector + Semantic Passport', ()
     expect(passportRef).toBeNull();
   });
 
-  it('Canvas click flow opens both Runtime Inspector and Passport for an exact verified execution', () => {
-    // The contract: an exact verified execution node opens the Runtime
-    // Inspector with the executionId and the Semantic Passport with the
-    // same stable id, in that order. A forged execution id opens the
-    // Runtime Inspector (its own surface, untouched here) but never the
-    // Passport.
+  it('Canvas click flow: exact verified execution opens Runtime Inspector + Passport', () => {
+    // Run the actual click decision in isolation: handleCanvasNodeClick
+    // is the exact helper CanvasView.onNodeClick calls. We pass spy
+    // callbacks so the contract is asserted directly, without rendering
+    // ReactFlow.
     const verified = verifiedFromInput(buildInput());
     const executionId = verified.candidate.semanticFacts.runtimeExecutions[0]?.id;
     if (!executionId) throw new Error('fixture must include a runtimeExecution');
-    useWorkbench.setState({
-      projection: { ...emptyProjectionBuildState(), status: 'VERIFIED', current: verified, diagnostics: [] },
-      projectionPrevious: null,
-      passportOpen: null,
-    });
-    // Exact verified id: the Canvas mapper resolves to a runtimeExecution
-    // Passport ref and the Passport builds successfully.
-    const exactRef = canvasNodeIdToPassportRef(executionId, verified);
-    expect(exactRef).toEqual({ kind: 'runtimeExecution', id: executionId });
-    useWorkbench.getState().openPassport(exactRef!, 'canvas');
-    const passport = useWorkbench.getState().passportOpen
-      ? buildSemanticPassport(verified, useWorkbench.getState().passportOpen!.entityRef)
-      : null;
-    expect(passport?.ok).toBe(true);
-    if (passport?.ok) {
-      expect(passport.entityType).toBe('runtimeExecution');
-    }
-    // Forged id: the Canvas mapper returns null; the Passport must NOT be
-    // opened for it even though the Runtime Inspector would be.
-    const forgedRef = canvasNodeIdToPassportRef('execution:codex::forged', verified);
-    expect(forgedRef).toBeNull();
-    // The Canvas contract guards the openPassport call with the mapper
-    // result, so a forged id never reaches the seam.
+    let inspectorCalls = 0;
+    let lastInspectorTarget: { executionId: string } | null = null;
+    const passportCalls: Array<{ ref: SemanticPassportEntityRefV0; source: 'canvas' | 'compare' }> = [];
+    handleCanvasNodeClick(
+      executionId,
+      verified,
+      {
+        openRuntimeInspector: (target) => {
+          inspectorCalls += 1;
+          lastInspectorTarget = target;
+        },
+        openPassport: (ref, source) => {
+          passportCalls.push({ ref, source });
+        },
+        selectProjectedConversation: () => undefined,
+        setView: () => undefined,
+      },
+    );
+    expect(inspectorCalls).toBe(1);
+    // The Canvas contract strips the "execution:" prefix before calling
+    // the Runtime Inspector surface, so the inspector receives the
+    // native executionId.
+    const nativeExecutionId = executionId.slice('execution:'.length);
+    expect(lastInspectorTarget).toEqual({ executionId: nativeExecutionId });
+    expect(passportCalls).toEqual([
+      { ref: { kind: 'runtimeExecution', id: executionId }, source: 'canvas' },
+    ]);
+  });
+
+  it('Canvas click flow: forged execution id does not open a Passport', () => {
+    // Identity inference is forbidden: a forged execution id that does
+    // not exist in the active verified revision must not open a
+    // Semantic Passport. The Runtime Inspector surface remains a
+    // separate decision; the Canvas contract guards the Passport
+    // openPassport call with the exact verified mapper result.
+    const verified = verifiedFromInput(buildInput());
+    let inspectorCalls = 0;
+    const passportCalls: Array<{ ref: SemanticPassportEntityRefV0; source: 'canvas' | 'compare' }> = [];
+    handleCanvasNodeClick(
+      'execution:codex::forged',
+      verified,
+      {
+        openRuntimeInspector: () => { inspectorCalls += 1; },
+        openPassport: (ref, source) => { passportCalls.push({ ref, source }); },
+        selectProjectedConversation: () => undefined,
+        setView: () => undefined,
+      },
+    );
+    expect(inspectorCalls).toBe(1);
+    expect(passportCalls).toEqual([]);
+  });
+
+  it('Canvas click flow: conversation opens Passport + existing control-view jump', () => {
+    // The pre-existing dual surface for a conversation click is preserved.
+    const verified = verifiedFromInput(buildInput());
+    const conversationId = verified.candidate.semanticFacts.conversations[0]?.id;
+    if (!conversationId) throw new Error('fixture must include a conversation');
+    let selectCalls = 0;
+    let viewCalls: string[] = [];
+    const passportCalls: Array<{ ref: SemanticPassportEntityRefV0; source: 'canvas' | 'compare' }> = [];
+    handleCanvasNodeClick(
+      conversationId,
+      verified,
+      {
+        openRuntimeInspector: () => undefined,
+        openPassport: (ref, source) => { passportCalls.push({ ref, source }); },
+        selectProjectedConversation: () => { selectCalls += 1; },
+        setView: (view) => { viewCalls.push(view); },
+      },
+    );
+    expect(passportCalls).toEqual([
+      { ref: { kind: 'conversation', id: conversationId }, source: 'canvas' },
+    ]);
+    expect(selectCalls).toBe(1);
+    expect(viewCalls).toEqual(['control']);
   });
 });
 

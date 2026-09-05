@@ -1647,6 +1647,50 @@ export type UseSemanticPassportResultV0 =
   | { kind: 'failure'; failure: import('../../core/projection/types').SemanticPassportFailureV0 }
   | { kind: 'passport'; passport: import('../../core/projection/types').SemanticPassportV0 };
 
+export interface DeriveSemanticPassportStateInputV0 {
+  passportOpen: {
+    entityRef: import('../../core/projection/types').SemanticPassportEntityRefV0;
+    source: 'canvas' | 'compare';
+  } | null;
+  projection: import('../../core/projection/types').ProjectionBuildStateV0;
+  previous: import('../../core/projection/types').VerifiedProjectionRevisionV0 | null;
+}
+
+/**
+ * Pure derivation behind `useSemanticPassport`. Exported so the rule
+ * (current build must be VERIFIED; no raw Snapshot / Activity fallback)
+ * is directly testable without calling a React hook from outside a
+ * render context. The production hook must use this exact helper.
+ */
+export function deriveSemanticPassportState(
+  input: DeriveSemanticPassportStateInputV0,
+): UseSemanticPassportResultV0 {
+  const { passportOpen, projection, previous } = input;
+  if (!passportOpen) {
+    return { kind: 'closed' };
+  }
+  if (projection.status !== 'VERIFIED' || !projection.current) {
+    return { kind: 'unavailable', reason: 'no-verified-revision' };
+  }
+  let delta: import('../../core/projection/types').ProjectionDeltaV0 | undefined;
+  if (previous
+    && previous.candidate.scope.projectId === projection.current.candidate.scope.projectId
+    && previous.revisionHash !== projection.current.revisionHash) {
+    const compared = compareProjectionRevisions(previous, projection.current);
+    if (compared.ok) {
+      delta = compared;
+    }
+  }
+  if (!delta && previous && passportOpen.source === 'compare') {
+    return { kind: 'unavailable', reason: 'no-bounded-delta' };
+  }
+  const result = buildSemanticPassport(projection.current, passportOpen.entityRef, delta);
+  if (!result.ok) {
+    return { kind: 'failure', failure: result };
+  }
+  return { kind: 'passport', passport: result };
+}
+
 /**
  * Selector hook: compute the SemanticPassportV0 for the entity currently
  * selected via the store seam, using the active VerifiedProjectionRevisionV0
@@ -1661,29 +1705,8 @@ export function useSemanticPassport(): UseSemanticPassportResultV0 {
   const passportOpen = useWorkbench((state) => state.passportOpen);
   const projection = useWorkbench((state) => state.projection);
   const previous = useWorkbench((state) => state.projectionPrevious);
-  return useMemo<UseSemanticPassportResultV0>(() => {
-    if (!passportOpen) {
-      return { kind: 'closed' };
-    }
-    if (projection.status !== 'VERIFIED' || !projection.current) {
-      return { kind: 'unavailable', reason: 'no-verified-revision' };
-    }
-    let delta: import('../../core/projection/types').ProjectionDeltaV0 | undefined;
-    if (previous
-      && previous.candidate.scope.projectId === projection.current.candidate.scope.projectId
-      && previous.revisionHash !== projection.current.revisionHash) {
-      const compared = compareProjectionRevisions(previous, projection.current);
-      if (compared.ok) {
-        delta = compared;
-      }
-    }
-    if (!delta && previous && passportOpen.source === 'compare') {
-      return { kind: 'unavailable', reason: 'no-bounded-delta' };
-    }
-    const result = buildSemanticPassport(projection.current, passportOpen.entityRef, delta);
-    if (!result.ok) {
-      return { kind: 'failure', failure: result };
-    }
-    return { kind: 'passport', passport: result };
-  }, [passportOpen, projection.status, projection.current, previous]);
+  return useMemo<UseSemanticPassportResultV0>(
+    () => deriveSemanticPassportState({ passportOpen, projection, previous }),
+    [passportOpen, projection, previous],
+  );
 }

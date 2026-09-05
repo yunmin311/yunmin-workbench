@@ -44,6 +44,57 @@ export function canvasNodeIdToPassportRef(
   return null;
 }
 
+export interface CanvasNodeClickCallbacksV0 {
+  openRuntimeInspector: (target: { executionId: string }) => void;
+  openPassport: (
+    entityRef: SemanticPassportEntityRefV0,
+    source: 'canvas' | 'compare',
+  ) => void;
+  /** Existing conversation navigation behaviour, preserved. */
+  selectProjectedConversation: (conversationRef: string) => void;
+  setView: (view: 'projects' | 'control' | 'canvas' | 'compare' | 'context' | 'packet') => void;
+}
+
+/**
+ * Pure decision behind CanvasView.onNodeClick. Exported so the dual-surface
+ * contract (Runtime Inspector + Semantic Passport for an exact verified
+ * RuntimeExecution; Passport only when the canvas id maps to a verified
+ * entity ref) is directly testable without rendering ReactFlow.
+ * The production onNodeClick handler must call this exact helper.
+ */
+export function handleCanvasNodeClick(
+  nodeId: string,
+  activeRevision: { candidate: import('../../../core/projection/types').VerifiedProjectionRevisionV0['candidate'] } | null,
+  callbacks: CanvasNodeClickCallbacksV0,
+): void {
+  if (nodeId.startsWith('execution:')) {
+    // Runtime Inspector remains the surface for live execution
+    // interaction; the Semantic Passport covers verified entity
+    // details, so the same canvas click opens both. The Passport
+    // is only opened for execution ids that exist verbatim in the
+    // active verified revision; identity inference is forbidden.
+    callbacks.openRuntimeInspector({ executionId: nodeId.slice('execution:'.length) });
+    const passportRef = canvasNodeIdToPassportRef(nodeId, activeRevision);
+    if (passportRef && passportRef.kind === 'runtimeExecution') {
+      callbacks.openPassport(passportRef, 'canvas');
+    }
+    return;
+  }
+  if (!nodeId.startsWith('conversation:')) {
+    const passportRef = canvasNodeIdToPassportRef(nodeId, activeRevision);
+    if (passportRef) {
+      callbacks.openPassport(passportRef, 'canvas');
+    }
+    return;
+  }
+  // Conversation click: open a Semantic Passport focused on this
+  // conversation, and let the existing control-view jump continue to
+  // work via the Session composer.
+  callbacks.openPassport({ kind: 'conversation', id: nodeId }, 'canvas');
+  callbacks.selectProjectedConversation(nodeId);
+  callbacks.setView('control');
+}
+
 export function CanvasView() {
   const projectId = useWorkbench((state) => state.projectId);
   const projection = useWorkbench((state) => state.projection);
@@ -115,35 +166,12 @@ export function CanvasView() {
         maxZoom={1.8}
         nodesDraggable
         nodesConnectable={false}
-        onNodeClick={(_event, node) => {
-          if (node.id.startsWith('execution:')) {
-            // Runtime Inspector remains the surface for live execution
-            // interaction; the Semantic Passport covers verified entity
-            // details, so the same canvas click opens both. The Passport
-            // is only opened for execution ids that exist verbatim in the
-            // active verified revision; identity inference is forbidden.
-            openRuntimeInspector({ executionId: node.id.slice('execution:'.length) });
-            const passportRef = canvasNodeIdToPassportRef(node.id, projection.current);
-            if (passportRef && passportRef.kind === 'runtimeExecution') {
-              openPassport(passportRef, 'canvas');
-            }
-            return;
-          }
-          if (!node.id.startsWith('conversation:')) {
-            const passportRef = canvasNodeIdToPassportRef(node.id, projection.current);
-            if (passportRef) {
-              openPassport(passportRef, 'canvas');
-            }
-            return;
-          }
-          // Conversation click: keep the existing dual surface: open a
-          // Semantic Passport focused on this conversation, and let the
-          // existing control-view jump continue to work via the Session
-          // composer.
-          openPassport({ kind: 'conversation', id: node.id }, 'canvas');
-          selectProjectedConversation(node.id);
-          setView('control');
-        }}
+        onNodeClick={(_event, node) => handleCanvasNodeClick(node.id, projection.current, {
+          openRuntimeInspector,
+          openPassport,
+          selectProjectedConversation,
+          setView,
+        })}
       >
         <Background color="var(--prototype-grid)" gap={22} size={1} />
         <Controls showInteractive={false} />
