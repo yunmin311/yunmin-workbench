@@ -5,6 +5,7 @@ import { projectionStateToCanvas } from '../../../core/projection/canvasProjecti
 import type { WbEdgeKind } from '../../../core/types';
 import { useWorkbench } from '../store';
 import { layoutProjection } from './reasonixProjectionLayout';
+import type { SemanticPassportEntityRefV0 } from '../../../core/projection/types';
 
 const EDGE_LABEL: Record<WbEdgeKind, string> = {
   membership: 'membership',
@@ -14,12 +15,42 @@ const EDGE_LABEL: Record<WbEdgeKind, string> = {
   'data-context': 'observed context',
 };
 
+/**
+ * Map a Canvas node id (which is the same as the underlying Projection
+ * semantic id) to a Semantic Passport entity ref. Returns `null` when the
+ * id does not belong to one of the five supported Passport entity kinds.
+ */
+function canvasNodeIdToPassportRef(
+  nodeId: string,
+  revision: { candidate: import('../../../core/projection/types').VerifiedProjectionRevisionV0['candidate'] } | null,
+): SemanticPassportEntityRefV0 | null {
+  if (!revision) return null;
+  const facts = revision.candidate.semanticFacts;
+  if (facts.conversations.some((item) => item.id === nodeId)) {
+    return { kind: 'conversation', id: nodeId };
+  }
+  if (facts.runtimeExecutions.some((item) => item.id === nodeId)) {
+    return { kind: 'runtimeExecution', id: nodeId };
+  }
+  if (facts.collaborationRelations.some((item) => item.id === nodeId)) {
+    return { kind: 'collaborationRelation', id: nodeId };
+  }
+  if (facts.artifactsOrEvidence.some((item) => item.id === nodeId)) {
+    return { kind: 'artifactOrEvidence', id: nodeId };
+  }
+  if (facts.evidenceRefs.some((item) => item.id === nodeId)) {
+    return { kind: 'evidence', id: nodeId };
+  }
+  return null;
+}
+
 export function CanvasView() {
   const projectId = useWorkbench((state) => state.projectId);
   const projection = useWorkbench((state) => state.projection);
   const selectProjectedConversation = useWorkbench((state) => state.selectProjectedConversation);
   const setView = useWorkbench((state) => state.setView);
   const openRuntimeInspector = useWorkbench((state) => state.openRuntimeInspector);
+  const openPassport = useWorkbench((state) => state.openPassport);
 
   const { nodes, edges, kinds } = useMemo(() => {
     const canvas = projectionStateToCanvas(projection);
@@ -86,10 +117,24 @@ export function CanvasView() {
         nodesConnectable={false}
         onNodeClick={(_event, node) => {
           if (node.id.startsWith('execution:')) {
+            // Runtime Inspector remains the surface for live execution
+            // interaction; the Semantic Passport covers verified entity
+            // details, so we open both from the same canvas click.
             openRuntimeInspector({ executionId: node.id.slice('execution:'.length) });
             return;
           }
-          if (!node.id.startsWith('conversation:')) return;
+          if (!node.id.startsWith('conversation:')) {
+            const passportRef = canvasNodeIdToPassportRef(node.id, projection.current);
+            if (passportRef) {
+              openPassport(passportRef, 'canvas');
+            }
+            return;
+          }
+          // Conversation click: keep the existing dual surface: open a
+          // Semantic Passport focused on this conversation, and let the
+          // existing control-view jump continue to work via the Session
+          // composer.
+          openPassport({ kind: 'conversation', id: node.id }, 'canvas');
           selectProjectedConversation(node.id);
           setView('control');
         }}

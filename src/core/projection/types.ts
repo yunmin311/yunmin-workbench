@@ -395,3 +395,165 @@ export interface ProjectionDeltaV0 {
 }
 
 export type ProjectionDeltaResultV0 = ProjectionDeltaV0 | ProjectionDeltaFailureV0;
+
+// ===== Semantic Passport v0 =====
+//
+// Workbench's single focused proof / details surface for entities that are
+// already inside a VerifiedProjectionRevisionV0. A Passport answers:
+//   - who is this entity?
+//   - what is its current verified state?
+//   - what evidence backs it, and is that evidence still current?
+//   - what changed in this entity between previous and current verified revisions?
+//
+// It is read-only, never mutates the source revision, and never falls back
+// to raw Snapshot / Activity / Governance files.
+
+export const SEMANTIC_PASSPORT_SCHEMA_VERSION = 0 as const;
+
+export type SemanticPassportEntityKindV0 =
+  | 'conversation'
+  | 'runtimeExecution'
+  | 'collaborationRelation'
+  | 'artifactOrEvidence'
+  | 'evidence';
+
+export interface SemanticPassportEntityRefV0 {
+  kind: SemanticPassportEntityKindV0;
+  id: string;
+}
+
+export type SemanticPassportFailureCodeV0 =
+  | 'passport/invalid-revision'
+  | 'passport/entity-not-found'
+  | 'passport/delta-mismatch'
+  | 'passport/evidence-missing'
+  | 'passport/unsupported-entity';
+
+export interface SemanticPassportFailureV0 {
+  ok: false;
+  code: SemanticPassportFailureCodeV0;
+  message: string;
+  subject: Record<string, unknown>;
+  evidence: Record<string, unknown>;
+  supportedFixes: string[];
+}
+
+// Identity: only the stable, Projection-known fields. Never a display
+// derivation or a label-based guess.
+export type SemanticPassportIdentityV0 =
+  | {
+      kind: 'conversation';
+      id: string;
+      conversationKey: string;
+      canonicalConversationId?: string;
+      role: string;
+      platform: ConversationProjectionV0['platform'];
+    }
+  | {
+      kind: 'runtimeExecution';
+      id: string;
+      executionId: string;
+      nativeRef: string;
+      harness: string;
+      conversationRef: string | null;
+    }
+  | {
+      kind: 'collaborationRelation';
+      id: string;
+      relationKind: 'parallel' | 'handoff';
+    }
+  | {
+      kind: 'artifactOrEvidence';
+      id: string;
+      artifactKind: ArtifactOrEvidenceProjectionV0['kind'];
+      executionRef?: string;
+      eventRef?: string;
+    }
+  | {
+      kind: 'evidence';
+      id: string;
+      source: EvidenceRefV0['source'];
+      sourceRef: string;
+    };
+
+// Current: only verified-revision facts, projected verbatim. No rephrasing
+// (e.g. `runtimeState=idle` stays "idle", never "task finished").
+export type SemanticPassportCurrentV0 =
+  | {
+      kind: 'conversation';
+      lifecycleState: ConversationProjectionV0['lifecycleState'];
+      taskState: ConversationProjectionV0['taskState'];
+      runtimeState: ConversationProjectionV0['runtimeState'];
+      attentionState: ConversationProjectionV0['attentionState'];
+      verification: ConversationProjectionV0['verification'];
+    }
+  | {
+      kind: 'runtimeExecution';
+      runtimeState: RuntimeExecutionProjectionV0['runtimeState'];
+      live: boolean;
+      intentState: RuntimeExecutionProjectionV0['intentState'];
+      receipt: RuntimeExecutionProjectionV0['receipt'];
+      binding: RuntimeExecutionProjectionV0['binding'];
+    }
+  | {
+      kind: 'collaborationRelation';
+      relationKind: 'parallel' | 'handoff';
+      // Parallel: at least two distinct executionRefs (Foundation semantic rule).
+      // Handoff: exact source/target execution refs plus the used result ref.
+      executionRefs?: string[];
+      sourceExecutionRef?: string;
+      targetExecutionRef?: string;
+      usedResultRef?: string;
+    }
+  | {
+      kind: 'artifactOrEvidence';
+      title: string;
+      content?: string;
+      executionRef?: string;
+      eventRef?: string;
+    }
+  | {
+      kind: 'evidence';
+      verification: EvidenceRefV0['verification'];
+      currentness: EvidenceRefV0['currentness'];
+      source: EvidenceRefV0['source'];
+      sourceRef: string;
+      revision?: EvidenceRefV0['revision'];
+    };
+
+export interface SemanticPassportEvidenceEntryV0 {
+  id: string;
+  source: EvidenceRefV0['source'];
+  sourceRef: string;
+  verification: EvidenceRefV0['verification'];
+  currentness: EvidenceRefV0['currentness'];
+  revision?: EvidenceRefV0['revision'];
+}
+
+// Delta: the per-entity slice extracted from a verified ProjectionDeltaV0.
+// Either a per-entity change row (added/removed/changed/evidence-changed) or
+// `null` when the entity is unchanged.
+export type SemanticPassportDeltaChangeV0 =
+  | {
+      status: 'added' | 'removed' | 'changed' | 'evidence-changed';
+      classifications: string[];
+      changedFields: Array<{ path: string; kind: string; before: unknown; after: unknown }>;
+    }
+  | null;
+
+export interface SemanticPassportV0 {
+  ok: true;
+  schemaVersion: typeof SEMANTIC_PASSPORT_SCHEMA_VERSION;
+  projectId: string;
+  revisionId: string;
+  entityRef: SemanticPassportEntityRefV0;
+  entityType: SemanticPassportEntityKindV0;
+  identity: SemanticPassportIdentityV0;
+  current: SemanticPassportCurrentV0;
+  evidence: SemanticPassportEvidenceEntryV0[];
+  delta: SemanticPassportDeltaChangeV0;
+  deltaRevisionId: string | null;
+  limitations: string[];
+}
+
+export type SemanticPassportResultV0 = SemanticPassportV0 | SemanticPassportFailureV0;

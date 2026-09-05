@@ -9,6 +9,7 @@ import { PortabilityPanel } from './components/PortabilityPanel';
 import { MemoryPanel } from './components/MemoryPanel';
 import { MaterialSettings } from './components/MaterialSettings';
 import { DoctorPanel } from './components/DoctorPanel';
+import { SemanticPassportDrawer } from './components/SemanticPassportDrawer';
 import { CanvasView } from './views/CanvasView';
 import { SessionSurface } from './views/SessionSurface';
 import { useWorkbench } from './store';
@@ -269,6 +270,7 @@ export default function App() {
       {materialOpen && <MaterialSettings onClose={() => setMaterialOpen(false)} />}
       {doctorOpen && <DoctorPanel onClose={() => setDoctorOpen(false)} />}
       {approvalEvent && <ApprovalModal event={approvalEvent} onClose={() => setApprovalEvent(null)} />}
+      <SemanticPassportDrawer />
     </div>
   );
 }

@@ -70,6 +70,7 @@ import {
   type ProjectionFactInputV0,
 } from '../../core/projection/compiler';
 import { compareProjectionRevisions } from '../../core/projection/delta';
+import { buildSemanticPassport } from '../../core/projection/passport';
 import {
   buildVerifiedProjection,
   emptyProjectionBuildState,
@@ -191,6 +192,22 @@ interface WorkbenchState {
   setPacketValidity: (validity: WorkbenchState['packetValidity']) => void;
   setHandoffStatus: (status: string) => void;
   freezePacket: (packet: TaskPacket) => Promise<FrozenPacketSummary | undefined>;
+  /**
+   * Semantic Passport: a single focused proof / details surface for one
+   * verified Projection entity. `null` means no passport is open. The
+   * `source` tracks which UI element opened the passport, so an open
+   * passport can be closed on its own surface without disrupting the
+   * Canvas / Compare flow.
+   */
+  passportOpen: {
+    entityRef: import('../../core/projection/types').SemanticPassportEntityRefV0;
+    source: 'canvas' | 'compare';
+  } | null;
+  openPassport: (
+    entityRef: import('../../core/projection/types').SemanticPassportEntityRefV0,
+    source: 'canvas' | 'compare',
+  ) => void;
+  closePassport: () => void;
 }
 
 const draftTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -440,6 +457,7 @@ attentionLocal: EMPTY_ATTENTION_LOCAL,
   attentionProblem: null,
   projection: emptyProjectionBuildState(),
   projectionPrevious: null,
+  passportOpen: null,
   draftSaveState: 'clean',
   packetValidity: 'UNKNOWN',
   handoffStatus: 'IDLE',
@@ -456,7 +474,7 @@ refreshProjection: () => {
     const before = get();
     const input = projectionInput(before);
     if (!input) {
-      set({ projection: emptyProjectionBuildState(), projectionPrevious: null });
+      set({ projection: emptyProjectionBuildState(), projectionPrevious: null, passportOpen: null });
       return;
     }
     const projection = buildVerifiedProjection(input, before.projection.current, {
@@ -540,6 +558,7 @@ liveExecutions: [],
       lastDispatchOutcomes: [],
       harnessCapabilities: DEMO_HARNESS_CAPABILITIES,
       projectionPrevious: null,
+      passportOpen: null,
     });
     get().refreshProjection();
     get().syncIslandAttention();
@@ -569,6 +588,7 @@ set({
       lastDispatchOutcomes: [],
       projection: emptyProjectionBuildState(),
       projectionPrevious: null,
+      passportOpen: null,
     });
     await get().initialize();
   },
@@ -601,6 +621,7 @@ contextMessage: null,
       lastDispatchOutcomes: [],
       harnessCapabilities: DEMO_HARNESS_CAPABILITIES,
       projectionPrevious: null,
+      passportOpen: null,
     });
     get().refreshProjection();
     get().syncIslandAttention();
@@ -732,6 +753,7 @@ selectProject: (projectId) => {
       packetValidity: 'UNKNOWN',
       handoffStatus: 'IDLE',
       projectionPrevious: null,
+      passportOpen: null,
     });
     get().refreshProjection();
     set((state) => ({ attentionItems: projectAttention(state) }));
@@ -1561,6 +1583,15 @@ selectProject: (projectId) => {
 
   setPacketValidity: (packetValidity) => set({ packetValidity }),
   setHandoffStatus: (handoffStatus) => set({ handoffStatus }),
+
+  /**
+   * Open a Semantic Passport for one verified Projection entity. The
+   * selector that renders the drawer reads `projection.current`,
+   * `projectionPrevious`, and the bounded Delta from the existing seam;
+   * here we only record the intent + provenance (which surface asked).
+   */
+  openPassport: (entityRef, source) => set({ passportOpen: { entityRef, source } }),
+  closePassport: () => set({ passportOpen: null }),
 }));
 
 /**
@@ -1604,4 +1635,47 @@ export function useProjectionDelta(): UseProjectionDeltaResultV0 {
     }
     return { kind: 'delta', delta: result };
   }, [projection.current, previous]);
+}
+
+export type UseSemanticPassportResultV0 =
+  | { kind: 'closed' }
+  | { kind: 'unavailable'; reason: 'no-verified-revision' | 'no-current-verified-revision' | 'no-bounded-delta' }
+  | { kind: 'failure'; failure: import('../../core/projection/types').SemanticPassportFailureV0 }
+  | { kind: 'passport'; passport: import('../../core/projection/types').SemanticPassportV0 };
+
+/**
+ * Selector hook: compute the SemanticPassportV0 for the entity currently
+ * selected via the store seam, using the active VerifiedProjectionRevisionV0
+ * and, when present, the bounded Delta. Pure derivation; never falls back
+ * to raw Snapshot / Activity and never reads the system clock.
+ */
+export function useSemanticPassport(): UseSemanticPassportResultV0 {
+  const passportOpen = useWorkbench((state) => state.passportOpen);
+  const projection = useWorkbench((state) => state.projection);
+  const previous = useWorkbench((state) => state.projectionPrevious);
+  return useMemo<UseSemanticPassportResultV0>(() => {
+    if (!passportOpen) {
+      return { kind: 'closed' };
+    }
+    if (!projection.current) {
+      return { kind: 'unavailable', reason: 'no-current-verified-revision' };
+    }
+    let delta: import('../../core/projection/types').ProjectionDeltaV0 | undefined;
+    if (previous
+      && previous.candidate.scope.projectId === projection.current.candidate.scope.projectId
+      && previous.revisionHash !== projection.current.revisionHash) {
+      const compared = compareProjectionRevisions(previous, projection.current);
+      if (compared.ok) {
+        delta = compared;
+      }
+    }
+    if (!delta && previous && passportOpen.source === 'compare') {
+      return { kind: 'unavailable', reason: 'no-bounded-delta' };
+    }
+    const result = buildSemanticPassport(projection.current, passportOpen.entityRef, delta);
+    if (!result.ok) {
+      return { kind: 'failure', failure: result };
+    }
+    return { kind: 'passport', passport: result };
+  }, [passportOpen, projection.current, previous]);
 }
