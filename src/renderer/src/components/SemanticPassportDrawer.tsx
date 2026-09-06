@@ -254,7 +254,7 @@ function renderPassport(passport: SemanticPassportV0, reachSection?: JSX.Element
         <h4>Changes</h4>
         {renderDelta(passport.delta)}
         <p className="passport-meta">
-          delta revision <code>{passport.deltaRevisionId ?? 'none'}</code>
+          delta revision <code title={passport.deltaRevisionId ?? undefined}>{passport.deltaRevisionId ? `${passport.deltaRevisionId.slice(0, 24)}…` : 'none'}</code>
         </p>
       </section>
       {reachSection ? (
