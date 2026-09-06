@@ -13,7 +13,7 @@ import type {
 beforeAll(() => {
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
-    value: { wb: {} },
+    value: { wb: {}, dispatchEvent: () => true, addEventListener: () => undefined },
   });
 });
 
@@ -356,7 +356,7 @@ describe('Canvas selection only opens Passport for verified entity refs', () => 
   });
 });
 
-describe('Canvas execution node opens Runtime Inspector + Semantic Passport', () => {
+describe('Canvas execution node opens Runtime Inspector (Passport via explicit cross-jump)', () => {
   it('an exact verified RuntimeExecution id resolves to a runtimeExecution Passport ref', () => {
     const input: ProjectionFactInputV0 = {
       ...buildInput(),
@@ -385,7 +385,7 @@ describe('Canvas execution node opens Runtime Inspector + Semantic Passport', ()
     expect(passportRef).toBeNull();
   });
 
-  it('Canvas click flow: exact verified execution opens Runtime Inspector + Passport', () => {
+  it('Canvas click flow: exact verified execution opens the Runtime Inspector only', () => {
     // Run the actual click decision in isolation: handleCanvasNodeClick
     // is the exact helper CanvasView.onNodeClick calls. We pass spy
     // callbacks so the contract is asserted directly, without rendering
@@ -395,7 +395,7 @@ describe('Canvas execution node opens Runtime Inspector + Semantic Passport', ()
     if (!executionId) throw new Error('fixture must include a runtimeExecution');
     let inspectorCalls = 0;
     let lastInspectorTarget: { executionId: string } | null = null;
-    const passportCalls: Array<{ ref: SemanticPassportEntityRefV0; source: 'canvas' | 'compare' }> = [];
+    const passportCalls: Array<{ ref: SemanticPassportEntityRefV0; source: 'canvas' | 'compare' | 'reach' }> = [];
     handleCanvasNodeClick(
       executionId,
       verified,
@@ -417,9 +417,11 @@ describe('Canvas execution node opens Runtime Inspector + Semantic Passport', ()
     // native executionId.
     const nativeExecutionId = executionId.slice('execution:'.length);
     expect(lastInspectorTarget).toEqual({ executionId: nativeExecutionId });
-    expect(passportCalls).toEqual([
-      { ref: { kind: 'runtimeExecution', id: executionId }, source: 'canvas' },
-    ]);
+    // Surface ownership: one focused proof surface at a time. The canvas
+    // execution click opens only the Runtime Inspector; the Passport is an
+    // explicit cross-jump inside the Inspector, never a hidden second
+    // surface stacked under it.
+    expect(passportCalls).toEqual([]);
   });
 
   it('Canvas click flow: forged execution id does not open a Passport', () => {
@@ -430,7 +432,7 @@ describe('Canvas execution node opens Runtime Inspector + Semantic Passport', ()
     // openPassport call with the exact verified mapper result.
     const verified = verifiedFromInput(buildInput());
     let inspectorCalls = 0;
-    const passportCalls: Array<{ ref: SemanticPassportEntityRefV0; source: 'canvas' | 'compare' }> = [];
+    const passportCalls: Array<{ ref: SemanticPassportEntityRefV0; source: 'canvas' | 'compare' | 'reach' }> = [];
     handleCanvasNodeClick(
       'execution:codex::forged',
       verified,
@@ -452,7 +454,7 @@ describe('Canvas execution node opens Runtime Inspector + Semantic Passport', ()
     if (!conversationId) throw new Error('fixture must include a conversation');
     let selectCalls = 0;
     let viewCalls: string[] = [];
-    const passportCalls: Array<{ ref: SemanticPassportEntityRefV0; source: 'canvas' | 'compare' }> = [];
+    const passportCalls: Array<{ ref: SemanticPassportEntityRefV0; source: 'canvas' | 'compare' | 'reach' }> = [];
     handleCanvasNodeClick(
       conversationId,
       verified,

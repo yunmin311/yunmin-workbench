@@ -11,6 +11,10 @@ import type { DoctorReport } from '../main/doctor';
 const api = {
   loadOverlay: (opts?: { refresh?: boolean }): Promise<OverlaySnapshot> =>
     ipcRenderer.invoke('overlay:load', opts),
+  chooseOverlay: (): Promise<{ canceled?: boolean; root?: string; observedAt?: string; error?: string }> =>
+    ipcRenderer.invoke('overlay:choose'),
+  loadOverlayBinding: (): Promise<{ root: string; observedAt: string } | null> =>
+    ipcRenderer.invoke('overlay:binding'),
   freezePacket: (packet: TaskPacket): Promise<{ frozen: FrozenPacket; path: string }> =>
     ipcRenderer.invoke('packet:freeze', packet),
   listFrozen: (projectId: string, conversationId: string): Promise<{

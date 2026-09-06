@@ -1,7 +1,11 @@
+import { useMemo } from 'react';
 import { useWorkbench, useSemanticPassport } from '../store';
+import { computeProjectionReach } from '../../../core/projection/reach';
 import type {
+  ProjectionReachDirectionV0,
   SemanticPassportCurrentV0,
   SemanticPassportDeltaChangeV0,
+  SemanticPassportEntityRefV0,
   SemanticPassportEvidenceEntryV0,
   SemanticPassportIdentityV0,
   SemanticPassportV0,
@@ -105,7 +109,14 @@ function renderCurrent(current: SemanticPassportCurrentV0): JSX.Element {
           <div><dt>live</dt><dd><code>{String(current.live)}</code></dd></div>
           <div><dt>intentState</dt><dd><code>{current.intentState}</code></dd></div>
           <div><dt>binding</dt><dd><code>{current.binding ? JSON.stringify(current.binding) : 'null'}</code></dd></div>
-          <div><dt>receipt</dt><dd><code>{current.receipt ? JSON.stringify(current.receipt) : 'null'}</code></dd></div>
+          <div><dt>receipt</dt><dd>
+            {current.receipt ? (
+              <details className="disclose">
+                <summary><code>{current.receipt.status}</code> · {current.receipt.summary}</summary>
+                <code>{JSON.stringify(current.receipt)}</code>
+              </details>
+            ) : <code>null</code>}
+          </dd></div>
         </dl>
       );
     case 'collaborationRelation':
@@ -162,7 +173,9 @@ function renderEvidence(evidence: SemanticPassportEvidenceEntryV0[]): JSX.Elemen
       {evidence.map((entry) => (
         <li key={entry.id}>
           <header>
-            <code>{entry.id}</code>
+            {/* Progressive disclosure: the full sha256 id stays one hover /
+                expand away; the surface leads with the readable part. */}
+            <code title={entry.id}>{entry.id.length > 20 ? `${entry.id.slice(0, 20)}…` : entry.id}</code>
             <span className={currentnessTone(entry.currentness)}>{entry.currentness}</span>
             <span className={verificationTone(entry.verification)}>{entry.verification}</span>
           </header>
@@ -171,7 +184,7 @@ function renderEvidence(evidence: SemanticPassportEvidenceEntryV0[]): JSX.Elemen
           </p>
           {entry.revision ? (
             <p>
-              revision <code>{entry.revision.kind}={entry.revision.value.slice(0, 12)}…</code>
+              revision <code title={entry.revision.value}>{entry.revision.kind}={entry.revision.value.slice(0, 12)}…</code>
             </p>
           ) : null}
         </li>
@@ -218,7 +231,7 @@ function renderDelta(delta: SemanticPassportDeltaChangeV0): JSX.Element {
   );
 }
 
-function renderPassport(passport: SemanticPassportV0): JSX.Element {
+function renderPassport(passport: SemanticPassportV0, reachSection?: JSX.Element | null): JSX.Element {
   return (
     <div className="passport-content">
       <header>
@@ -241,16 +254,25 @@ function renderPassport(passport: SemanticPassportV0): JSX.Element {
         <h4>Changes</h4>
         {renderDelta(passport.delta)}
         <p className="passport-meta">
-          delta revision <code>{passport.deltaRevisionId ?? 'none'}</code>
+          delta revision <code title={passport.deltaRevisionId ?? undefined}>{passport.deltaRevisionId ? `${passport.deltaRevisionId.slice(0, 24)}…` : 'none'}</code>
         </p>
       </section>
+      {reachSection ? (
+        <section>
+          <h4>Reach</h4>
+          {reachSection}
+          <p className="passport-meta">Navigation over exact verified relations only; never impact or risk.</p>
+        </section>
+      ) : null}
       <section>
-        <h4>Limitations</h4>
-        <ul className="passport-limitations">
-          {passport.limitations.map((line, index) => (
-            <li key={index}>{line}</li>
-          ))}
-        </ul>
+        <details className="disclose">
+          <summary><h4>Limitations</h4></summary>
+          <ul className="passport-limitations">
+            {passport.limitations.map((line, index) => (
+              <li key={index}>{line}</li>
+            ))}
+          </ul>
+        </details>
       </section>
     </div>
   );
@@ -259,8 +281,41 @@ function renderPassport(passport: SemanticPassportV0): JSX.Element {
 export function SemanticPassportDrawer() {
   const passportOpen = useWorkbench((state) => state.passportOpen);
   const closePassport = useWorkbench((state) => state.closePassport);
+  const openReach = useWorkbench((state) => state.openReach);
   const projection = useWorkbench((state) => state.projection);
   const result = useSemanticPassport();
+
+  // Deterministic reachable counts for the on-demand Reach actions. Only
+  // navigable entity kinds get the section; the counts come straight from
+  // the Reach core over the active verified revision (origin excluded).
+  const reachCounts = useMemo((): {
+    entityRef: SemanticPassportEntityRefV0;
+    upstream: number | null;
+    downstream: number | null;
+  } | null => {
+    if (result.kind !== 'passport' || !projection.current) return null;
+    const kind = result.passport.entityType;
+    if (kind !== 'conversation' && kind !== 'runtimeExecution' && kind !== 'artifactOrEvidence') {
+      return null;
+    }
+    const count = (direction: ProjectionReachDirectionV0): number | null => {
+      const reach = computeProjectionReach(projection.current!, result.passport.entityRef, direction);
+      return reach.ok ? reach.nodes.length - 1 : null;
+    };
+    return { entityRef: result.passport.entityRef, upstream: count('upstream'), downstream: count('downstream') };
+  }, [result, projection.current]);
+
+  const reachSection = reachCounts ? (
+    <div className="reach-actions">
+      <button type="button" onClick={() => openReach(reachCounts.entityRef, 'upstream')}>
+        Upstream ({reachCounts.upstream ?? '—'})
+      </button>
+      <button type="button" onClick={() => openReach(reachCounts.entityRef, 'downstream')}>
+        Downstream ({reachCounts.downstream ?? '—'})
+      </button>
+    </div>
+  ) : null;
+
   if (!passportOpen) return null;
   if (projection.status !== 'VERIFIED' || !projection.current) {
     return (
@@ -297,7 +352,7 @@ export function SemanticPassportDrawer() {
           </p>
         </div>
       ) : null}
-      {result.kind === 'passport' ? renderPassport(result.passport) : null}
+      {result.kind === 'passport' ? renderPassport(result.passport, reachSection) : null}
     </aside>
   );
 }

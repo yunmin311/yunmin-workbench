@@ -19,6 +19,7 @@ export function CommandPalette() {
   const selectProject = useWorkbench((state) => state.selectProject);
   const selectConversation = useWorkbench((state) => state.selectConversation);
   const resumeWorkspace = useWorkbench((state) => state.resumeWorkspace);
+  const enterDemo = useWorkbench((state) => state.enterDemo);
   const reloadAndRecheck = useWorkbench((state) => state.reloadAndRecheck);
   const clearDraft = useWorkbench((state) => state.clearDraft);
 
@@ -122,6 +123,9 @@ export function CommandPalette() {
           ))}
         </Command.Group>
         <Command.Group heading="Actions">
+          {/* Demo re-entry: the First Run gate disappears once a real
+              workspace exists, so the palette keeps the demo reachable. */}
+          <Command.Item onSelect={() => run(() => enterDemo())}>Open Demo Workspace (sandboxed)</Command.Item>
           <Command.Item onSelect={() => run(() => window.dispatchEvent(new CustomEvent('workbench:open-portability')))}>Profile Portability</Command.Item>
           <Command.Item disabled={!conversation} onSelect={() => packetAction('copy')}>Copy Agent Input</Command.Item>
           <Command.Item disabled={!conversation} onSelect={() => packetAction('handoff')}>Send Current Task to Selected Agent</Command.Item>

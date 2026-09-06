@@ -556,3 +556,152 @@ export interface SemanticPassportV0 {
 }
 
 export type SemanticPassportResultV0 = SemanticPassportV0 | SemanticPassportFailureV0;
+
+// ===== Projection Reach v0 =====
+//
+// Relation navigation over one VerifiedProjectionRevisionV0. Reach answers
+// exactly one question: which verified entities are reachable from an origin
+// along the explicit, exact relations of the current verified revision,
+// upstream or downstream. It is navigation, not impact analysis: no blast
+// radius, no risk, no causality, no dependency inference, no confidence.
+
+export const PROJECTION_REACH_SCHEMA_VERSION = 0 as const;
+
+export type ProjectionReachDirectionV0 = 'upstream' | 'downstream';
+
+/**
+ * Entity kinds that participate in the navigable topology. `evidence` is
+ * provenance-only and never becomes a topology node;
+ * `collaborationRelation` participates only as an exact directed edge
+ * (handoff), never as a node.
+ */
+export type ProjectionNavigableEntityKindV0 =
+  | 'conversation'
+  | 'runtimeExecution'
+  | 'artifactOrEvidence';
+
+export type ProjectionReachEdgeKindV0 =
+  | 'conversation-execution'
+  | 'execution-artifact'
+  | 'handoff';
+
+export interface ProjectionReachEntityRefV0 {
+  kind: ProjectionNavigableEntityKindV0;
+  id: string;
+}
+
+/**
+ * The exact structural provenance of a structural edge: the entity whose
+ * field asserts the relation, and that field's path. Never a synthetic
+ * evidence claim.
+ */
+export interface ProjectionReachStructuralSourceV0 {
+  entityId: string;
+  fieldPath: string;
+}
+
+export interface ProjectionReachEdgeV0 {
+  edgeKind: ProjectionReachEdgeKindV0;
+  source: string;
+  target: string;
+  /**
+   * Deterministic composite identity `[source, target, edgeKind,
+   * relationIdentity]`. `relationIdentity` is the handoff relation id for
+   * handoff edges, or `entityId#fieldPath` for structural edges. This key
+   * is the edge sort order and the Route tie-break order.
+   */
+  stableEdgeKey: string;
+  structuralSource?: ProjectionReachStructuralSourceV0;
+  /** handoff edges only: exact relation identity. */
+  relationId?: string;
+  /** handoff edges only: exact used-result identity. */
+  usedResultRef?: string;
+  /** handoff edges only: exact evidence refs carried by the relation. */
+  evidenceRefs?: string[];
+}
+
+export interface ProjectionReachNodeV0 {
+  kind: ProjectionNavigableEntityKindV0;
+  id: string;
+  /** 0 for the origin; minimum hop count along exact directed edges. */
+  minimumDepth: number;
+}
+
+export type ProjectionReachFailureCodeV0 =
+  | 'reach/invalid-revision'
+  | 'reach/entity-not-found'
+  | 'reach/unsupported-entity';
+
+export interface ProjectionReachFailureV0 {
+  ok: false;
+  code: ProjectionReachFailureCodeV0;
+  message: string;
+  subject: Record<string, unknown>;
+  evidence: Record<string, unknown>;
+  supportedFixes: string[];
+}
+
+export interface ProjectionReachV0 {
+  ok: true;
+  schemaVersion: typeof PROJECTION_REACH_SCHEMA_VERSION;
+  projectId: string;
+  revisionId: string;
+  origin: ProjectionReachEntityRefV0;
+  direction: ProjectionReachDirectionV0;
+  /** Deterministic order: minimumDepth ascending, then id. */
+  nodes: ProjectionReachNodeV0[];
+  /** Deterministic order: stableEdgeKey ascending. Both endpoints reachable. */
+  edges: ProjectionReachEdgeV0[];
+  /** Keys inserted in sorted id order for deterministic serialization. */
+  minimumDepthByNode: Record<string, number>;
+  /** Maximum minimumDepth across nodes (0 when only the origin is present). */
+  maximumHops: number;
+  limitations: string[];
+}
+
+export type ProjectionReachResultV0 = ProjectionReachV0 | ProjectionReachFailureV0;
+
+// ===== Projection Route v0 =====
+//
+// Shortest exact path between two verified entities along the same directed
+// navigable topology as Reach. Unreachable is a normal answer
+// (`found: false`), never a failure.
+
+export const PROJECTION_ROUTE_SCHEMA_VERSION = 0 as const;
+
+export type ProjectionRouteFailureCodeV0 =
+  | 'route/invalid-revision'
+  | 'route/entity-not-found'
+  | 'route/unsupported-entity';
+
+export interface ProjectionRouteFailureV0 {
+  ok: false;
+  code: ProjectionRouteFailureCodeV0;
+  message: string;
+  subject: Record<string, unknown>;
+  evidence: Record<string, unknown>;
+  supportedFixes: string[];
+}
+
+export interface ProjectionRouteStepV0 {
+  from: string;
+  to: string;
+  edge: ProjectionReachEdgeV0;
+}
+
+export interface ProjectionRouteV0 {
+  ok: true;
+  schemaVersion: typeof PROJECTION_ROUTE_SCHEMA_VERSION;
+  projectId: string;
+  revisionId: string;
+  from: ProjectionReachEntityRefV0;
+  to: ProjectionReachEntityRefV0;
+  found: boolean;
+  /** null when not found; 0 when from === to. */
+  hops: number | null;
+  /** Exact directed steps in path order; each step carries the full edge. */
+  steps: ProjectionRouteStepV0[];
+  limitations: string[];
+}
+
+export type ProjectionRouteResultV0 = ProjectionRouteV0 | ProjectionRouteFailureV0;

@@ -23,6 +23,7 @@ export function SessionComposer() {
   const clearHandoffSource = useWorkbench((state) => state.clearHandoffSource);
   const lastDispatchOutcomes = useWorkbench((state) => state.lastDispatchOutcomes);
   const governance = useGovernanceView();
+  const conversation = useWorkbench((state) => state.conversation);
   const [agents, setAgents] = useState<Harness[]>([]);
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
@@ -37,9 +38,16 @@ export function SessionComposer() {
   useEffect(() => {
     setAgents((current) => {
       const retained = current.filter((agent) => available.includes(agent));
-      return retained.length > 0 ? retained : available.slice(0, 1);
+      if (retained.length > 0) return retained;
+      // Default to the open session's own harness so "Send" continues the
+      // conversation where it lives; the selector stays an explicit override.
+      const sessionHarness = conversation?.platform;
+      if (sessionHarness && (available as string[]).includes(sessionHarness)) {
+        return [sessionHarness as Harness];
+      }
+      return available.slice(0, 1);
     });
-  }, [available.join('|')]);
+  }, [available.join('|'), conversation?.key]);
 
   const included = staging.filter((item) => item.state === 'included');
   const pinned = included.filter((item) => item.pinned);

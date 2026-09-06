@@ -10,6 +10,7 @@ import { MemoryPanel } from './components/MemoryPanel';
 import { MaterialSettings } from './components/MaterialSettings';
 import { DoctorPanel } from './components/DoctorPanel';
 import { SemanticPassportDrawer } from './components/SemanticPassportDrawer';
+import { ProjectionReachSurface, ProjectionRouteSurface } from './components/ReachRouteSurfaces';
 import { CanvasView } from './views/CanvasView';
 import { SessionSurface } from './views/SessionSurface';
 import { useWorkbench } from './store';
@@ -128,8 +129,10 @@ export default function App() {
 
   useEffect(() => {
     const open = (event: Event) => {
-      const tab = (event as CustomEvent<InspectorTab>).detail;
-      if (tab) setInspectorTab(tab);
+      const tab = (event as CustomEvent<InspectorTab | null>).detail;
+      // A null detail closes the inspector: one focused proof surface at a
+      // time, so opening a Passport must retire the mounted pane too.
+      setInspectorTab(tab ?? null);
     };
     window.addEventListener('workbench:open-inspector', open);
     return () => window.removeEventListener('workbench:open-inspector', open);
@@ -271,6 +274,8 @@ export default function App() {
       {doctorOpen && <DoctorPanel onClose={() => setDoctorOpen(false)} />}
       {approvalEvent && <ApprovalModal event={approvalEvent} onClose={() => setApprovalEvent(null)} />}
       <SemanticPassportDrawer />
+      <ProjectionReachSurface />
+      <ProjectionRouteSurface />
     </div>
   );
 }

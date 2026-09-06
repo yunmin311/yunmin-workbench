@@ -96,7 +96,12 @@ export function AttentionPanel({ onClose }: { onClose: () => void }) {
           <p className="attention-empty">Nothing needs review right now.</p>
         ) : (
           <ul className="attention-list">
-            {items.map((item) => (
+            {items.map((item) => {
+              // Every attention item whose exact execution can be resolved
+              // gets a runtime jump — approvals and needs-input included,
+              // not only hard failures. The signal must never be a dead end.
+              const runtimeExecutionId = resolveExecutionIdForAttention(item, eventsById);
+              return (
               <li key={item.id} className={`attention-item attention-${item.level}`}>
                 <button className="attention-item-main" onClick={() => openSource(item)}>
                   <span className="attention-meta">{kindLabel[item.kind]} · {item.level} · {item.verification}</span>
@@ -105,7 +110,7 @@ export function AttentionPanel({ onClose }: { onClose: () => void }) {
                   <small>{item.projectId ?? 'Project not supplied'}{item.sessionRef ? ` · ${item.sessionRef}` : ''}</small>
                   <small className="source">{item.sourceRef}{item.eventRef ? ` · event ${item.eventRef}` : ''}</small>
                 </button>
-                {(item.kind === 'runtime-error' || item.kind === 'receipt-failed') && resolveExecutionIdForAttention(item, eventsById) && (
+                {runtimeExecutionId && (
                   <button
                     className="attention-runtime-link"
                     data-testid="attention-inspect-runtime"
@@ -122,7 +127,8 @@ export function AttentionPanel({ onClose }: { onClose: () => void }) {
                   onClick={() => void dismissAttention(item)}
                 >Dismiss</button>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </aside>

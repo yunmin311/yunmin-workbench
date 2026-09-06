@@ -20,7 +20,9 @@ import {
   discoverOverlayRoot,
   loadOverlay,
   readMemoryBody,
+  readOverlayRootBinding,
   watchTargets,
+  writeOverlayRootBinding,
 } from './adapters/overlaySource';
 import { readGitFacts } from './adapters/gitFacts';
 import { createProjectFileContext, fingerprintFileAtRoot, fingerprintProjectFile } from './adapters/projectFiles';
@@ -413,11 +415,17 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
   const refreshUnlocked = (): Promise<OverlaySnapshot> => {
     if (refreshing) return refreshing;
     refreshing = (async () => {
-      const { root, candidates } = await discoverOverlayRoot(defaultOverlaySearchRoot());
+      // Explicit seams first (GOV_OVERLAY env, then the user's in-app
+      // overlay folder binding), then a bounded filesystem scan. Multiple
+      // scan candidates stay UNKNOWN — never guess.
+      const binding = await readOverlayRootBinding(stateDir());
+      const { root, candidates } = binding
+        ? { root: binding.root, candidates: [binding.root] }
+        : await discoverOverlayRoot(defaultOverlaySearchRoot());
       if (!root) {
         return emptySnapshot(
           candidates.length === 0
-            ? 'no overlay found (set GOV_OVERLAY)'
+            ? 'no overlay found — choose your overlay folder below, or set GOV_OVERLAY'
             : `ambiguous overlays: ${candidates.join(', ')} — refusing to guess`,
         );
       }
@@ -461,6 +469,35 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     const opts = z.object({ refresh: z.boolean().optional() }).optional().parse(rawOpts);
     if (cache && !opts?.refresh && Date.now() - cache.at < 5_000) return cache.snapshot;
     return refresh();
+  });
+
+  // Let the operator point Workbench at their real overlay with a folder
+  // picker. The chosen folder must itself contain overlay.yaml — the binding
+  // records an explicit user selection, never a heuristic guess.
+  ipcMain.handle('overlay:choose', async (event) => {
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    const options: OpenDialogOptions = {
+      title: 'Choose your Governance overlay folder (containing overlay.yaml)',
+      properties: ['openDirectory'],
+    };
+    const chosen = owner
+      ? await dialog.showOpenDialog(owner, options)
+      : await dialog.showOpenDialog(options);
+    if (chosen.canceled || chosen.filePaths.length !== 1) return { canceled: true as const };
+    const root = chosen.filePaths[0];
+    try {
+      await stat(join(root, 'overlay.yaml'));
+    } catch {
+      return { error: 'that folder does not contain overlay.yaml — select the overlay root itself' };
+    }
+    const binding = await writeOverlayRootBinding(stateDir(), root);
+    cache = null;
+    return { root: binding.root, observedAt: binding.observedAt };
+  });
+
+  ipcMain.handle('overlay:binding', async () => {
+    const binding = await readOverlayRootBinding(stateDir());
+    return binding ? { root: binding.root, observedAt: binding.observedAt } : null;
   });
 
   ipcMain.handle('memory:read', (_e, rawMemoryId: unknown) => {
