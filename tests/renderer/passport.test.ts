@@ -356,7 +356,7 @@ describe('Canvas selection only opens Passport for verified entity refs', () => 
   });
 });
 
-describe('Canvas execution node opens Runtime Inspector + Semantic Passport', () => {
+describe('Canvas execution node opens Runtime Inspector (Passport via explicit cross-jump)', () => {
   it('an exact verified RuntimeExecution id resolves to a runtimeExecution Passport ref', () => {
     const input: ProjectionFactInputV0 = {
       ...buildInput(),
@@ -385,7 +385,7 @@ describe('Canvas execution node opens Runtime Inspector + Semantic Passport', ()
     expect(passportRef).toBeNull();
   });
 
-  it('Canvas click flow: exact verified execution opens Runtime Inspector + Passport', () => {
+  it('Canvas click flow: exact verified execution opens the Runtime Inspector only', () => {
     // Run the actual click decision in isolation: handleCanvasNodeClick
     // is the exact helper CanvasView.onNodeClick calls. We pass spy
     // callbacks so the contract is asserted directly, without rendering
@@ -417,9 +417,11 @@ describe('Canvas execution node opens Runtime Inspector + Semantic Passport', ()
     // native executionId.
     const nativeExecutionId = executionId.slice('execution:'.length);
     expect(lastInspectorTarget).toEqual({ executionId: nativeExecutionId });
-    expect(passportCalls).toEqual([
-      { ref: { kind: 'runtimeExecution', id: executionId }, source: 'canvas' },
-    ]);
+    // Surface ownership: one focused proof surface at a time. The canvas
+    // execution click opens only the Runtime Inspector; the Passport is an
+    // explicit cross-jump inside the Inspector, never a hidden second
+    // surface stacked under it.
+    expect(passportCalls).toEqual([]);
   });
 
   it('Canvas click flow: forged execution id does not open a Passport', () => {

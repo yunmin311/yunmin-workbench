@@ -214,6 +214,7 @@ export function RuntimeInspector({ onClose }: { onClose: () => void }) {
   const activity = useWorkbench((s) => s.activity);
   const liveExecutions = useWorkbench((s) => s.liveExecutions);
   const runtimeTarget = useWorkbench((s) => s.runtimeTarget);
+  const openPassport = useWorkbench((s) => s.openPassport);
   const projectId = useWorkbench((s) => s.projectId);
   const conversation = useWorkbench((s) => s.conversation);
   const refreshLiveExecutions = useWorkbench((s) => s.refreshLiveExecutions);
@@ -320,7 +321,20 @@ export function RuntimeInspector({ onClose }: { onClose: () => void }) {
 
       {selected && (
         <section className="inspector-section runtime-detail" data-testid="runtime-detail" data-execution-id={selected.executionId}>
-          <header><p className="eyebrow">Workbench execution</p><h2>{selected.harness ?? 'UNKNOWN'} execution</h2></header>
+          <header className="runtime-detail-header">
+            <div>
+              <p className="eyebrow">Workbench execution</p>
+              <h2>{selected.harness ?? 'UNKNOWN'} execution</h2>
+            </div>
+            <button
+              type="button"
+              className="inspector-cross-jump"
+              title="Open this execution's Semantic Passport (verified proof surface)"
+              onClick={() => openPassport({ kind: 'runtimeExecution', id: `execution:${selected.executionId}` }, 'canvas')}
+            >
+              Passport
+            </button>
+          </header>
           <dl className="evidence-list runtime-identity-fields">
             <Field label="Harness">{selected.harness ?? <Unknown />}</Field>
             <Field label="Workbench execution id"><span className="runtime-workbench-id" title={selected.executionId}>{selected.executionId}</span></Field>

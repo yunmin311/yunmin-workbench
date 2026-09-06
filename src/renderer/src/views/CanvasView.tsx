@@ -56,11 +56,12 @@ export interface CanvasNodeClickCallbacksV0 {
 }
 
 /**
- * Pure decision behind CanvasView.onNodeClick. Exported so the dual-surface
- * contract (Runtime Inspector + Semantic Passport for an exact verified
- * RuntimeExecution; Passport only when the canvas id maps to a verified
- * entity ref) is directly testable without rendering ReactFlow.
- * The production onNodeClick handler must call this exact helper.
+ * Pure decision behind CanvasView.onNodeClick. Exported so the surface
+ * ownership contract (one focused proof surface at a time: an execution
+ * click opens the Runtime Inspector only — the Passport is one explicit
+ * click away inside the Inspector — while other verified nodes open the
+ * Semantic Passport directly) is directly testable without rendering
+ * ReactFlow. The production onNodeClick handler must call this exact helper.
  */
 export function handleCanvasNodeClick(
   nodeId: string,
@@ -68,16 +69,10 @@ export function handleCanvasNodeClick(
   callbacks: CanvasNodeClickCallbacksV0,
 ): void {
   if (nodeId.startsWith('execution:')) {
-    // Runtime Inspector remains the surface for live execution
-    // interaction; the Semantic Passport covers verified entity
-    // details, so the same canvas click opens both. The Passport
-    // is only opened for execution ids that exist verbatim in the
-    // active verified revision; identity inference is forbidden.
+    // Runtime Inspector owns live execution interaction. It is the only
+    // surface opened here; stacking a Passport under it hides one of the
+    // two, so the Inspector carries an explicit Passport cross-jump.
     callbacks.openRuntimeInspector({ executionId: nodeId.slice('execution:'.length) });
-    const passportRef = canvasNodeIdToPassportRef(nodeId, activeRevision);
-    if (passportRef && passportRef.kind === 'runtimeExecution') {
-      callbacks.openPassport(passportRef, 'canvas');
-    }
     return;
   }
   if (!nodeId.startsWith('conversation:')) {

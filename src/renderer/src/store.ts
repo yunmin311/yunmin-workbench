@@ -1410,7 +1410,9 @@ selectProject: (projectId) => {
   },
 
   openRuntimeInspector: (target) => {
-    set({ runtimeTarget: target });
+    // One focused proof surface at a time: the Runtime Inspector replaces
+    // any open passport-family surface instead of stacking under it.
+    set({ runtimeTarget: target, passportOpen: null, reachOpen: null, routeOpen: null });
     window.dispatchEvent(new CustomEvent('workbench:open-inspector', { detail: 'runtime' }));
   },
 
@@ -1644,7 +1646,12 @@ selectProject: (projectId) => {
    * `projectionPrevious`, and the bounded Delta from the existing seam;
    * here we only record the intent + provenance (which surface asked).
    */
-  openPassport: (entityRef, source) => set({ passportOpen: { entityRef, source } }),
+  openPassport: (entityRef, source) => {
+    // One focused proof surface at a time: opening a Passport replaces the
+    // Runtime Inspector. Reach / Route stay open underneath as the
+    // passport-family in-place drill-down (closing them returns here).
+    set({ passportOpen: { entityRef, source }, runtimeTarget: null });
+  },
   closePassport: () => set({ passportOpen: null }),
 
   /**

@@ -19,7 +19,7 @@ import type {
 beforeAll(() => {
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
-    value: { wb: {} },
+    value: { wb: {}, dispatchEvent: () => true, addEventListener: () => undefined },
   });
 });
 
@@ -234,6 +234,26 @@ describe('renderer Projection Route v0 · seam', () => {
 });
 
 describe('Reach node clicks reuse the existing Semantic Passport', () => {
+  it('proof surfaces are mutually exclusive with the Runtime Inspector', () => {
+    // One focused proof surface at a time: opening the Runtime Inspector
+    // replaces any passport-family surface, and opening a Passport replaces
+    // the Inspector. Reach / Route stay open under the Passport as the
+    // in-place drill-down.
+    useWorkbench.getState().enterDemo();
+    useWorkbench.getState().openReach({ kind: 'conversation', id: C1 }, 'downstream');
+    useWorkbench.getState().openRuntimeInspector({ executionId: 'codex::execution:intent-1' });
+    expect(useWorkbench.getState().reachOpen).toBeNull();
+    expect(useWorkbench.getState().runtimeTarget).toEqual({ executionId: 'codex::execution:intent-1' });
+    useWorkbench.getState().openPassport({ kind: 'runtimeExecution', id: EX1 }, 'canvas');
+    expect(useWorkbench.getState().runtimeTarget).toBeNull();
+    expect(useWorkbench.getState().passportOpen).toEqual({
+      entityRef: { kind: 'runtimeExecution', id: EX1 },
+      source: 'canvas',
+    });
+    useWorkbench.getState().closePassport();
+    useWorkbench.getState().closeReach();
+  });
+
   it('the reach source opens a Passport through the same seam with source "reach"', () => {
     const verified = verifiedRevision();
     useWorkbench.setState({

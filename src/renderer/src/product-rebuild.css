@@ -4111,3 +4111,20 @@ select:focus-visible {
   align-items: center;
   margin-bottom: 4px;
 }
+.runtime-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.inspector-cross-jump {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.72rem;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+.inspector-cross-jump:hover { border-color: rgba(255, 255, 255, 0.45); }
