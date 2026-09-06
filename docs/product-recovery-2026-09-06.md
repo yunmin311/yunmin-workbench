@@ -49,10 +49,42 @@ session open (given GOV_OVERLAY); honest UNKNOWN/empty states throughout.
 
 ## codex/reach-route-v0 review (branch pending merge)
 
-Core is correct: re-trust gate, exact edges, deterministic sorts, route
-tie-break all verified by tests AND real UI. Issues to fix before merge are
-product-integration issues above (P1-1 stacking, P2-2 label/clipping), not
-core semantics.
+Core semantics verified: re-trust gate, exact edges. Round 2 hardened the
+identity layer: `stableEdgeKey` is now a length-prefixed canonical tuple
+encoding (no delimiter assumptions — Foundation does not restrict id
+characters), and all stable ordering / Route equal-hop tie-breaks use an
+explicit codepoint comparator (`compareEdges`) instead of the
+locale-dependent `localeCompare`. Collision and locale-independence
+regressions live in `tests/projection/reach.test.ts` and
+`tests/projection/route.test.ts`. Product-integration fixes (surface
+ownership P1-1, "Reachable edges" label P2-2) landed on main via the
+recovery merge.
+
+## Round 2 (2026-09-06, later the same day)
+
+- **Trust fix**: the encoding/ordering hardening above; earlier
+  "deterministic contract verified" claims are withdrawn until this landed —
+  it has now landed with regressions.
+- **Donor research executed against real sources** (see
+  `docs/donor-ledger-2026-09-06.md`): Archify (`tt-a1i/archify` DESIGN.md +
+  authored-reachability test + research doc), dsh-synapse README, Claude
+  Code Agent View docs. Two mechanisms landed:
+  1. Archify canvas reach highlight — viewer-only, origin ring + reachable
+     subgraph strong, unrelated topology dimmed (`reachHighlight.ts`,
+     `CanvasView.tsx`); verified in real Electron.
+  2. dsh-synapse selected-text follow-up — transient cue above the composer
+     prepends the quoted selection to the existing draft
+     (`sessionFollowUp.ts`, `SessionSurface.tsx`); verified in real Electron.
+- **memory.spec root-caused and fixed**: the spec closed the app while the
+  debounced draft save (350 ms) was still pending, so the resumed app found
+  no draft. Two-part fix: the product now flushes pending draft/workspace
+  saves when a window close is requested (main holds the close until the
+  renderer confirms or a 1.5 s deadline fires), and the spec waits for the
+  production "Draft saved" signal before closing. No assertion weakened;
+  spec passes.
+- Real-overlay walkthrough re-run on the current build: launch → resume →
+  context → map → passport → reach (highlight) → return, all clean.
+
 
 ## Non-goals (unchanged)
 
