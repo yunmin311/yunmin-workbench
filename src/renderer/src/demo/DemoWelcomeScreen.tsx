@@ -1,4 +1,4 @@
-import { } from 'react';
+import { useState } from 'react';
 import { useWorkbench } from '../store';
 
 /**
@@ -11,7 +11,11 @@ import { useWorkbench } from '../store';
  */
 export function DemoWelcomeScreen({ onOpenReal, note }: { onOpenReal: () => void; note?: string }) {
   const enterDemo = useWorkbench((state) => state.enterDemo);
+  const chooseOverlay = useWorkbench((state) => state.chooseOverlay);
   const loading = useWorkbench((state) => state.loading);
+  const [pickerProblem, setPickerProblem] = useState<string | null>(null);
+
+  const needsOverlay = !note || note.includes('no overlay found');
 
   return (
     <div className="demo-welcome-screen">
@@ -31,6 +35,24 @@ export function DemoWelcomeScreen({ onOpenReal, note }: { onOpenReal: () => void
             {loading ? 'Loading…' : 'Open real workspace'}
           </button>
         </div>
+        {needsOverlay ? (
+          <div className="demo-welcome-actions">
+            <button
+              onClick={() => {
+                setPickerProblem(null);
+                void chooseOverlay().then((result) => {
+                  if (!result.ok && result.problem && result.problem !== 'canceled') {
+                    setPickerProblem(result.problem);
+                  }
+                });
+              }}
+              disabled={loading}
+            >
+              Choose overlay folder…
+            </button>
+          </div>
+        ) : null}
+        {pickerProblem && <p className="demo-welcome-error" role="alert">{pickerProblem}</p>}
         {note && <p className="demo-welcome-error" role="alert">{note}</p>}
         <p className="demo-welcome-note">
           Demo data is Workbench-owned and sandboxed. Exiting returns to your real workspace untouched.

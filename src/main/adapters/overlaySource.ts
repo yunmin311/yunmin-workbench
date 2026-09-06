@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { readdir, readFile, stat } from 'node:fs/promises';
+import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import type { Dirent } from 'node:fs';
 import { join, parse, relative } from 'node:path';
 import {
   parseDialogueRegistry,
@@ -23,8 +24,52 @@ function observation(sourceRef: string): Observation {
 }
 
 /**
- * Overlay discovery (governance rule): $GOV_OVERLAY -> siblings containing
- * exactly one overlay.yaml -> else UNKNOWN. Never guess between candidates.
+ * Explicit user overlay binding. When the operator picks an overlay folder
+ * in-app, the choice is persisted here and becomes the second seam (after
+ * the GOV_OVERLAY env var, before filesystem scanning). It is an explicit
+ * user decision, never a heuristic guess, so it keeps the governance rule.
+ */
+export interface OverlayRootBindingV1 {
+  schemaVersion: 1;
+  root: string;
+  observedAt: string;
+  source: 'user-selection';
+}
+
+const OVERLAY_BINDING_FILE = 'overlay-root-binding-v1.json';
+
+export function overlayBindingPath(stateDir: string): string {
+  return join(stateDir, OVERLAY_BINDING_FILE);
+}
+
+export async function readOverlayRootBinding(stateDir: string): Promise<OverlayRootBindingV1 | null> {
+  try {
+    const raw = JSON.parse(await readFile(overlayBindingPath(stateDir), 'utf8')) as Partial<OverlayRootBindingV1>;
+    if (raw.schemaVersion !== 1 || typeof raw.root !== 'string' || raw.root.length === 0) return null;
+    if (raw.source !== 'user-selection') return null;
+    return { schemaVersion: 1, root: raw.root, observedAt: String(raw.observedAt ?? ''), source: 'user-selection' };
+  } catch {
+    return null;
+  }
+}
+
+export async function writeOverlayRootBinding(stateDir: string, root: string): Promise<OverlayRootBindingV1> {
+  const binding: OverlayRootBindingV1 = {
+    schemaVersion: 1,
+    root,
+    observedAt: new Date().toISOString(),
+    source: 'user-selection',
+  };
+  await mkdir(stateDir, { recursive: true });
+  await writeFile(overlayBindingPath(stateDir), `${JSON.stringify(binding, null, 2)}\n`, 'utf8');
+  return binding;
+}
+
+/**
+ * Overlay discovery (governance rule): $GOV_OVERLAY -> an explicit user
+ * binding -> scan the search root two levels deep for `overlay.yaml` ->
+ * else UNKNOWN. Never guess between candidates: exactly one candidate is
+ * required for a discovered root.
  */
 export async function discoverOverlayRoot(driveRoot: string, env: NodeJS.ProcessEnv = process.env): Promise<{ root?: string; candidates: string[] }> {
   if (env.GOV_OVERLAY) return { root: env.GOV_OVERLAY, candidates: [env.GOV_OVERLAY] };
@@ -32,10 +77,28 @@ export async function discoverOverlayRoot(driveRoot: string, env: NodeJS.Process
   try {
     for (const entry of await readdir(driveRoot, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
+      const level1 = join(driveRoot, entry.name);
       try {
-        await stat(join(driveRoot, entry.name, 'overlay.yaml'));
-        candidates.push(join(driveRoot, entry.name));
-      } catch { /* not an overlay */ }
+        await stat(join(level1, 'overlay.yaml'));
+        candidates.push(level1);
+        continue;
+      } catch { /* not an overlay at depth 1 */ }
+      // Common install layout keeps the overlay inside a workspace folder
+      // (e.g. `<drive>\<projects>\<overlay>\overlay.yaml`). Scan one level
+      // deeper, skipping heavy or hidden directories; the exactly-one rule
+      // still applies across all candidates.
+      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+      let level2: Dirent[];
+      try {
+        level2 = await readdir(level1, { withFileTypes: true });
+      } catch { /* level 1 dir not readable */ continue; }
+      for (const child of level2) {
+        if (!child.isDirectory()) continue;
+        try {
+          await stat(join(level1, child.name, 'overlay.yaml'));
+          candidates.push(join(level1, child.name));
+        } catch { /* not an overlay */ }
+      }
     }
   } catch { /* drive not readable */ }
   return { root: candidates.length === 1 ? candidates[0] : undefined, candidates };

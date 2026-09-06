@@ -150,6 +150,12 @@ interface WorkbenchState {
   syncIslandAttention: () => void;
   refreshProjection: () => void;
   initialize: () => Promise<void>;
+  /**
+   * Let the operator pick their Governance overlay folder in-app (folder
+   * picker + persisted explicit binding), then reload real workspace truth.
+   * `canceled` / `problem` are surfaced by the First Run screen.
+   */
+  chooseOverlay: () => Promise<{ ok: boolean; problem?: string }>;
   resumeWorkspace: (target?: WorkspaceTargetV1) => void;
   enterDemo: () => void;
   exitDemo: () => Promise<void>;
@@ -548,6 +554,15 @@ refreshProjection: () => {
       resumeProblem: loaded.problem ?? null,
     });
     if (loaded.session?.last) get().resumeWorkspace(loaded.session.last);
+  },
+
+  chooseOverlay: async () => {
+    if (!window.wb?.chooseOverlay) return { ok: false, problem: 'overlay picker unavailable in this environment' };
+    const result = await window.wb.chooseOverlay();
+    if (result.canceled) return { ok: false, problem: 'canceled' };
+    if (result.error) return { ok: false, problem: result.error };
+    await get().initialize();
+    return { ok: true };
   },
 
   enterDemo: () => {
