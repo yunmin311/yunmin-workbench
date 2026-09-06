@@ -203,6 +203,23 @@ describe('Projection Route v0 · pure core (shortest exact path)', () => {
     expect(result.steps[1]?.edge.relationId).toBe('handoff:zzz-from-ex1');
   });
 
+  it('the tie-break comparator is codepoint order, independent of the host locale', () => {
+    // Two equal-length paths that differ only in the final handoff relation.
+    // Codepoint order puts 'handoff:B' (U+0042) before 'handoff:a' (U+0061),
+    // while many host locales reverse exactly this pair — a locale flip must
+    // not change the chosen route.
+    const revision = buildRevision({
+      relations: [
+        handoff({ id: 'handoff:a' }),
+        handoff({ id: 'handoff:B' }),
+      ],
+    });
+    const result = route(revision, { kind: 'conversation', id: C1 }, { kind: 'runtimeExecution', id: EXT });
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.hops).toBe(2);
+    expect(result.steps[1]?.edge.relationId).toBe('handoff:B');
+  });
+
   it('unreachable is a normal answer: found:false, hops:null, steps:[]', () => {
     const revision = buildRevision();
     // Edges point conversation -> execution -> artifact; the reverse

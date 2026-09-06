@@ -39,7 +39,7 @@ import {
 const ROUTE_LIMITATIONS: string[] = [
   'Workbench Projection Route v0 answers only "whether a directed path of exact relations exists between two verified entities, and which exact steps it takes"; it never infers impact, blast radius, risk, or causality.',
   'Route v0 traverses the same exact directed edges as Reach, only in their recorded direction. An opposite-direction query returns found:false instead of reversing edges.',
-  'Among minimum-hop paths the tie-break is the lexicographically smallest sequence of stableEdgeKey values; no semantic preference ("more plausible" paths) is ever applied.',
+  'Among minimum-hop paths the tie-break is the smallest sequence of edge tuples compared component by component in codepoint order (source, target, edgeKind, relation identity); no semantic preference ("more plausible" paths) and no host locale is ever applied.',
   'Parallel CollaborationRelations carry no directional semantics in v0; they are excluded from Route traversal and are never silently converted into bidirectional edges.',
   'EvidenceRef entities are provenance-only and are not part of the navigable topology.',
   'Canvas layout geometry, labels, cwd, provider, time proximity, and text similarity never produce an edge; Canvas is not a source of truth.',
@@ -132,7 +132,8 @@ export function computeProjectionRoute(
   // candidate edges are exactly those that keep the remaining hop budget
   // (distTo of the candidate target equals the remaining distance), so the
   // chosen edge-key sequence is the lexicographically smallest among all
-  // minimum-hop paths. Edge lists are pre-sorted by stableEdgeKey.
+  // minimum-hop paths. Edge lists are pre-sorted by `compareEdges`
+  // (codepoint tuple order), so the first feasible edge is the smallest.
   const steps: ProjectionRouteV0['steps'] = [];
   let current = from.id;
   let remaining = distTo.get(from.id) ?? 0;
