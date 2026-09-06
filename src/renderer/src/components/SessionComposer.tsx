@@ -42,7 +42,9 @@ export function SessionComposer() {
       // Default to the open session's own harness so "Send" continues the
       // conversation where it lives; the selector stays an explicit override.
       const sessionHarness = conversation?.platform;
-      if (sessionHarness && available.includes(sessionHarness)) return [sessionHarness];
+      if (sessionHarness && (available as string[]).includes(sessionHarness)) {
+        return [sessionHarness as Harness];
+      }
       return available.slice(0, 1);
     });
   }, [available.join('|'), conversation?.key]);
