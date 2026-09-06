@@ -266,7 +266,9 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
       <header className="session-header">
         <div>
           <p className="session-path">{project?.displayName ?? projectId} / {conversation.platform}</p>
-          <h1>{conversation.role}</h1>
+          {/* Governance roles can be a full paragraph; the header stays quiet
+              and clamped — the full role text is one hover away. */}
+          <h1 className="session-title" title={conversation.role}>{conversation.role}</h1>
         </div>
         <div className="session-header-actions">
           {runtime && <button data-testid="session-runtime-badge" onClick={() => openRuntimeInspector({ executionId: runtime.executionId })}><i className={`runtime-pulse runtime-${runtime.live ? runtime.state : 'unknown'}`} />{runtime.harness} · {runtime.live ? 'live' : 'historical'}</button>}

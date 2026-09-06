@@ -109,7 +109,14 @@ function renderCurrent(current: SemanticPassportCurrentV0): JSX.Element {
           <div><dt>live</dt><dd><code>{String(current.live)}</code></dd></div>
           <div><dt>intentState</dt><dd><code>{current.intentState}</code></dd></div>
           <div><dt>binding</dt><dd><code>{current.binding ? JSON.stringify(current.binding) : 'null'}</code></dd></div>
-          <div><dt>receipt</dt><dd><code>{current.receipt ? JSON.stringify(current.receipt) : 'null'}</code></dd></div>
+          <div><dt>receipt</dt><dd>
+            {current.receipt ? (
+              <details className="disclose">
+                <summary><code>{current.receipt.status}</code> · {current.receipt.summary}</summary>
+                <code>{JSON.stringify(current.receipt)}</code>
+              </details>
+            ) : <code>null</code>}
+          </dd></div>
         </dl>
       );
     case 'collaborationRelation':
@@ -166,7 +173,9 @@ function renderEvidence(evidence: SemanticPassportEvidenceEntryV0[]): JSX.Elemen
       {evidence.map((entry) => (
         <li key={entry.id}>
           <header>
-            <code>{entry.id}</code>
+            {/* Progressive disclosure: the full sha256 id stays one hover /
+                expand away; the surface leads with the readable part. */}
+            <code title={entry.id}>{entry.id.length > 20 ? `${entry.id.slice(0, 20)}…` : entry.id}</code>
             <span className={currentnessTone(entry.currentness)}>{entry.currentness}</span>
             <span className={verificationTone(entry.verification)}>{entry.verification}</span>
           </header>
@@ -175,7 +184,7 @@ function renderEvidence(evidence: SemanticPassportEvidenceEntryV0[]): JSX.Elemen
           </p>
           {entry.revision ? (
             <p>
-              revision <code>{entry.revision.kind}={entry.revision.value.slice(0, 12)}…</code>
+              revision <code title={entry.revision.value}>{entry.revision.kind}={entry.revision.value.slice(0, 12)}…</code>
             </p>
           ) : null}
         </li>
@@ -256,12 +265,14 @@ function renderPassport(passport: SemanticPassportV0, reachSection?: JSX.Element
         </section>
       ) : null}
       <section>
-        <h4>Limitations</h4>
-        <ul className="passport-limitations">
-          {passport.limitations.map((line, index) => (
-            <li key={index}>{line}</li>
-          ))}
-        </ul>
+        <details className="disclose">
+          <summary><h4>Limitations</h4></summary>
+          <ul className="passport-limitations">
+            {passport.limitations.map((line, index) => (
+              <li key={index}>{line}</li>
+            ))}
+          </ul>
+        </details>
       </section>
     </div>
   );

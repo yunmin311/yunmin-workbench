@@ -4128,3 +4128,27 @@ select:focus-visible {
   white-space: nowrap;
 }
 .inspector-cross-jump:hover { border-color: rgba(255, 255, 255, 0.45); }
+/* ===== progressive disclosure + clamped titles (recovery slices) ===== */
+.disclose { min-inline-size: 0; }
+.disclose > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.disclose > summary::-webkit-details-marker { display: none; }
+.disclose > summary::after { content: '▸'; opacity: 0.6; font-size: 0.7rem; }
+.disclose[open] > summary::after { content: '▾'; }
+.disclose > summary h4 { margin: 0; }
+.disclose > summary:hover { opacity: 0.85; }
+.session-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  margin: 0;
+}
+.reach-id { min-width: 0; }
+.reach-action, .reach-depth, .reach-kind, .reach-origin-chip { flex-shrink: 0; }

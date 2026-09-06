@@ -44,7 +44,7 @@ export function ProjectionReachSurface() {
             <span className="passport-kind">{result.reach.origin.kind}</span>
             <code className="passport-id">{result.reach.origin.id}</code>
             <p className="passport-meta">
-              {result.reach.nodes.length} reachable entities · max {result.reach.maximumHops} {result.reach.maximumHops === 1 ? 'hop' : 'hops'} · revision <code>{result.reach.revisionId}</code>
+              {result.reach.nodes.length} reachable entities · max {result.reach.maximumHops} {result.reach.maximumHops === 1 ? 'hop' : 'hops'} · revision <code title={result.reach.revisionId}>{result.reach.revisionId.slice(0, 24)}…</code>
             </p>
           </header>
           <section>
@@ -92,27 +92,32 @@ export function ProjectionReachSurface() {
             )}
           </section>
           <section>
-            <h4>Traversed edges</h4>
-            {result.reach.edges.length === 0 ? (
-              <p className="passport-empty">No exact edges in the reachable set.</p>
-            ) : (
-              <ol className="reach-list">
-                {result.reach.edges.map((edge) => (
-                  <li key={edge.stableEdgeKey} className="reach-row">
-                    <span className="reach-kind">{edge.edgeKind}</span>
-                    <code className="reach-edge">{edge.source} → {edge.target}</code>
-                  </li>
-                ))}
-              </ol>
-            )}
+            <details className="disclose" open>
+              <summary><h4>Reachable edges</h4></summary>
+              <p className="passport-meta">Every exact directed edge whose two endpoints are both reachable — including edges that only re-confirm an already-reachable entity.</p>
+              {result.reach.edges.length === 0 ? (
+                <p className="passport-empty">No exact edges in the reachable set.</p>
+              ) : (
+                <ol className="reach-list">
+                  {result.reach.edges.map((edge) => (
+                    <li key={edge.stableEdgeKey} className="reach-row">
+                      <span className="reach-kind">{edge.edgeKind}</span>
+                      <code className="reach-edge">{edge.source} → {edge.target}</code>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </details>
           </section>
           <section>
-            <h4>Limitations</h4>
-            <ul className="passport-limitations">
-              {result.reach.limitations.map((line, index) => (
-                <li key={index}>{line}</li>
-              ))}
-            </ul>
+            <details className="disclose">
+              <summary><h4>Limitations</h4></summary>
+              <ul className="passport-limitations">
+                {result.reach.limitations.map((line, index) => (
+                  <li key={index}>{line}</li>
+                ))}
+              </ul>
+            </details>
           </section>
         </div>
       ) : null}
@@ -167,8 +172,8 @@ export function ProjectionRouteSurface() {
             <code className="passport-id">{result.route.from.id} → {result.route.to.id}</code>
             <p className="passport-meta">
               {result.route.found
-                ? `${result.route.hops} ${result.route.hops === 1 ? 'hop' : 'hops'} · revision ${result.route.revisionId}`
-                : `no directed path · revision ${result.route.revisionId}`}
+                ? `${result.route.hops} ${result.route.hops === 1 ? 'hop' : 'hops'} · revision ${result.route.revisionId.slice(0, 24)}…`
+                : `no directed path · revision ${result.route.revisionId.slice(0, 24)}…`}
             </p>
           </header>
           <section>
@@ -197,12 +202,14 @@ export function ProjectionRouteSurface() {
             )}
           </section>
           <section>
-            <h4>Limitations</h4>
-            <ul className="passport-limitations">
-              {result.route.limitations.map((line, index) => (
-                <li key={index}>{line}</li>
-              ))}
-            </ul>
+            <details className="disclose">
+              <summary><h4>Limitations</h4></summary>
+              <ul className="passport-limitations">
+                {result.route.limitations.map((line, index) => (
+                  <li key={index}>{line}</li>
+                ))}
+              </ul>
+            </details>
           </section>
         </div>
       ) : null}
