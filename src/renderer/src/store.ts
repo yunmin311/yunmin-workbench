@@ -245,8 +245,9 @@ interface WorkbenchState {
   closeRoute: () => void;
 }
 
-const draftTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const draftTimers = new Map<string, { timer: ReturnType<typeof setTimeout>; draft: WorkbenchDraftV1 }>();
 let workspaceTimer: ReturnType<typeof setTimeout> | null = null;
+let workspacePendingSession: WorkspaceSessionV1 | null = null;
 
 const EMPTY_WORKSPACE_SESSION: WorkspaceSessionV1 = {
   schemaVersion: 1,
@@ -366,8 +367,10 @@ function scheduleWorkspaceSave(state: WorkbenchState): void {
     return;
   }
   if (workspaceTimer) clearTimeout(workspaceTimer);
+  workspacePendingSession = session;
   workspaceTimer = setTimeout(() => {
     workspaceTimer = null;
+    workspacePendingSession = null;
     void window.wb.saveWorkspaceSession(session).catch((error) => {
       useWorkbench.setState({ resumeProblem: `Workspace continuity save failed: ${String(error)}` });
     });
@@ -386,30 +389,75 @@ function draftFromState(state: WorkbenchState): WorkbenchDraftV1 | null {
   );
 }
 
+/**
+ * Write one draft immediately. Split out of `scheduleDraftSave` so the
+ * close-time flush can persist pending drafts instead of losing them with
+ * the window (the main process holds the close until this completes or its
+ * deadline fires).
+ */
+function persistDraft(draft: WorkbenchDraftV1): Promise<void> {
+  useWorkbench.setState({ draftSaveState: 'saving' });
+  return window.wb.saveDraft(draft).then(() => {
+    useWorkbench.setState({ draftSaveState: 'saved' });
+  }).catch((error) => {
+    useWorkbench.setState({
+      draftSaveState: 'error',
+      contextMessage: `Draft save failed: ${String(error)}`,
+    });
+  });
+}
+
+/**
+ * Flush every pending debounced save (drafts + workspace session). Invoked
+ * when the main process holds a window close; safe to call anytime.
+ */
+function flushPendingSaves(): Promise<void> {
+  const pending = [...draftTimers.values()];
+  draftTimers.clear();
+  for (const { timer } of pending) clearTimeout(timer);
+  const workspaceFlush = (): Promise<void> => {
+    if (!workspaceTimer) return Promise.resolve();
+    clearTimeout(workspaceTimer);
+    workspaceTimer = null;
+    const session = workspacePendingSession;
+    workspacePendingSession = null;
+    return session
+      ? window.wb.saveWorkspaceSession(session).then(() => undefined).catch(() => undefined)
+      : Promise.resolve();
+  };
+  return Promise.all([...pending.map(({ draft }) => persistDraft(draft)), workspaceFlush()])
+    .then(() => undefined);
+}
+
+// The main process asks the renderer to flush pending saves while holding a
+// window close; confirm when everything is on disk.
+if (typeof window !== 'undefined' && typeof window.wb?.onDraftFlushRequest === 'function') {
+  window.wb.onDraftFlushRequest(() => {
+    void flushPendingSaves().finally(() => {
+      window.wb.draftsFlushed();
+    });
+  });
+}
+
 function scheduleDraftSave(state: WorkbenchState): void {
   const draft = draftFromState(state);
   if (!draft) return;
   const key = `${draft.scope.projectId}\0${draft.scope.conversationKey}`;
   const prior = draftTimers.get(key);
-  if (prior) clearTimeout(prior);
+  if (prior) clearTimeout(prior.timer);
   useWorkbench.setState({ draftSaveState: 'dirty' });
   if (state.demoMode) {
     demoDraftState = draft;
     useWorkbench.setState({ draftSaveState: 'saved' });
     return;
   }
-  draftTimers.set(key, setTimeout(() => {
-    draftTimers.delete(key);
-    useWorkbench.setState({ draftSaveState: 'saving' });
-    void window.wb.saveDraft(draft).then(() => {
-      useWorkbench.setState({ draftSaveState: 'saved' });
-    }).catch((error) => {
-      useWorkbench.setState({
-        draftSaveState: 'error',
-        contextMessage: `Draft save failed: ${String(error)}`,
-      });
-    });
-  }, 350));
+  draftTimers.set(key, {
+    timer: setTimeout(() => {
+      draftTimers.delete(key);
+      void persistDraft(draft);
+    }, 350),
+    draft,
+  });
 }
 
 function messages(parts: (string | null | undefined)[]): string | null {
@@ -1314,7 +1362,7 @@ selectProject: (projectId) => {
     if (!projectId || !conversation || !snapshot) return;
     const timerKey = `${projectId}\0${conversation.key}`;
     const pending = draftTimers.get(timerKey);
-    if (pending) clearTimeout(pending);
+    if (pending) clearTimeout(pending.timer);
     draftTimers.delete(timerKey);
     if (!demoMode) {
       await window.wb.clearDraft(projectId, conversation.key);

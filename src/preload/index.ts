@@ -112,6 +112,12 @@ const api = {
     return () => ipcRenderer.removeListener('activity:cleared', listener);
   },
   copyText: (text: string): Promise<void> => ipcRenderer.invoke('clipboard:writeText', text),
+  onDraftFlushRequest: (cb: () => void): (() => void) => {
+    const listener = () => cb();
+    ipcRenderer.on('drafts:flush', listener);
+    return () => ipcRenderer.removeListener('drafts:flush', listener);
+  },
+  draftsFlushed: (): void => ipcRenderer.send('drafts:flushed'),
   onOverlayChanged: (cb: () => void): (() => void) => {
     const listener = (_e: IpcRendererEvent) => cb();
     ipcRenderer.on('overlay:changed', listener);
