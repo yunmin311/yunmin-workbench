@@ -5,6 +5,7 @@ import { latestRuntimeExecutionForConversation } from '../runtimeInspectorModel'
 import { boundedTimeline, TIMELINE_PAGE_SIZE, visibleCountForTarget } from '../boundedTimeline';
 import { useGovernanceView, useWorkbench } from '../store';
 import { SessionComposer } from '../components/SessionComposer';
+import { followUpDraftFromSelection, selectionToFollowUpCue } from '../sessionFollowUp';
 
 const ACTIVITY_LABEL: Record<ActivityEvent['kind'], string> = {
   'handoff-dispatched': 'Handoff dispatched',
@@ -194,6 +195,8 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
   const attentionItems = useWorkbench((s) => s.attentionItems);
   const clearActivity = useWorkbench((state) => state.clearActivity);
   const loadHarnessCapabilities = useWorkbench((state) => state.loadHarnessCapabilities);
+  const setTaskSummary = useWorkbench((state) => state.setTaskSummary);
+  const [followUpCue, setFollowUpCue] = useState<string | null>(null);
   const demoMode = useWorkbench((state) => state.demoMode);
   const governance = useGovernanceView();
 
@@ -298,7 +301,16 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
 
       <GovernanceStrip governance={governance} demoMode={demoMode} />
 
-      <section className="session-activity" aria-label="Structured runtime activity">
+      <section
+        className="session-activity"
+        aria-label="Structured runtime activity"
+        onMouseUp={() => {
+          // dsh-synapse "追问更顺手": selected answer text becomes one click
+          // away from the composer. Transient cue only; the transcript and
+          // the draft are never rewritten on selection.
+          setFollowUpCue(selectionToFollowUpCue(window.getSelection()?.toString() ?? null));
+        }}
+      >
         {activityProblem && <p className="surface-alert">{activityProblem}</p>}
         {events.length === 0 ? (
           <>
@@ -327,6 +339,22 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
           </>
         )}
       </section>
+
+      {followUpCue && (
+        <div className="followup-cue" role="status">
+          <span className="followup-quote">“{followUpCue.slice(0, 72)}{followUpCue.length > 72 ? '…' : ''}”</span>
+          <button
+            onClick={() => {
+              setTaskSummary(followUpDraftFromSelection(useWorkbench.getState().taskSummary, followUpCue));
+              setFollowUpCue(null);
+              window.getSelection()?.removeAllRanges();
+            }}
+          >
+            Continue with this
+          </button>
+          <button aria-label="Dismiss selection" onClick={() => setFollowUpCue(null)}>×</button>
+        </div>
+      )}
 
       <SessionComposer />
     </div>
