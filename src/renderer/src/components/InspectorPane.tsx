@@ -45,7 +45,9 @@ export function InspectorPane({
             className={tab === item ? 'active' : ''}
             onClick={() => onSelect(item)}
           >
-            {item[0].toUpperCase() + item.slice(1)}
+            {/* The 'evidence' tab shows the projection's source-of-truth
+                bindings, not evidence records; label it what it is. */}
+            {item === 'evidence' ? 'Binding' : item[0].toUpperCase() + item.slice(1)}
           </button>
         ))}
         </div>
@@ -72,7 +74,7 @@ export function InspectorPane({
         )}
         {projectId && tab === 'evidence' && (
           <div className="inspector-section">
-            <header><p className="eyebrow">Projection truth</p><h2>Evidence</h2></header>
+            <header><p className="eyebrow">Projection truth</p><h2>Binding</h2></header>
             <dl className="evidence-list">
               <dt>Project</dt><dd>{snapshot?.projects.find((item) => item.projectId === projectId)?.observed.sourceRef ?? 'UNKNOWN'}</dd>
               <dt>Conversation</dt><dd>{conversation?.observed.sourceRef ?? 'UNKNOWN'}</dd>
