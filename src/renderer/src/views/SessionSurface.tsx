@@ -305,10 +305,14 @@ export function SessionSurface({ onOpenSessions }: { onOpenSessions: () => void 
         className="session-activity"
         aria-label="Structured runtime activity"
         onMouseUp={() => {
-          // dsh-synapse "追问更顺手": selected answer text becomes one click
-          // away from the composer. Transient cue only; the transcript and
-          // the draft are never rewritten on selection.
-          setFollowUpCue(selectionToFollowUpCue(window.getSelection()?.toString() ?? null));
+          // dsh-synapse "追问更顺手" — scoped to the donor's semantics:
+          // selected ANSWER text carries into a follow-up. Selections in the
+          // user's own message, metadata, or tool rows never trigger it.
+          const selection = window.getSelection();
+          const anchor = selection?.anchorNode ?? null;
+          const anchorElement = anchor && anchor.nodeType === 3 ? anchor.parentElement : (anchor as Element | null);
+          const insideResponse = anchorElement?.closest('.response-card') != null;
+          setFollowUpCue(insideResponse ? selectionToFollowUpCue(selection?.toString() ?? null) : null);
         }}
       >
         {activityProblem && <p className="surface-alert">{activityProblem}</p>}

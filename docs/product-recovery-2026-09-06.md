@@ -91,3 +91,41 @@ recovery merge.
 No scheduler/orchestrator, no identity/relation inference from
 cwd/provider/time/label/geometry, no new permanent Inspector, UI is never a
 source of truth, UNKNOWN stays UNKNOWN.
+
+## Round 3 (2026-09-06, continued)
+
+- **Close-before-debounce is now regression-tested.** `e2e/draft-close-flush.spec.ts`
+  mutates the composer draft, asserts the save is still pending
+  (`dirty|saving`, explicitly not waiting for "saved"), quits Workbench
+  immediately (app quit — the real user path), relaunches, and requires the
+  same session with the draft text restored. Falsification evidence: with the
+  close-flush protocol removed from the main process, the run leaves
+  `state/` empty and the spec fails; with the protocol restored it passes.
+  Harness fact recorded: playwright's page-level `win.close()` bypasses the
+  BrowserWindow close event entirely, so the spec deliberately quits at the
+  app level, which does fire the real window close path.
+- **Flush acknowledgement made honest.** The renderer ack was "flush
+  attempted"; it now carries `{ attempted, failed }` over the renamed
+  `drafts:flush-settled` channel, and both sides document that settling is
+  NOT a durability guarantee (persist failures stay visible in the renderer
+  UI; the main process proceeds on the ack or its 1.5 s deadline).
+- **Cold start classified with measurements** (`scripts/measure-cold-start.mjs`,
+  production build, real overlay, 5 cold launches each):
+  - fresh state: launch→main ready 185–206 ms; BrowserWindow 292–331 ms;
+    first renderer frame 476–543 ms; workspace chooser usable 497–562 ms
+    (median ~550 ms).
+  - warm resume: first frame 532–561 ms; session header (usable)
+    556–582 ms; 5/5 sessions resumed.
+  - dev (`pnpm dev`): vite ready ~2.2 s, but first meaningful paint is
+    ~30–45 s (on-demand transform of the renderer graph). **The ~30 s black
+    window is DEV-ONLY toolchain cost**, not product startup; removed from
+    the product P1 list. No splash is added — production has nothing to hide.
+- **Selected-text follow-up scoped to the donor's semantics**: the cue only
+  triggers when the selection anchor sits inside an agent-response card
+  (`.response-card`); user messages, metadata, and tool rows no longer
+  trigger it.
+- **Real-overlay smoke (manual, current build)**: cold launch → resumed
+  session → typed draft → immediate window × close → draft verified on disk
+  → relaunch resumed the same session with the draft restored ("Draft
+  saved") → Map → canvas conversation node → Semantic Passport (single
+  surface, no stacking) → return path clean.
