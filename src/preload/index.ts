@@ -117,7 +117,14 @@ const api = {
     ipcRenderer.on('drafts:flush', listener);
     return () => ipcRenderer.removeListener('drafts:flush', listener);
   },
-  draftsFlushed: (): void => ipcRenderer.send('drafts:flushed'),
+  /**
+   * Acknowledge a flush request. The report means the flush *settled*: every
+   * pending write either succeeded or recorded its failure in the renderer
+   * UI. It is NOT a durability guarantee; the main process proceeds on this
+   * acknowledgement or its own deadline, whichever comes first.
+   */
+  draftsFlushSettled: (result: { attempted: number; failed: number }): void =>
+    ipcRenderer.send('drafts:flush-settled', result),
   onOverlayChanged: (cb: () => void): (() => void) => {
     const listener = (_e: IpcRendererEvent) => cb();
     ipcRenderer.on('overlay:changed', listener);

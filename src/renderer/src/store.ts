@@ -392,49 +392,59 @@ function draftFromState(state: WorkbenchState): WorkbenchDraftV1 | null {
 /**
  * Write one draft immediately. Split out of `scheduleDraftSave` so the
  * close-time flush can persist pending drafts instead of losing them with
- * the window (the main process holds the close until this completes or its
- * deadline fires).
+ * the window (the main process holds the close until this settles or its
+ * deadline fires). Resolves `true` only when the write succeeded; a failure
+ * is surfaced in the UI state and reported as a failed flush attempt.
  */
-function persistDraft(draft: WorkbenchDraftV1): Promise<void> {
+function persistDraft(draft: WorkbenchDraftV1): Promise<boolean> {
   useWorkbench.setState({ draftSaveState: 'saving' });
   return window.wb.saveDraft(draft).then(() => {
     useWorkbench.setState({ draftSaveState: 'saved' });
+    return true;
   }).catch((error) => {
     useWorkbench.setState({
       draftSaveState: 'error',
       contextMessage: `Draft save failed: ${String(error)}`,
     });
+    return false;
   });
 }
 
 /**
  * Flush every pending debounced save (drafts + workspace session). Invoked
  * when the main process holds a window close; safe to call anytime.
+ * Resolves with what happened: `attempted` writes were started, `failed` of
+ * them did not reach disk (their errors are already visible in the UI).
  */
-function flushPendingSaves(): Promise<void> {
+function flushPendingSaves(): Promise<{ attempted: number; failed: number }> {
   const pending = [...draftTimers.values()];
   draftTimers.clear();
   for (const { timer } of pending) clearTimeout(timer);
-  const workspaceFlush = (): Promise<void> => {
-    if (!workspaceTimer) return Promise.resolve();
+  const workspaceFlush = (): Promise<boolean> => {
+    if (!workspaceTimer) return Promise.resolve(true);
     clearTimeout(workspaceTimer);
     workspaceTimer = null;
     const session = workspacePendingSession;
     workspacePendingSession = null;
     return session
-      ? window.wb.saveWorkspaceSession(session).then(() => undefined).catch(() => undefined)
-      : Promise.resolve();
+      ? window.wb.saveWorkspaceSession(session).then(() => true).catch(() => false)
+      : Promise.resolve(true);
   };
   return Promise.all([...pending.map(({ draft }) => persistDraft(draft)), workspaceFlush()])
-    .then(() => undefined);
+    .then((results) => ({ attempted: results.length, failed: results.filter((ok) => !ok).length }));
 }
 
 // The main process asks the renderer to flush pending saves while holding a
-// window close; confirm when everything is on disk.
+// window close. The acknowledgement means the flush *settled* — every write
+// either succeeded or recorded its failure in the UI — NOT that everything
+// is guaranteed on disk. The main process must not treat it as a durability
+// guarantee; it proceeds on this or its own deadline, whichever comes first.
 if (typeof window !== 'undefined' && typeof window.wb?.onDraftFlushRequest === 'function') {
   window.wb.onDraftFlushRequest(() => {
-    void flushPendingSaves().finally(() => {
-      window.wb.draftsFlushed();
+    void flushPendingSaves().then((result) => {
+      window.wb.draftsFlushSettled(result);
+    }).catch(() => {
+      window.wb.draftsFlushSettled({ attempted: 0, failed: 0 });
     });
   });
 }

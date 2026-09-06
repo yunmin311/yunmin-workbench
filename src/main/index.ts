@@ -1347,22 +1347,23 @@ async function createWindow(refresh: () => Promise<OverlaySnapshot>): Promise<Br
   // Pending debounced renderer saves (composer drafts, workspace session)
   // must not die with the window: a user who closes Workbench right after a
   // change would silently lose them. Hold the close briefly, ask the
-  // renderer to flush, and proceed on confirmation or a hard deadline.
+  // renderer to flush, and proceed when the flush settles (success or a
+  // failure already surfaced in the renderer UI) or on a hard deadline.
   let rendererFlushed = false;
   win.on('close', (event) => {
     if (rendererFlushed || win.isDestroyed()) return;
     event.preventDefault();
     rendererFlushed = true;
     let done = false;
-    const onFlushed = () => {
+    const onFlushSettled = () => {
       if (done) return;
       done = true;
       clearTimeout(deadline);
-      ipcMain.removeListener('drafts:flushed', onFlushed);
+      ipcMain.removeListener('drafts:flush-settled', onFlushSettled);
       if (!win.isDestroyed()) win.close();
     };
-    const deadline = setTimeout(onFlushed, 1500);
-    ipcMain.once('drafts:flushed', onFlushed);
+    const deadline = setTimeout(onFlushSettled, 1500);
+    ipcMain.once('drafts:flush-settled', onFlushSettled);
     win.webContents.send('drafts:flush');
   });
   if (process.env.ELECTRON_RENDERER_URL) {
