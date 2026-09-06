@@ -1648,9 +1648,11 @@ selectProject: (projectId) => {
    */
   openPassport: (entityRef, source) => {
     // One focused proof surface at a time: opening a Passport replaces the
-    // Runtime Inspector. Reach / Route stay open underneath as the
-    // passport-family in-place drill-down (closing them returns here).
+    // Runtime Inspector (mounted pane included). Reach / Route stay open
+    // underneath as the passport-family in-place drill-down (closing them
+    // returns here).
     set({ passportOpen: { entityRef, source }, runtimeTarget: null });
+    window.dispatchEvent(new CustomEvent('workbench:open-inspector', { detail: null }));
   },
   closePassport: () => set({ passportOpen: null }),
 

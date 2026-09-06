@@ -13,7 +13,7 @@ import type {
 beforeAll(() => {
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
-    value: { wb: {} },
+    value: { wb: {}, dispatchEvent: () => true, addEventListener: () => undefined },
   });
 });
 

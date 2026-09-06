@@ -129,8 +129,10 @@ export default function App() {
 
   useEffect(() => {
     const open = (event: Event) => {
-      const tab = (event as CustomEvent<InspectorTab>).detail;
-      if (tab) setInspectorTab(tab);
+      const tab = (event as CustomEvent<InspectorTab | null>).detail;
+      // A null detail closes the inspector: one focused proof surface at a
+      // time, so opening a Passport must retire the mounted pane too.
+      setInspectorTab(tab ?? null);
     };
     window.addEventListener('workbench:open-inspector', open);
     return () => window.removeEventListener('workbench:open-inspector', open);
