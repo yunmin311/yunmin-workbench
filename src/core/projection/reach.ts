@@ -104,18 +104,74 @@ export interface NavigableTopologyV0 {
   conversationById: Map<string, ConversationProjectionV0>;
   executionById: Map<string, RuntimeExecutionProjectionV0>;
   artifactById: Map<string, ArtifactOrEvidenceProjectionV0>;
-  /** All exact directed edges, sorted by stableEdgeKey. */
+  /** All exact directed edges, sorted by `compareEdges` (tuple order). */
   edges: ProjectionReachEdgeV0[];
   outEdges: Map<string, ProjectionReachEdgeV0[]>;
   inEdges: Map<string, ProjectionReachEdgeV0[]>;
 }
 
 /**
- * Deterministic composite edge identity `[source, target, edgeKind,
- * relationIdentity]`. `relationIdentity` is the handoff relation id for
- * handoff edges, or `entityId#fieldPath` for structural edges. This key is
- * the edge sort order and the Route tie-break order. U+0000 separators
- * cannot occur in Workbench semantic ids.
+ * Canonical, unambiguous edge tuple encoding: every component is
+ * length-prefixed, so component boundaries are recoverable no matter what
+ * the semantic ids contain (Foundation places no restriction on id
+ * characters, so delimiter-based encodings could collide and are forbidden
+ * here). The encoding is an *identity* string only; ordering always goes
+ * through `compareEdges`, which compares the decoded tuple component by
+ * component in codepoint (UTF-16 code unit) order — never the default
+ * locale, which differs across environments.
+ */
+export function encodeEdgeTuple(parts: readonly string[]): string {
+  let encoded = '';
+  for (const part of parts) {
+    encoded += `${part.length}:${part}`;
+  }
+  return encoded;
+}
+
+export function decodeEdgeTuple(encoded: string): string[] {
+  const parts: string[] = [];
+  let cursor = 0;
+  while (cursor < encoded.length) {
+    const separator = encoded.indexOf(':', cursor);
+    if (separator < 0) throw new Error('corrupt edge tuple encoding');
+    const length = Number.parseInt(encoded.slice(cursor, separator), 10);
+    if (!Number.isSafeInteger(length) || length < 0) throw new Error('corrupt edge tuple encoding');
+    const part = encoded.slice(separator + 1, separator + 1 + length);
+    if (part.length !== length) throw new Error('corrupt edge tuple encoding');
+    parts.push(part);
+    cursor = separator + 1 + length;
+  }
+  return parts;
+}
+
+/** Environment-independent string order: raw UTF-16 code unit comparison. */
+function cmpCodepoint(left: string, right: string): number {
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
+}
+
+/**
+ * Deterministic edge order: source, target, edgeKind, relation identity —
+ * each component compared in codepoint order. Never `localeCompare`, whose
+ * result depends on the host locale.
+ */
+export function compareEdges(left: ProjectionReachEdgeV0, right: ProjectionReachEdgeV0): number {
+  const leftParts = decodeEdgeTuple(left.stableEdgeKey);
+  const rightParts = decodeEdgeTuple(right.stableEdgeKey);
+  for (let index = 0; index < Math.min(leftParts.length, rightParts.length); index += 1) {
+    const ordering = cmpCodepoint(leftParts[index] ?? '', rightParts[index] ?? '');
+    if (ordering !== 0) return ordering;
+  }
+  return cmpCodepoint(left.stableEdgeKey, right.stableEdgeKey);
+}
+
+/**
+ * Deterministic composite edge identity for the exact tuple
+ * `[source, target, edgeKind, relationIdentity]`. `relationIdentity` is the
+ * handoff relation id for handoff edges, or the structural child entity id
+ * for structural edges (the field path is 1:1 with the edge kind, so no
+ * information is lost). This string is the React/dedup identity; the sort
+ * and Route tie-break order come from `compareEdges`.
  */
 export function stableEdgeKey(
   source: string,
@@ -123,9 +179,7 @@ export function stableEdgeKey(
   edgeKind: ProjectionReachEdgeV0['edgeKind'],
   relationIdentity: string,
 ): string {
-  // Sort order per contract: source, target, edgeKind, stable relation
-  // identity.
-  return [source, target, edgeKind, relationIdentity].join('\u0000');
+  return encodeEdgeTuple([source, target, edgeKind, relationIdentity]);
 }
 
 /**
@@ -159,7 +213,7 @@ export function buildNavigableTopology(revision: VerifiedProjectionRevisionV0): 
       edgeKind: 'conversation-execution',
       source,
       target,
-      stableEdgeKey: stableEdgeKey(source, target, 'conversation-execution', `${execution.id}#conversationRef`),
+      stableEdgeKey: stableEdgeKey(source, target, 'conversation-execution', execution.id),
       structuralSource: { entityId: execution.id, fieldPath: 'conversationRef' },
     });
   }
@@ -173,7 +227,7 @@ export function buildNavigableTopology(revision: VerifiedProjectionRevisionV0): 
       edgeKind: 'execution-artifact',
       source,
       target,
-      stableEdgeKey: stableEdgeKey(source, target, 'execution-artifact', `${artifact.id}#executionRef`),
+      stableEdgeKey: stableEdgeKey(source, target, 'execution-artifact', artifact.id),
       structuralSource: { entityId: artifact.id, fieldPath: 'executionRef' },
     });
   }
@@ -195,7 +249,7 @@ export function buildNavigableTopology(revision: VerifiedProjectionRevisionV0): 
     });
   }
 
-  edges.sort((left, right) => left.stableEdgeKey.localeCompare(right.stableEdgeKey));
+  edges.sort(compareEdges);
 
   const outEdges = new Map<string, ProjectionReachEdgeV0[]>();
   const inEdges = new Map<string, ProjectionReachEdgeV0[]>();
@@ -369,7 +423,7 @@ export function resolveNavigableOrigin(
  * Breadth-first traversal over the exact directed edges, following them
  * forward (downstream) or reading them in reverse (upstream). Unweighted
  * BFS, so first discovery is the minimum depth. Edge lists are pre-sorted
- * by stableEdgeKey, so discovery order is deterministic too.
+ * by `compareEdges`, so discovery order is deterministic too.
  */
 function traverse(
   topology: NavigableTopologyV0,
@@ -428,7 +482,7 @@ export function computeProjectionReach(
   const nodeIds = [...minimumDepthByNode.keys()].sort((left, right) => {
     const depthDelta = (minimumDepthByNode.get(left) ?? 0) - (minimumDepthByNode.get(right) ?? 0);
     if (depthDelta !== 0) return depthDelta;
-    return left.localeCompare(right);
+    return cmpCodepoint(left, right);
   });
 
   const nodes = nodeIds.map((id) => ({

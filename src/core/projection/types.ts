@@ -605,10 +605,14 @@ export interface ProjectionReachEdgeV0 {
   source: string;
   target: string;
   /**
-   * Deterministic composite identity `[source, target, edgeKind,
-   * relationIdentity]`. `relationIdentity` is the handoff relation id for
-   * handoff edges, or `entityId#fieldPath` for structural edges. This key
-   * is the edge sort order and the Route tie-break order.
+   * Canonical, unambiguous identity for the exact tuple
+   * `[source, target, edgeKind, relationIdentity]`, length-prefix encoded so
+   * no id content can collide with the framing. `relationIdentity` is the
+   * handoff relation id for handoff edges, or the structural child entity id
+   * for structural edges. This string is an identity/dedup key only; the
+   * deterministic edge order and the Route equal-hop tie-break compare the
+   * decoded tuple component by component in codepoint order
+   * (`compareEdges`), never the host locale.
    */
   stableEdgeKey: string;
   structuralSource?: ProjectionReachStructuralSourceV0;

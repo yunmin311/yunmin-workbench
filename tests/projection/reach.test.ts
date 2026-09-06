@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { computeProjectionReach } from '../../src/core/projection/reach';
+import {
+  compareEdges,
+  computeProjectionReach,
+  decodeEdgeTuple,
+  encodeEdgeTuple,
+  stableEdgeKey,
+} from '../../src/core/projection/reach';
 import {
   computeProjectionLayoutHash,
   computeProjectionRevisionHash,
@@ -322,9 +328,55 @@ describe('Projection Reach v0 · pure core (exact directed edges only)', () => {
     if (!result.ok) throw new Error('expected ok');
     const handoffEdges = result.edges.filter((edge) => edge.edgeKind === 'handoff');
     expect(handoffEdges.map((edge) => edge.relationId)).toEqual(['handoff:a-first', 'handoff:b-second']);
-    expect(handoffEdges.map((edge) => edge.stableEdgeKey)).toEqual(
-      [...handoffEdges.map((edge) => edge.stableEdgeKey)].sort(),
-    );
+    // Edge order is the decoded tuple order (source, target, edgeKind,
+    // relation identity) under codepoint comparison.
+    const sorted = [...handoffEdges].sort(compareEdges);
+    expect(handoffEdges.map((edge) => edge.relationId)).toEqual(sorted.map((edge) => edge.relationId));
+  });
+});
+
+// ===== stable identity: collision freedom + environment-independent order =====
+
+describe('Projection Reach v0 · stable edge identity encoding', () => {
+  it('length-prefix encoding cannot collide across component boundaries', () => {
+    // Delimiter-based framings collide here; the canonical encoding must not.
+    const a = stableEdgeKey('ab', 'c', 'handoff', 'r');
+    const b = stableEdgeKey('a', 'bc', 'handoff', 'r');
+    expect(a).not.toBe(b);
+    // Components containing the old NUL delimiter and '#' separators stay
+    // unambiguous and recoverable.
+    const weird = stableEdgeKey('a\u0000b', 'c#d:e', 'execution-artifact', 'rel\u0000#id');
+    expect(decodeEdgeTuple(weird)).toEqual(['a\u0000b', 'c#d:e', 'execution-artifact', 'rel\u0000#id']);
+  });
+
+  it('decode round-trips every encoding', () => {
+    const key = stableEdgeKey('conversation:x', 'execution:y', 'conversation-execution', 'execution:y');
+    expect(decodeEdgeTuple(key)).toEqual(['conversation:x', 'execution:y', 'conversation-execution', 'execution:y']);
+    expect(decodeEdgeTuple(encodeEdgeTuple(['', 'a', 'bb', 'ccc']))).toEqual(['', 'a', 'bb', 'ccc']);
+  });
+
+  it('orders by codepoint tuple comparison, never the host locale', () => {
+    // 'B' (U+0042) sorts before 'a' (U+0061) in codepoint order, while many
+    // host locales order 'a' before 'B' — a locale flip must not change the
+    // reachable-subgraph edge order.
+    const revision = buildRevision({
+      relations: [
+        handoff({ id: 'handoff:a' }),
+        handoff({ id: 'handoff:B' }),
+        parallelRel(),
+      ],
+    });
+    const result = reach(revision, EX1, 'runtimeExecution', 'downstream');
+    if (!result.ok) throw new Error('expected ok');
+    const handoffEdges = result.edges.filter((edge) => edge.edgeKind === 'handoff');
+    expect(handoffEdges.map((edge) => edge.relationId)).toEqual(['handoff:B', 'handoff:a']);
+    // Same for node ids within one depth layer.
+    expect('B'.codePointAt(0)).toBeLessThan('a'.codePointAt(0)!);
+  });
+
+  it('a corrupted encoding fails loudly instead of silently reordering', () => {
+    expect(() => decodeEdgeTuple('nocurrent-length')).toThrow(/corrupt/);
+    expect(() => decodeEdgeTuple('9999:short')).toThrow(/corrupt/);
   });
 });
 

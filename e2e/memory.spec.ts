@@ -69,11 +69,17 @@ test('Memory search expands source and explicitly adds a source-backed reference
     expect(readFileSync(join(stateDir, 'state', 'memory', 'use-v1.json'), 'utf8')).toContain('"count":2');
     await win.keyboard.press('Control+4');
     await expect(win.locator('.inspector-pane .validity-current')).toBeVisible();
-
+    // Close only after the debounced draft save has visibly completed: the
+    // composer's "Draft saved" state is the same production signal a user
+    // sees. Closing earlier raced the save and lost the pending draft.
+    await expect(win.locator('.draft-state')).toContainText('saved', { timeout: 10_000 });
     await launched.win.close();
     await launched.app.close();
     launched = await launchWorkbench(stateDir, overlay.overlayRoot, env);
     const resumed = launched.win;
+    // Wait for the app to finish initializing and resuming the last
+    // workspace before driving it.
+    await expect(resumed.locator('.session-header')).toBeVisible({ timeout: 30_000 });
     await resumed.keyboard.press('Control+3');
     await expect(resumed.locator('.context-item', { hasText: 'Memory: The cobalt release requires explicit approval' })).toContainText('included');
     await resumed.keyboard.press('Control+4');

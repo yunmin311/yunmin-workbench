@@ -4152,3 +4152,49 @@ select:focus-visible {
 }
 .reach-id { min-width: 0; }
 .reach-action, .reach-depth, .reach-kind, .reach-origin-chip { flex-shrink: 0; }
+/* ===== Archify-style canvas reach highlight (viewer-only) ===== */
+.wb-node.reach-dim { opacity: 0.28; }
+.wb-node.reach-hit { box-shadow: 0 0 0 2px rgba(122, 235, 176, 0.45); }
+.wb-node.reach-origin { box-shadow: 0 0 0 3px rgba(139, 160, 255, 0.75); }
+.wb-edge.reach-edge-dim { opacity: 0.15; }
+.wb-edge.reach-edge-hit { opacity: 1; }
+.reach-canvas-chip {
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  color: #8ab4ff;
+}
+/* ===== dsh-synapse style selected-text follow-up cue ===== */
+.followup-cue {
+  position: absolute;
+  left: 50%;
+  bottom: 168px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(640px, 80%);
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(20, 22, 27, 0.96);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  font-size: 0.78rem;
+  z-index: 40;
+}
+.followup-cue .followup-quote {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+.followup-cue button {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.72rem;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+.followup-cue button:hover { border-color: rgba(255, 255, 255, 0.45); }

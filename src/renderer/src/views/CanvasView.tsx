@@ -3,9 +3,10 @@ import { Background, Controls, MarkerType, Panel, ReactFlow, type Edge, type Nod
 import '@xyflow/react/dist/style.css';
 import { projectionStateToCanvas } from '../../../core/projection/canvasProjection';
 import type { WbEdgeKind } from '../../../core/types';
-import { useWorkbench } from '../store';
+import { useWorkbench, deriveProjectionReachState } from '../store';
 import { layoutProjection } from './reasonixProjectionLayout';
 import type { SemanticPassportEntityRefV0 } from '../../../core/projection/types';
+import { computeReachHighlight, reachCanvasEdgeClass, reachCanvasNodeClass } from '../reachHighlight';
 
 const EDGE_LABEL: Record<WbEdgeKind, string> = {
   membership: 'membership',
@@ -93,10 +94,19 @@ export function handleCanvasNodeClick(
 export function CanvasView() {
   const projectId = useWorkbench((state) => state.projectId);
   const projection = useWorkbench((state) => state.projection);
+  const reachOpen = useWorkbench((state) => state.reachOpen);
   const selectProjectedConversation = useWorkbench((state) => state.selectProjectedConversation);
   const setView = useWorkbench((state) => state.setView);
   const openRuntimeInspector = useWorkbench((state) => state.openRuntimeInspector);
   const openPassport = useWorkbench((state) => state.openPassport);
+
+  // Viewer-only reach highlight: when a Reach result is open, the canvas
+  // keeps origin + reachable subgraph strong and lets unrelated topology
+  // recede. Presentation only — no layout, IR, or semantic-hash change.
+  const reachHighlight = useMemo(() => {
+    const result = deriveProjectionReachState({ reachOpen, projection });
+    return result.kind === 'reach' ? computeReachHighlight(result.reach) : null;
+  }, [reachOpen, projection]);
 
   const { nodes, edges, kinds } = useMemo(() => {
     const canvas = projectionStateToCanvas(projection);
@@ -126,7 +136,7 @@ export function CanvasView() {
         kind: node.kind,
         status: node.status,
       },
-      className: `wb-node wb-${node.kind} status-${(node.status ?? '').toLowerCase()}`,
+      className: `wb-node wb-${node.kind} status-${(node.status ?? '').toLowerCase()}${reachCanvasNodeClass(node.id, reachHighlight)}`,
     }));
     const edges: Edge[] = semanticEdges.map((edge) => {
       const evidenced = edge.kind === 'execution' || edge.kind === 'handoff' || edge.kind === 'data-context';
@@ -137,7 +147,7 @@ export function CanvasView() {
         // Structural availability (membership/mount) reads as a fan from its
         // anchor; observed runtime edges keep routed arrows.
         type: evidenced ? 'smoothstep' : 'default',
-        className: `wb-edge-${edge.kind}`,
+        className: `wb-edge-${edge.kind}${reachCanvasEdgeClass(edge.source, edge.target, reachHighlight)}`,
         markerEnd: { type: evidenced ? MarkerType.ArrowClosed : MarkerType.Arrow, width: 10, height: 10 },
         style: {
           strokeWidth: evidenced ? 1.7 : 1.1,
@@ -146,7 +156,7 @@ export function CanvasView() {
       };
     });
     return { nodes, edges, kinds: [...new Set(semanticEdges.map((edge) => edge.kind))] };
-  }, [projection]);
+  }, [projection, reachHighlight]);
 
   if (!projectId) return null;
 
@@ -183,6 +193,11 @@ export function CanvasView() {
             ? <span>{projection.diagnostics[0].code}: {projection.diagnostics[0].message}</span>
             : null}
           <span>Native executions and explicit handoffs. Card position never defines lineage.</span>
+          {reachHighlight ? (
+            <span className="reach-canvas-chip">
+              Reach · {reachHighlight.direction} · {reachHighlight.reachableIds.size} entities · viewer-only
+            </span>
+          ) : null}
         </Panel>
         <Panel position="top-right" className="canvas-legend">
           {kinds.map((kind) => <span key={kind}><i className={`legend-line legend-${kind}`} />{EDGE_LABEL[kind]}</span>)}
