@@ -7,6 +7,7 @@ import type { ProfileImportPreview } from '../core/portability/bundle';
 import type { ProjectRootBindingsV1 } from '../main/projectRootBindings';
 import type { MemoryEvidenceExpansion, MemorySearchQuery, MemorySearchResult, MemoryUseStateV1 } from '../core/memory/types';
 import type { DoctorReport } from '../main/doctor';
+import type { WorkbenchContract } from './contract';
 
 const api = {
   loadOverlay: (opts?: { refresh?: boolean }): Promise<OverlaySnapshot> =>
@@ -166,8 +167,17 @@ const api = {
     ipcRenderer.on('material:changed', listener);
     return () => ipcRenderer.removeListener('material:changed', listener);
   },
-};
+} satisfies WorkbenchContract;
 
 export type WorkbenchApi = typeof api;
 
-contextBridge.exposeInMainWorld('wb', api);
+/**
+ * Internal — listed for the contract test to keep `preload/index.ts`
+ * implementation and `src/preload/contract.ts` in lockstep. Not exposed
+ * to the renderer via `contextBridge`.
+ */
+export const __workbenchApiKeys: ReadonlyArray<string> = Object.keys(api);
+
+if (contextBridge && typeof contextBridge.exposeInMainWorld === 'function') {
+  contextBridge.exposeInMainWorld('wb', api);
+}
