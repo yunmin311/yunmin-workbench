@@ -135,6 +135,14 @@ function workNodeId(projectId: WorkGraphProjectId, workId: WorkGraphWorkId): Wor
   return `work:${projectId}:${workId}`;
 }
 
+function taskNodeId(projectId: WorkGraphProjectId, taskId: string): WorkGraphNodeId {
+  return `task:${projectId}:${taskId}`;
+}
+
+function evidenceNodeId(projectId: WorkGraphProjectId, evidenceId: string): WorkGraphNodeId {
+  return `evidence:${projectId}:${evidenceId}`;
+}
+
 function conversationNodeId(projectId: WorkGraphProjectId, key: string): WorkGraphNodeId {
   return `conversation:${projectId}:${key}`;
 }
@@ -228,7 +236,9 @@ export function buildWorkGraphCandidate(options: WorkGraphCompileOptions): WorkG
     }
   }
   const sortedWorkIds = [...workIds.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
+  const workNodeById = new Map<WorkGraphWorkId, WorkGraphNodeId>();
   for (const [workId, meta] of sortedWorkIds) {
+    workNodeById.set(workId, workNodeId(projectId, workId));
     nodes.push({
       kind: 'work',
       id: workNodeId(projectId, workId),
@@ -305,6 +315,67 @@ export function buildWorkGraphCandidate(options: WorkGraphCompileOptions): WorkG
       observedAt: now,
       verification: asVerification(c.verification),
     });
+  }
+
+  // ---- Task nodes: ONLY from explicit canonical task facts ----
+  const taskFacts = [...(facts.tasks ?? [])]
+    .filter((t) => t.projectId === projectId)
+    .sort((a, b) => (a.taskId < b.taskId ? -1 : 1));
+  const taskNodeById = new Map<string, WorkGraphNodeId>();
+  for (const t of taskFacts) {
+    const nodeId = taskNodeId(projectId, t.taskId);
+    taskNodeById.set(t.taskId, nodeId);
+    nodes.push({
+      kind: 'task',
+      id: nodeId,
+      projectId,
+      label: t.label,
+      source: t.source,
+      sourceRef: t.sourceRef,
+      observedAt: t.observedAt,
+      verification: asVerification(t.verification),
+      taskId: t.taskId,
+      taskState: t.taskState ?? 'unknown',
+      attentionState: t.attentionState ?? 'unknown',
+      ...(t.workId ? { workId: t.workId } : {}),
+      ...(t.conversationKeys ? { conversationKeys: [...t.conversationKeys] } : {}),
+      ...(t.gateIds ? { gateIds: [...t.gateIds] } : {}),
+      ...(t.artifactRefs ? { artifactRefs: [...t.artifactRefs] } : {}),
+      evidenceRefs: [...t.evidenceRefs],
+    });
+    edges.push({
+      kind: 'membership',
+      id: `edge:membership:${projectNodeId(projectId)}:${nodeId}`,
+      projectId,
+      source: projectNodeId(projectId),
+      target: nodeId,
+      structuralSource: { entityId: projectNodeId(projectId), fieldPath: 'tasks' },
+      evidenceRefs: [...t.evidenceRefs],
+      observedAt: now,
+      verification: asVerification(t.verification),
+    });
+    // Work -> Task membership ONLY on explicit workId + existing Work.
+    if (t.workId) {
+      const workNode = workNodeById.get(t.workId);
+      if (workNode) {
+        edges.push({
+          kind: 'membership',
+          id: `edge:membership:${workNode}:${nodeId}`,
+          projectId,
+          source: workNode,
+          target: nodeId,
+          structuralSource: { entityId: nodeId, fieldPath: 'workId' },
+          evidenceRefs: [...t.evidenceRefs],
+          observedAt: now,
+          verification: asVerification(t.verification),
+        });
+      } else {
+        problems.push({
+          source: 'workgraph-compiler',
+          message: `Task "${t.taskId}" names unknown work "${t.workId}"; work membership omitted`,
+        });
+      }
+    }
   }
 
   // ---- Execution nodes (Paseo agents and native runs are executions, never works) ----
@@ -524,12 +595,71 @@ export function buildWorkGraphCandidate(options: WorkGraphCompileOptions): WorkG
     }
   }
 
+  // ---- Evidence nodes + evidences edges (exact identity + exact target only) ----
+  // An event without an evidence identity never becomes a node: only
+  // explicit evidence facts (with source + sourceRef) are projected.
+  const evidenceFacts = [...(facts.evidenceItems ?? [])]
+    .filter((e) => e.projectId === projectId)
+    .sort((a, b) => (a.evidenceId < b.evidenceId ? -1 : 1));
+  const evidenceNodeByRef = new Map<string, WorkGraphNodeId>();
+  const pendingEvidences: Array<{
+    nodeId: WorkGraphNodeId;
+    backsNodeId: string;
+    evidenceId: string;
+    evidenceRefs: string[];
+    verification: 'VERIFIED' | 'OBSERVED' | 'INFERRED' | 'UNKNOWN';
+  }> = [];
+  for (const e of evidenceFacts) {
+    const nodeId = evidenceNodeId(projectId, e.evidenceId);
+    evidenceNodeByRef.set(e.sourceRef, nodeId);
+    nodes.push({
+      kind: 'evidence',
+      id: nodeId,
+      projectId,
+      label: e.label,
+      source: e.source,
+      sourceRef: e.sourceRef,
+      observedAt: e.observedAt,
+      verification: asVerification(e.verification),
+      evidenceId: e.evidenceId,
+      evidenceType: e.evidenceType,
+      ...(e.eventRef ? { eventRef: e.eventRef } : {}),
+      ...(e.artifactRef ? { artifactRef: e.artifactRef } : {}),
+      ...(e.executionId ? { executionId: e.executionId } : {}),
+      ...(e.gateId ? { gateId: e.gateId } : {}),
+      evidenceRefs: [...e.evidenceRefs],
+    });
+    edges.push({
+      kind: 'membership',
+      id: `edge:membership:${projectNodeId(projectId)}:${nodeId}`,
+      projectId,
+      source: projectNodeId(projectId),
+      target: nodeId,
+      structuralSource: { entityId: projectNodeId(projectId), fieldPath: 'evidenceItems' },
+      evidenceRefs: [...e.evidenceRefs],
+      observedAt: now,
+      verification: asVerification(e.verification),
+    });
+    // Defer evidences edges until ALL nodes exist (order-independent).
+    if (e.backsNodeId) {
+      pendingEvidences.push({
+        nodeId,
+        backsNodeId: e.backsNodeId,
+        evidenceId: e.evidenceId,
+        evidenceRefs: [...e.evidenceRefs],
+        verification: asVerification(e.verification),
+      });
+    }
+  }
+
   // ---- Gate nodes + blocked-by edges (exact sourceId only) ----
   const gates = [...facts.attentionItems]
     .filter((g) => g.projectId === projectId)
     .sort((a, b) => (a.id < b.id ? -1 : 1));
+  const gateNodeById = new Map<string, WorkGraphNodeId>();
   for (const g of gates) {
     const nodeId = gateNodeId(projectId, g.id);
+    gateNodeById.set(g.id, nodeId);
     nodes.push({
       kind: 'gate',
       id: nodeId,
@@ -559,7 +689,11 @@ export function buildWorkGraphCandidate(options: WorkGraphCompileOptions): WorkG
       verification: asVerification(g.verification),
     });
     if (g.sourceId) {
-      const blockedNode = executionNodeByRef.get(g.sourceId) ?? conversationNodeByKey.get(g.sourceId);
+      const blockedNode =
+        executionNodeByRef.get(g.sourceId) ??
+        conversationNodeByKey.get(g.sourceId) ??
+        taskNodeById.get(g.sourceId) ??
+        workNodeById.get(g.sourceId);
       if (blockedNode) {
         edges.push({
           kind: 'blocked-by',
@@ -576,6 +710,34 @@ export function buildWorkGraphCandidate(options: WorkGraphCompileOptions): WorkG
         problems.push({
           source: 'workgraph-compiler',
           message: `Gate "${g.id}" names unknown source "${g.sourceId}"; blocked-by edge omitted`,
+        });
+      }
+    }
+  }
+
+  // ---- Task -> Gate blocked-by from explicit task gateIds ----
+  for (const t of taskFacts) {
+    if (!t.gateIds) continue;
+    const taskNode = taskNodeById.get(t.taskId);
+    if (!taskNode) continue;
+    for (const gateId of t.gateIds) {
+      const gateNode = gateNodeById.get(gateId);
+      if (gateNode) {
+        edges.push({
+          kind: 'blocked-by',
+          id: `edge:blocked-by:${taskNode}:${gateNode}`,
+          projectId,
+          source: taskNode,
+          target: gateNode,
+          structuralSource: { entityId: taskNode, fieldPath: 'gateIds' },
+          evidenceRefs: [...t.evidenceRefs],
+          observedAt: now,
+          verification: asVerification(t.verification),
+        });
+      } else {
+        problems.push({
+          source: 'workgraph-compiler',
+          message: `Task "${t.taskId}" names unknown gate "${gateId}"; blocked-by edge omitted`,
         });
       }
     }
@@ -634,6 +796,30 @@ export function buildWorkGraphCandidate(options: WorkGraphCompileOptions): WorkG
           message: `Handoff "${h.intentId}" references unknown execution; handoff edge omitted`,
         });
       }
+    }
+  }
+
+  // ---- Deferred evidences edges: emit after every node exists ----
+  // evidences edge ONLY when backsNodeId names an existing node.
+  const allNodeIds = new Set(nodes.map((n) => n.id));
+  for (const pending of pendingEvidences) {
+    if (allNodeIds.has(pending.backsNodeId)) {
+      edges.push({
+        kind: 'evidences',
+        id: `edge:evidences:${pending.nodeId}:${pending.backsNodeId}`,
+        projectId,
+        source: pending.nodeId,
+        target: pending.backsNodeId,
+        structuralSource: { entityId: pending.nodeId, fieldPath: 'backsNodeId' },
+        evidenceRefs: [...pending.evidenceRefs],
+        observedAt: now,
+        verification: pending.verification,
+      });
+    } else {
+      problems.push({
+        source: 'workgraph-compiler',
+        message: `Evidence "${pending.evidenceId}" backs unknown node "${pending.backsNodeId}"; evidences edge omitted`,
+      });
     }
   }
 

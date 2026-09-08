@@ -183,6 +183,10 @@ export interface WorkGraphSourceFacts {
   attentionItems: WorkGraphAttentionFact[];
   /** Artifact/evidence facts. */
   artifacts: WorkGraphArtifactFact[];
+  /** Explicit task facts (canonical task source only). */
+  tasks: WorkGraphTaskFact[];
+  /** Explicit evidence facts (exact evidence identity only). */
+  evidenceItems: WorkGraphEvidenceFact[];
 }
 
 /**
@@ -345,6 +349,59 @@ export interface WorkGraphArtifactFact {
   eventRef?: string;
   title: string;
   content?: string;
+  evidenceRefs: string[];
+}
+
+/**
+ * Explicit task fact. Only facts from a canonical/explicit task source
+ * may appear here. The compiler creates one Task node per fact and
+ * never invents tasks from execution liveness or conversation activity.
+ */
+export interface WorkGraphTaskFact {
+  taskId: string;
+  projectId: string;
+  label: string;
+  source: string;
+  sourceRef: string;
+  observedAt: string;
+  verification: 'VERIFIED' | 'OBSERVED' | 'INFERRED' | 'UNKNOWN';
+  taskState?: 'active' | 'waiting' | 'blocked' | 'standby' | 'unknown';
+  attentionState?: 'none' | 'needs-user' | 'approval' | 'blocked' | 'unknown';
+  /** Explicit Work binding declared by the task source. */
+  workId?: string;
+  /** Explicit conversation bindings declared by the task source. */
+  conversationKeys?: string[];
+  /** Explicit gate bindings declared by the task source. */
+  gateIds?: string[];
+  /** Exact artifact refs declared by the task source. */
+  artifactRefs?: string[];
+  evidenceRefs: string[];
+}
+
+/**
+ * Explicit evidence fact. Only facts with an exact, referenceable
+ * evidence identity may appear here. A bare "an event happened" with
+ * no evidence identity must NOT be recorded as an evidence fact.
+ */
+export interface WorkGraphEvidenceFact {
+  evidenceId: string;
+  projectId: string;
+  label: string;
+  evidenceType: string;
+  source: string;
+  sourceRef: string;
+  observedAt: string;
+  verification: 'VERIFIED' | 'OBSERVED' | 'INFERRED' | 'UNKNOWN';
+  eventRef?: string;
+  artifactRef?: string;
+  executionId?: string;
+  gateId?: string;
+  /**
+   * Exact target this evidence backs. When the target exists as a
+   * node, the compiler emits an `evidences` edge. Format:
+   * node id (e.g. 'gate:p1:g1') — never a guess.
+   */
+  backsNodeId?: string;
   evidenceRefs: string[];
 }
 

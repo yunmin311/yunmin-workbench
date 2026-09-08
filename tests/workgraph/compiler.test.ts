@@ -32,6 +32,8 @@ function baseFacts(overrides: Partial<WorkGraphSourceFacts> = {}): WorkGraphSour
     contextItems: [],
     attentionItems: [],
     artifacts: [],
+    tasks: [],
+    evidenceItems: [],
     ...overrides,
   };
 }

@@ -26,6 +26,20 @@
  *
  * This module contains NO layout (x/y/zoom/viewport/color/panel state).
  * Layout belongs to the Canvas renderer (later phase).
+ *
+ * FROZEN DECISION (PHASE 3A.1): Workflow is NOT an independent
+ * first-class node. There is no `workflow` member in
+ * WorkGraphNodeKind, and none may be added without an explicit
+ * canonical workflow source plus a new audit decision.
+ *
+ *   Workflow semantics = DEFERRED PROJECTION OVER WORK / TASK /
+ *   GATE / HANDOFF until an explicit canonical workflow source exists.
+ *
+ * Rationale: no independent SOT proves Workflow has a stable identity
+ * distinct from Work. Work is the sustained semantic container;
+ * Workflow is at most a structural/flow attribute of a Work or a
+ * later projection view. Future UI grouping must never mint
+ * canonical Workflow identity.
  */
 
 import type {
@@ -46,7 +60,9 @@ export type WorkGraphConversationId = string;
 export type WorkGraphExecutionId = string;
 export type WorkGraphContextId = string;
 export type WorkGraphMemorySourceId = string;
+export type WorkGraphTaskId = string;
 export type WorkGraphArtifactId = string;
+export type WorkGraphEvidenceEntityId = string;
 export type WorkGraphGateId = string;
 export type WorkGraphHandoffId = string;
 
@@ -69,11 +85,13 @@ export interface WorkGraphNodeBase {
 export type WorkGraphNodeKind =
   | 'project'
   | 'work'
+  | 'task'
   | 'conversation'
   | 'execution'
   | 'context'
   | 'memory-source'
   | 'artifact'
+  | 'evidence'
   | 'gate'
   | 'handoff';
 
@@ -96,6 +114,56 @@ export interface WorkGraphWorkNode extends WorkGraphNodeBase {
   currentness: 'CURRENT' | 'STALE' | 'INVALID' | 'UNKNOWN';
   conversationIds: WorkGraphConversationId[];
   executionIds: WorkGraphExecutionId[];
+}
+
+/**
+ * Task node — first-class task unit with an explicit canonical source.
+ *
+ * Task != Work. Work is the sustained semantic container; Task is a
+ * discrete unit that exists in a Governance/Project source. Tasks are
+ * never inferred from execution liveness, conversation activity, or
+ * any other heuristic: no canonical/explicit task source means no
+ * Task node.
+ *
+ * TaskState is orthogonal to RuntimeState: a task's state never moves
+ * because an execution started, stopped, or failed.
+ */
+export interface WorkGraphTaskNode extends WorkGraphNodeBase {
+  kind: 'task';
+  taskId: WorkGraphTaskId;
+  taskState: TaskState;
+  attentionState: 'none' | 'needs-user' | 'approval' | 'blocked' | 'unknown';
+  /** Explicit Work binding, when the task source declares one. */
+  workId?: WorkGraphWorkId;
+  /** Explicit conversation bindings declared by the task source. */
+  conversationKeys?: WorkGraphConversationId[];
+  /** Explicit gate bindings declared by the task source. */
+  gateIds?: WorkGraphGateId[];
+  /** Exact artifact refs declared by the task source. */
+  artifactRefs?: string[];
+  evidenceRefs: string[];
+}
+
+/**
+ * Evidence node — first-class, locatable, referenceable evidence entity.
+ *
+ * An Evidence node is NOT "an event happened". It requires an exact
+ * evidence identity (source + sourceRef) that can be cited and traced:
+ * protocol observation, runtime receipt, git fact, test/build result,
+ * artifact verification, gate evidence, fingerprint-backed evidence.
+ *
+ * The `evidences` edge cites an Evidence node as backing for a Gate,
+ * Artifact, or Execution — only with an exact evidenceRef/sourceRef.
+ */
+export interface WorkGraphEvidenceNode extends WorkGraphNodeBase {
+  kind: 'evidence';
+  evidenceId: WorkGraphEvidenceEntityId;
+  evidenceType: string;
+  eventRef?: string;
+  artifactRef?: string;
+  executionId?: WorkGraphExecutionId;
+  gateId?: WorkGraphGateId;
+  evidenceRefs: string[];
 }
 
 /**
@@ -213,11 +281,13 @@ export interface WorkGraphHandoffNode extends WorkGraphNodeBase {
 export type WorkGraphNode =
   | WorkGraphProjectNode
   | WorkGraphWorkNode
+  | WorkGraphTaskNode
   | WorkGraphConversationNode
   | WorkGraphExecutionNode
   | WorkGraphContextNode
   | WorkGraphMemorySourceNode
   | WorkGraphArtifactNode
+  | WorkGraphEvidenceNode
   | WorkGraphGateNode
   | WorkGraphHandoffNode;
 
@@ -378,22 +448,22 @@ export function isStructuralEdge(kind: WorkGraphEdgeKind): boolean {
 
 const SOURCE_KIND_MAP: Record<WorkGraphEdgeKind, Array<WorkGraphNode['kind']>> = {
   membership: ['project', 'work', 'conversation'],
-  'depends-on': ['work', 'conversation', 'execution'],
+  'depends-on': ['work', 'task', 'conversation', 'execution'],
   'uses-context': ['execution', 'conversation'],
   produces: ['execution'],
-  evidences: ['artifact', 'gate'],
-  'blocked-by': ['execution', 'conversation'],
+  evidences: ['evidence', 'artifact', 'gate'],
+  'blocked-by': ['work', 'task', 'execution', 'conversation'],
   handoff: ['execution'],
   'execution-of': ['conversation', 'work'],
   'derived-from': ['artifact', 'memory-source'],
 };
 
 const TARGET_KIND_MAP: Record<WorkGraphEdgeKind, Array<WorkGraphNode['kind']>> = {
-  membership: ['work', 'conversation', 'execution', 'context', 'memory-source', 'gate', 'artifact', 'handoff'],
-  'depends-on': ['work', 'conversation', 'execution', 'gate'],
+  membership: ['work', 'task', 'conversation', 'execution', 'context', 'memory-source', 'gate', 'artifact', 'evidence', 'handoff'],
+  'depends-on': ['work', 'task', 'conversation', 'execution', 'gate'],
   'uses-context': ['context'],
   produces: ['artifact'],
-  evidences: ['execution', 'context'],
+  evidences: ['gate', 'artifact', 'execution', 'context'],
   'blocked-by': ['gate'],
   handoff: ['execution'],
   'execution-of': ['execution'],

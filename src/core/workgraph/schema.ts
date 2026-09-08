@@ -39,11 +39,13 @@ function diag(
 const NODE_IDS = new Set([
   'project',
   'work',
+  'task',
   'conversation',
   'execution',
   'context',
   'memory-source',
   'artifact',
+  'evidence',
   'gate',
   'handoff',
 ]);

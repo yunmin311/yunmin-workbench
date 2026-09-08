@@ -40,6 +40,8 @@ function facts(): WorkGraphSourceFacts {
     artifacts: [
       { artifactId: 'art1', projectId: 'p1', kind: 'agent-result', executionId: 'e1', title: 'R', evidenceRefs: [] },
     ],
+    tasks: [],
+    evidenceItems: [],
   };
 }
 
