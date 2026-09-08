@@ -9,20 +9,20 @@
  * Invariants:
  * 1. Every entry has a unique `id`. Duplicate `register(executor)`
  *    calls for the same id are rejected with `ALREADY_REGISTERED`.
- * 2. `id` MUST equal `executor.kind`. Mismatched ids are rejected
- *    with `ID_MISMATCH`. The audit window demands honest identity.
+ * 2. `id` MUST equal `executor.identity.id` (which equals `${backend}:${provider}`).
+ *    Mismatched ids are rejected with `ID_MISMATCH`.
  * 3. Capability answers must be YES / NO / UNKNOWN; anything else is
  *    `INVALID_CAPABILITY`.
  * 4. `list()` returns a fresh array; the caller may mutate freely.
  *
  * Compatibility note (Paseo):
- * - No concrete executor adapter is registered in this phase. The
- *   registry type is in place so that a future Paseo decision
- *   (donor / protocol / provider / reference) can drop an executor in
- *   without contract changes.
+ * - Concrete executor adapters are registered in PHASE 2B+. The
+ *   registry type is in place so that the Paseo adapter can declare
+ *   itself without contract changes.
  */
 import type {
   CapabilityAnswer,
+  ExecutionIdentity,
   Executor,
   ExecutorRegistryEntry,
 } from './types';
@@ -64,6 +64,25 @@ function validateCapabilities(executor: Executor): ExecutorRegistryError | null 
   return null;
 }
 
+function validateIdentity(executor: Executor): ExecutorRegistryError | null {
+  const expectedId = executor.identity.id;
+  if (executor.id !== expectedId) {
+    return {
+      code: 'ID_MISMATCH',
+      message: `executor id "${executor.id}" must equal identity.id "${expectedId}" (backend: ${executor.identity.backend}, provider: ${executor.identity.provider})`,
+    };
+  }
+  // Also validate backend:provider format
+  const parts = expectedId.split(':');
+  if (parts.length !== 2) {
+    return {
+      code: 'ID_MISMATCH',
+      message: `identity.id "${expectedId}" must be in "backend:provider" format`,
+    };
+  }
+  return null;
+}
+
 export class ExecutorRegistry {
   private readonly entries: Map<string, ExecutorRegistryEntry>;
 
@@ -81,14 +100,9 @@ export class ExecutorRegistry {
         },
       };
     }
-    if (executor.id !== executor.kind) {
-      return {
-        ok: false,
-        error: {
-          code: 'ID_MISMATCH',
-          message: `executor id "${executor.id}" must equal kind "${executor.kind}"`,
-        },
-      };
+    const identityError = validateIdentity(executor);
+    if (identityError) {
+      return { ok: false, error: identityError };
     }
     const capabilityError = validateCapabilities(executor);
     if (capabilityError) {
@@ -106,8 +120,19 @@ export class ExecutorRegistry {
     return this.entries.get(id)?.executor ?? null;
   }
 
+  /**
+   * Get executor by backend and provider.
+   */
+  getByBackendAndProvider(backend: string, provider: string): Executor | null {
+    return this.get(`${backend}:${provider}`) ?? null;
+  }
+
   list(): ExecutorRegistryEntry[] {
     return [...this.entries.values()];
+  }
+
+  listByBackend(backend: string): ExecutorRegistryEntry[] {
+    return this.list().filter((entry) => entry.executor.identity.backend === backend);
   }
 
   has(id: string): boolean {

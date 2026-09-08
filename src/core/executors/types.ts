@@ -17,23 +17,17 @@
  * - The contract never declares a preferred provider, a fallback
  *   provider, or a default executor.
  *
- * Compatibility note (Paseo):
- * - Paseo audit pending. Paseo is recorded as an EXECUTION SUBSTRATE
- *   CANDIDATE, not a product UI donor. This contract is intentionally
- *   shaped so that:
- *     (a) existing native adapters (Codex / Claude / DeepSeek) remain
- *         eligible;
- *     (b) a future `@getpaseo/client` adapter, a future Paseo
- *         protocol / daemon adapter, or a future source-reuse
- *         provider layer can declare itself without contract changes;
- *     (c) Workbench's own Governance / Packet / Canvas / Context
- *         Cabinet remain the canonical projection surface — Paseo
- *         will not be retrofitted as a Workbench model.
+ * Execution identity is split into two orthogonal dimensions:
+ *   ExecutionBackend:  the substrate that actually runs the agent
+ *   ProviderIdentity:  the upstream agent product/brand
  *
- * NO concrete transport is implemented in this phase. The registry is
- * the seam; concrete adapters land after the Paseo audit closes.
+ * This separation allows:
+ *   - Paseo backend with claude/codex/opencode/... providers
+ *   - Native backend with claude/codex/deepseek providers
+ *   - ACP backend with copilot/cursor/... providers
+ *   - External backend with any provider
+ *   without hard-coding provider lists into backend kinds.
  */
-
 export type CapabilityAnswer = 'YES' | 'NO' | 'UNKNOWN';
 
 export interface CapabilityEvidence {
@@ -85,28 +79,70 @@ export type ExecutorAvailability =
   | { state: 'UNKNOWN'; reason: string };
 
 /**
- * Distinct executor kinds Workbench knows about. Adding a new kind is
- * a registry-level decision and requires its own audit window.
+ * Execution backend substrate. Paseo is the primary substrate in
+ * PHASE 2B+, but native/acp/external remain valid for fallback and
+ * for providers not (yet) available on Paseo.
  */
-export type ExecutorKind =
-  | 'codex'
-  | 'claude'
-  | 'deepseek'
+export type ExecutionBackend =
+  | 'paseo'
+  | 'native'
   | 'acp'
-  | 'paseo';
+  | 'external';
 
-export interface Executor {
-  /** Stable identifier. Equal kind → equal id requirement. */
+/**
+ * Upstream agent provider identity. Open string union — not frozen
+ * to a closed enum — because new providers appear continuously.
+ * The listed brands are the ones currently known to Workbench or Paseo.
+ */
+export type ProviderIdentity =
+  | 'claude'
+  | 'codex'
+  | 'deepseek'
+  | 'opencode'
+  | 'copilot'
+  | 'pi'
+  | 'omp'
+  | (string & {});
+
+/**
+ * Execution identity combines backend + provider. This is what gets
+ * registered in the executor registry and exposed to the UI.
+ */
+export interface ExecutionIdentity {
+  backend: ExecutionBackend;
+  provider: ProviderIdentity;
+  /** Stable identifier: `${backend}:${provider}`. Must equal id. */
   id: string;
-  kind: ExecutorKind;
   /** Human label. Never used as identity. */
   label: string;
+}
+
+export interface Executor {
+  /** Stable identifier. Equal to identity.id. */
+  id: string;
+  identity: ExecutionIdentity;
   capabilities: ExecutorCapabilities;
   /**
    * "Is this executor reachable on this host right now". Adapter-
    * derived. The registry never recomputes this from capabilities.
    */
   availability(): Promise<ExecutorAvailability>;
+  /**
+   * Optional runtime identity descriptor. When the executor can
+   * authoritatively describe its runtime (e.g. Paseo workspaceId /
+   * agentId / native session id), it returns it here. Otherwise
+   * returns null — never fabricate a runtimeRef.
+   */
+  getRuntimeIdentity?(): Promise<RuntimeIdentity | null>;
+}
+
+export interface RuntimeIdentity {
+  /** Backend-specific runtime handle. Paseo: workspaceId + agentId. Native: external session id. */
+  runtimeRef: string;
+  /** Human-readable source for debugging (e.g. "paseo:ws://host:6767/ws", "native:codex-app-server"). */
+  sourceRef: string;
+  /** Verification level of this identity claim. */
+  verification: 'VERIFIED' | 'OBSERVED' | 'INFERRED' | 'UNKNOWN';
 }
 
 export interface ExecutorRegistryEntry {

@@ -18,6 +18,7 @@
     "e2e": "pnpm build && playwright test"
   },
   "dependencies": {
+    "@getpaseo/client": "0.7.2",
     "@noble/hashes": "1.7.1",
     "@xyflow/react": "^12.3.6",
     "chokidar": "^5.0.0",

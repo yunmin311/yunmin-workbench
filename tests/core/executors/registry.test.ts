@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { ExecutorRegistry } from '../../../src/core/executors/registry';
 import type {
   CapabilityAnswer,
+  ExecutionBackend,
   Executor,
   ExecutorCapabilities,
-  ExecutorKind,
+  ProviderIdentity,
 } from '../../../src/core/executors/types';
 
 function makeCapabilities(answer: CapabilityAnswer = 'YES'): ExecutorCapabilities {
@@ -23,11 +24,12 @@ function makeCapabilities(answer: CapabilityAnswer = 'YES'): ExecutorCapabilitie
 }
 
 function makeExecutor(overrides: Partial<Executor> = {}): Executor {
-  const kind: ExecutorKind = 'codex';
+  const backend: ExecutionBackend = 'native';
+  const provider: ProviderIdentity = 'codex';
+  const identity = { backend, provider, id: `${backend}:${provider}`, label: 'Codex (native)' };
   return {
-    id: 'codex',
-    kind,
-    label: 'Codex',
+    id: identity.id,
+    identity,
     capabilities: makeCapabilities(),
     async availability() { return { state: 'AVAILABLE', reason: 'stub' }; },
     ...overrides,
@@ -40,7 +42,7 @@ describe('ExecutorRegistry', () => {
     const result = registry.register(makeExecutor());
     expect(result.ok).toBe(true);
     expect(registry.size()).toBe(1);
-    expect(registry.get('codex')?.label).toBe('Codex');
+    expect(registry.get('native:codex')?.identity.label).toBe('Codex (native)');
   });
 
   it('rejects a second registration of the same id', () => {
@@ -54,9 +56,9 @@ describe('ExecutorRegistry', () => {
     expect(registry.size()).toBe(1);
   });
 
-  it('rejects id that does not equal kind', () => {
+  it('rejects id that does not equal identity.id', () => {
     const registry = new ExecutorRegistry();
-    const result = registry.register(makeExecutor({ id: 'claude', kind: 'codex' }));
+    const result = registry.register(makeExecutor({ id: 'claude', identity: { backend: 'native', provider: 'codex', id: 'native:codex', label: 'X' } }));
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.code).toBe('ID_MISMATCH');
@@ -80,7 +82,16 @@ describe('ExecutorRegistry', () => {
     caps.resume = { answer: 'UNKNOWN', evidence: 'provider does not document resume' };
     const result = registry.register(makeExecutor({ capabilities: caps }));
     expect(result.ok).toBe(true);
-    expect(registry.get('codex')?.capabilities.resume.answer).toBe('UNKNOWN');
+    expect(registry.get('native:codex')?.capabilities.resume.answer).toBe('UNKNOWN');
+  });
+
+  it('rejects identity.id not in backend:provider format', () => {
+    const registry = new ExecutorRegistry();
+    const result = registry.register(makeExecutor({ identity: { backend: 'native', provider: 'codex', id: 'invalid', label: 'X' } }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('ID_MISMATCH');
+    }
   });
 
   it('returns a fresh array from list(); mutating it does not change the registry', () => {
@@ -95,7 +106,31 @@ describe('ExecutorRegistry', () => {
   it('has() reports membership without exposing the entry', () => {
     const registry = new ExecutorRegistry();
     registry.register(makeExecutor());
-    expect(registry.has('codex')).toBe(true);
-    expect(registry.has('paseo')).toBe(false);
+    expect(registry.has('native:codex')).toBe(true);
+    expect(registry.has('paseo:codex')).toBe(false);
+  });
+
+  it('listByBackend() filters by backend', () => {
+    const registry = new ExecutorRegistry();
+    const nativeResult = registry.register(makeExecutor({ id: 'native:codex', identity: { backend: 'native', provider: 'codex', id: 'native:codex', label: 'Codex (native)' } }));
+    expect(nativeResult.ok).toBe(true);
+    const paseoResult = registry.register(makeExecutor({ id: 'paseo:claude', identity: { backend: 'paseo', provider: 'claude', id: 'paseo:claude', label: 'Claude (Paseo)' } }));
+    expect(paseoResult.ok).toBe(true);
+    const native = registry.listByBackend('native');
+    const paseo = registry.listByBackend('paseo');
+    expect(native.length).toBe(1);
+    expect(paseo.length).toBe(1);
+    expect(native[0].executor.identity.provider).toBe('codex');
+    expect(paseo[0].executor.identity.provider).toBe('claude');
+  });
+
+  it('getByBackendAndProvider() finds exact match', () => {
+    const registry = new ExecutorRegistry();
+    registry.register(makeExecutor());
+    const exec = registry.getByBackendAndProvider('native', 'codex');
+    expect(exec).not.toBeNull();
+    expect(exec?.identity.backend).toBe('native');
+    expect(exec?.identity.provider).toBe('codex');
+    expect(registry.getByBackendAndProvider('paseo', 'codex')).toBeNull();
   });
 });
