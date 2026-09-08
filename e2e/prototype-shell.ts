@@ -70,6 +70,7 @@ export async function launchWorkbench(
     env: workbenchEnv({ ...extraEnv, GOV_OVERLAY: overlayRoot, WB_STATE_DIR: stateDir }),
   });
   const win = await app.firstWindow();
-  await expect(win.locator('.prototype-chrome')).toBeVisible();
+  const rendererRoot = extraEnv.WB_RENDERER_VNEXT === '1' ? '.vnext-app' : '.prototype-chrome';
+  await expect(win.locator(rendererRoot)).toBeVisible();
   return { app, win };
 }

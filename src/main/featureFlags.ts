@@ -15,3 +15,11 @@
 export function isVNextRendererEnabled(): boolean {
   return process.env.WB_RENDERER_VNEXT === '1';
 }
+
+export function rendererEntryForEnvironment(
+  env: { WB_RENDERER_VNEXT?: string },
+): '../renderer-vnext/index.html' | '../renderer/index.html' {
+  return env.WB_RENDERER_VNEXT === '1'
+    ? '../renderer-vnext/index.html'
+    : '../renderer/index.html';
+}

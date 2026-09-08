@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { isVNextRendererEnabled } from '../../src/main/featureFlags';
+import { isVNextRendererEnabled, rendererEntryForEnvironment } from '../../src/main/featureFlags';
 
 describe('isVNextRendererEnabled', () => {
   const original = process.env.WB_RENDERER_VNEXT;
@@ -28,5 +28,11 @@ describe('isVNextRendererEnabled', () => {
       process.env.WB_RENDERER_VNEXT = value;
       expect(isVNextRendererEnabled(), `value=${JSON.stringify(value)}`).toBe(false);
     }
+  });
+
+  it('routes the main window to vNext only for the literal flag', () => {
+    expect(rendererEntryForEnvironment({ WB_RENDERER_VNEXT: '1' })).toBe('../renderer-vnext/index.html');
+    expect(rendererEntryForEnvironment({})).toBe('../renderer/index.html');
+    expect(rendererEntryForEnvironment({ WB_RENDERER_VNEXT: 'true' })).toBe('../renderer/index.html');
   });
 });

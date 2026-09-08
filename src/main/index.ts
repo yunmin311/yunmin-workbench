@@ -74,6 +74,8 @@ import { allowlistedVersionToken } from './adapters/evidenceBounds';
 import { codexAgentContent, eventEvidence, packetTaskSummary, protocolText } from './activityEvidence';
 import { compileWorkGraph } from '../core/workgraph/compiler';
 import type { WorkGraphSourceFacts, WorkGraphCompileOptions } from '../core/workgraph/revision';
+import { rendererEntryForEnvironment } from './featureFlags';
+import { applyAttentionLocalState, reduceAttention } from '../core/attention/reducer';
 
 // test hook: Playwright E2E redirects Workbench-owned state to a temp dir
 if (process.env.WB_STATE_DIR) app.setPath('userData', process.env.WB_STATE_DIR);
@@ -1261,62 +1263,81 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
   });
 
   ipcMain.handle('workgraph:get', async (_e, rawProjectId?: unknown) => {
-    const projectId = KeySchema.parse(rawProjectId ?? (cache?.snapshot?.projects[0]?.projectId));
-    if (!projectId) {
-      return { revision: null, error: 'No project selected' };
-    }
     try {
+      const snapshot = cache?.snapshot ?? await refresh();
+      const selectedProjectId = rawProjectId ?? snapshot.projects[0]?.projectId;
+      if (!selectedProjectId) return { revision: null, error: 'No project selected' };
+      const projectId = KeySchema.parse(selectedProjectId);
+      const [rootBindings, activityPage, attentionLocal] = await Promise.all([
+        readProjectRootBindings(stateDir()),
+        readActivityPage(stateDir(), { limit: 1_000 }),
+        readAttentionLocalState(stateDir()),
+      ]);
+      const attentionItems = applyAttentionLocalState(
+        reduceAttention({ activity: activityPage.events, limit: 200 }),
+        attentionLocal,
+      ).filter((item) => item.projectId === projectId);
       const facts: WorkGraphSourceFacts = {
-        governanceBindings: (await readProjectRootBindings(stateDir())).bindings
-          ? Object.entries((await readProjectRootBindings(stateDir())).bindings).map(([projectId, binding]) => ({
-              projectId,
+        governanceBindings: Object.entries(rootBindings.bindings).map(([boundProjectId, binding]) => ({
+              projectId: boundProjectId,
               workId: undefined,
               binding: {
-                projectId,
+                projectId: boundProjectId,
                 root: binding.root,
                 canonicalPath: binding.canonicalPath,
-                observedAt: binding.observedAt,
-                verification: binding.observedAt ? 'VERIFIED' as const : 'UNKNOWN' as const,
+                observedAt: binding.verifiedAt,
+                verification: binding.verification,
               },
-            }))
-          : [],
+            })),
         historySessions: [],
         memoryEntries: [],
         packets: [],
         handoffs: [],
         adapterExecutions: [],
-        overlaySnapshot: cache?.snapshot
-          ? {
-              conversations: cache.snapshot.conversations.map((c) => ({
+        overlaySnapshot: {
+              conversations: snapshot.conversations.map((c) => ({
                 conversationKey: c.key,
-                canonicalConversationId: c.canonicalConversationId,
+                canonicalConversationId: c.conversationId,
                 projectId: c.project,
                 role: c.role,
                 platform: c.platform,
-                lifecycleState: c.lifecycleState,
+                lifecycleState: c.status,
                 taskState: c.taskState,
                 runtimeState: c.runtimeState,
-                attentionState: c.attentionState,
+                attentionState: c.attention,
                 verification: c.verification,
                 evidenceRefs: [],
               })),
-              projects: cache.snapshot.projects.map((p) => ({
+              projects: snapshot.projects.map((p) => ({
                 projectId: p.projectId,
-                label: p.label,
-                canonicalSource: p.canonicalSource,
+                label: p.displayName,
+                canonicalSource: p.canonicalSource?.path
+                  ? { path: p.canonicalSource.path, remote: p.canonicalSource.remote }
+                  : undefined,
               })),
-              memoryIndex: cache.snapshot.memoryIndex.map((m) => ({
+              memoryIndex: snapshot.memoryIndex.map((m) => ({
                 memoryId: m.id,
                 title: m.title,
-                source: m.source,
+                source: m.sourceRef,
               })),
-              inbox: [],
-              sourceFingerprints: cache.snapshot.sourceFingerprints,
-              problems: cache.snapshot.problems,
-            }
-          : undefined,
+              inbox: snapshot.inbox.map((item) => ({ id: item.id, line: item.line, text: item.raw })),
+              sourceFingerprints: snapshot.sourceFingerprints,
+              problems: snapshot.problems,
+            },
         contextItems: [],
-        attentionItems: [],
+        attentionItems: attentionItems.map((item) => ({
+          id: item.id,
+          kind: item.kind,
+          level: item.level,
+          title: item.title,
+          summary: item.summary,
+          projectId,
+          sourceId: item.conversationKey ?? item.sessionRef,
+          sourceRef: item.sourceRef,
+          evidenceRefs: item.eventRef ? [item.eventRef] : [],
+          observedAt: item.observedAt,
+          verification: item.verification,
+        })),
         artifacts: [],
         tasks: [],
         evidenceItems: [],
@@ -1443,7 +1464,7 @@ async function createWindow(refresh: () => Promise<OverlaySnapshot>): Promise<Br
   if (process.env.ELECTRON_RENDERER_URL) {
     void win.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {
-    void win.loadFile(join(__dirname, '../renderer/index.html'));
+    void win.loadFile(join(__dirname, rendererEntryForEnvironment(process.env)));
   }
   windowRoles.set(win, { role: 'main' });
   return win;

@@ -3,8 +3,9 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 
 export default defineConfig({
+  base: './',
   plugins: [react()],
-  build: { outDir: 'out/renderer-vnext' },
+  build: { outDir: path.resolve(__dirname, 'out/renderer-vnext'), emptyOutDir: true },
   root: 'src/renderer-vnext',
   publicDir: false,
 });

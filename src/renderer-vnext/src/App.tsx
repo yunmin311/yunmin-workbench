@@ -1,25 +1,28 @@
-import React, { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { WorkGraphCanvas } from './components/canvas/WorkGraphCanvas';
 import './styles/index.css';
-import type { WorkGraphRevision, WorkGraphNode, WorkGraphEdge } from './types';
+import type { WorkGraphRevision } from './types';
 
 function App() {
   const [revision, setRevision] = useState<WorkGraphRevision | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const rev = await window.wb.getWorkGraphRevision();
-        setRevision(rev);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
-      } finally {
-        setLoading(false);
-      }
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const response = await window.wb.getWorkGraphRevision();
+      if (response.error) throw new Error(response.error);
+      setRevision(response.revision);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
     }
-    load();
+  }, []);
+
+  useEffect(() => {
+    void load();
   }, []);
 
   if (loading) {
@@ -63,7 +66,7 @@ function App() {
         </div>
       </header>
       <main className="vnext-main">
-        <WorkGraphCanvas revision={revision} />
+        <WorkGraphCanvas revision={revision} onRefresh={load} />
       </main>
     </div>
   );

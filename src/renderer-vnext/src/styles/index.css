@@ -1,9 +1,19 @@
 /* vNext Canvas minimal styles */
 
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
 .workgraph-canvas-container {
   width: 100%;
   height: 100%;
   background: #0f172a;
+  position: relative;
 }
 
 .workgraph-node {
@@ -19,6 +29,10 @@
   color: #e2e8f0;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(8px);
+}
+
+.workgraph-node.is-selected {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.24), 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 
 .node-header {
@@ -215,3 +229,83 @@
   width: 100%;
   height: 100%;
 }
+
+.graph-controls {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.92);
+}
+
+.graph-controls button,
+.focus-close {
+  border: 1px solid #475569;
+  border-radius: 6px;
+  background: #1e293b;
+  color: #cbd5e1;
+  padding: 6px 9px;
+  font: 600 11px/1 system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.graph-controls button:hover,
+.focus-close:hover {
+  border-color: #818cf8;
+  color: #fff;
+}
+
+.focus-detail {
+  position: absolute;
+  z-index: 5;
+  top: 14px;
+  right: 14px;
+  width: min(290px, calc(100% - 28px));
+  max-height: calc(100% - 28px);
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 16px;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.96);
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.48);
+}
+
+.focus-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 4px 7px;
+}
+
+.detail-kicker,
+.focus-detail h3 {
+  margin: 0 0 7px;
+  color: #818cf8;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.focus-detail h2 {
+  margin: 0 28px 14px 0;
+  color: #f8fafc;
+  font-size: 17px;
+}
+
+.focus-detail dl {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 7px 10px;
+  margin: 0 0 16px;
+  font-size: 11px;
+}
+
+.focus-detail dt { color: #64748b; }
+.focus-detail dd { margin: 0; color: #cbd5e1; overflow-wrap: anywhere; }
+.focus-detail ul { list-style: none; padding: 0; margin: 0; }
+.focus-detail li { display: grid; grid-template-columns: 82px 1fr; gap: 8px; padding: 6px 0; border-top: 1px solid #1e293b; color: #cbd5e1; font-size: 11px; }
+.focus-detail li span { color: #94a3b8; }
+.detail-empty { margin: 0; color: #64748b; font-size: 11px; }
