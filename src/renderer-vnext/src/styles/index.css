@@ -1,0 +1,217 @@
+/* vNext Canvas minimal styles */
+
+.workgraph-canvas-container {
+  width: 100%;
+  height: 100%;
+  background: #0f172a;
+}
+
+.workgraph-node {
+  background: rgba(15, 23, 42, 0.95);
+  border: 1.5px solid;
+  border-radius: 8px;
+  padding: 8px 10px;
+  min-width: 180px;
+  max-width: 260px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Monaco', monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #e2e8f0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(8px);
+}
+
+.node-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.node-kind-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.verification-badge {
+  font-size: 9px;
+  color: #64748b;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.node-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #f1f5f9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+}
+
+.node-source-ref {
+  font-size: 10px;
+  color: #64748b;
+  font-family: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.workgraph-handle {
+  background: #334155;
+  border: 1px solid #475569;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.workgraph-handle:hover {
+  background: #64748b;
+  border-color: #94a3b8;
+}
+
+.react-flow__handle.react-flow__handle-top,
+.react-flow__handle.react-flow__handle-bottom,
+.react-flow__handle.react-flow__handle-left,
+.react-flow__handle.react-flow__handle-right {
+  background: #334155;
+  border: 1px solid #475569;
+}
+
+.react-flow__handle.react-flow__handle-connecting {
+  background: #f59e0b;
+  border-color: #f59e0b;
+}
+
+.edge-evidence-indicator {
+  position: absolute;
+  font-size: 9px;
+  color: #14b8a6;
+  background: rgba(20, 184, 166, 0.15);
+  padding: 1px 4px;
+  border-radius: 3px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.vnext-app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.vnext-loading,
+.vnext-error,
+.vnext-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  gap: 16px;
+  color: #94a3b8;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #1e293b;
+  border-top-color: #6366f1;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.vnext-error h2 {
+  color: #ef4444;
+  margin: 0;
+}
+
+.vnext-error pre {
+  background: #1e1e2e;
+  padding: 12px;
+  border-radius: 6px;
+  overflow: auto;
+  max-width: 600px;
+}
+
+.vnext-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: rgba(15, 23, 42, 0.9);
+  border-bottom: 1px solid #1e293b;
+  backdrop-filter: blur(12px);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.app-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.project-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(99, 102, 241, 0.2);
+  color: #a5b4fc;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.revision-info {
+  font-size: 11px;
+  color: #64748b;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.revision-info code {
+  background: rgba(99, 102, 241, 0.15);
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: #a5b4fc;
+}
+
+.vnext-main {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.workgraph-canvas-container {
+  width: 100%;
+  height: 100%;
+}

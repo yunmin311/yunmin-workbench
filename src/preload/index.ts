@@ -8,6 +8,7 @@ import type { ProjectRootBindingsV1 } from '../main/projectRootBindings';
 import type { MemoryEvidenceExpansion, MemorySearchQuery, MemorySearchResult, MemoryUseStateV1 } from '../core/memory/types';
 import type { DoctorReport } from '../main/doctor';
 import type { WorkbenchContract } from './contract';
+import type { WorkGraphRevision } from '../core/workgraph/revision';
 
 const api = {
   loadOverlay: (opts?: { refresh?: boolean }): Promise<OverlaySnapshot> =>
@@ -162,6 +163,8 @@ const api = {
   getMaterialCapability: (): Promise<{ supportsGlass: boolean; supportsFrost: boolean; supportsPure: boolean; reason: string | null; isWindows: boolean; reducedTransparency: boolean }> =>
     ipcRenderer.invoke('material:capability'),
   runDoctor: (): Promise<DoctorReport> => ipcRenderer.invoke('doctor:run'),
+  getWorkGraphRevision: (projectId?: string): Promise<{ revision: WorkGraphRevision | null; error?: string }> =>
+    ipcRenderer.invoke('workgraph:get', projectId),
   onMaterialChanged: (cb: (pref: { material: string }) => void): (() => void) => {
     const listener = (_e: IpcRendererEvent, pref: unknown) => cb(pref as { material: string });
     ipcRenderer.on('material:changed', listener);

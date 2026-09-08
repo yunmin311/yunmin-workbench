@@ -38,6 +38,7 @@ import type {
   SourceFingerprint,
   TaskPacket,
 } from '../core/types';
+import type { WorkGraphRevision } from '../core/workgraph/revision';
 import type { WorkbenchDraftV1 } from '../core/project/draft';
 import type { WorkspaceSessionV1 } from '../core/project/workspaceSession';
 import type { HistoryCatalogResult, HistoryQuery, HistorySearchResult, HistorySessionDetail } from '../core/history/types';
@@ -169,6 +170,7 @@ export interface WorkbenchContractV1 {
   }>;
   runDoctor(): Promise<DoctorReport>;
   onMaterialChanged(cb: (pref: { material: string }) => void): () => void;
+  getWorkGraphRevision(projectId?: string): Promise<{ revision: WorkGraphRevision | null; error?: string }>;
 }
 
 export type WorkbenchContract = WorkbenchContractV1;
@@ -233,6 +235,7 @@ const CONTRACT_METHOD_NAMES: ReadonlyArray<ContractMethodNames> = [
   'getMaterialCapability',
   'runDoctor',
   'onMaterialChanged',
+  'getWorkGraphRevision',
 ];
 
 const contractMethodMarker: WorkbenchContractV1 = new Proxy({} as WorkbenchContractV1, {

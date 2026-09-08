@@ -72,6 +72,8 @@ import { buildDoctorReport } from './doctor';
 import { RecoverableSerialQueue } from './recoverableSerialQueue';
 import { allowlistedVersionToken } from './adapters/evidenceBounds';
 import { codexAgentContent, eventEvidence, packetTaskSummary, protocolText } from './activityEvidence';
+import { compileWorkGraph } from '../core/workgraph/compiler';
+import type { WorkGraphSourceFacts, WorkGraphCompileOptions } from '../core/workgraph/revision';
 
 // test hook: Playwright E2E redirects Workbench-owned state to a temp dir
 if (process.env.WB_STATE_DIR) app.setPath('userData', process.env.WB_STATE_DIR);
@@ -1256,6 +1258,78 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       },
       singleInstance: gotSingleInstanceLock,
     });
+  });
+
+  ipcMain.handle('workgraph:get', async (_e, rawProjectId?: unknown) => {
+    const projectId = KeySchema.parse(rawProjectId ?? (cache?.snapshot?.projects[0]?.projectId));
+    if (!projectId) {
+      return { revision: null, error: 'No project selected' };
+    }
+    try {
+      const facts: WorkGraphSourceFacts = {
+        governanceBindings: (await readProjectRootBindings(stateDir())).bindings
+          ? Object.entries((await readProjectRootBindings(stateDir())).bindings).map(([projectId, binding]) => ({
+              projectId,
+              workId: undefined,
+              binding: {
+                projectId,
+                root: binding.root,
+                canonicalPath: binding.canonicalPath,
+                observedAt: binding.observedAt,
+                verification: binding.observedAt ? 'VERIFIED' as const : 'UNKNOWN' as const,
+              },
+            }))
+          : [],
+        historySessions: [],
+        memoryEntries: [],
+        packets: [],
+        handoffs: [],
+        adapterExecutions: [],
+        overlaySnapshot: cache?.snapshot
+          ? {
+              conversations: cache.snapshot.conversations.map((c) => ({
+                conversationKey: c.key,
+                canonicalConversationId: c.canonicalConversationId,
+                projectId: c.project,
+                role: c.role,
+                platform: c.platform,
+                lifecycleState: c.lifecycleState,
+                taskState: c.taskState,
+                runtimeState: c.runtimeState,
+                attentionState: c.attentionState,
+                verification: c.verification,
+                evidenceRefs: [],
+              })),
+              projects: cache.snapshot.projects.map((p) => ({
+                projectId: p.projectId,
+                label: p.label,
+                canonicalSource: p.canonicalSource,
+              })),
+              memoryIndex: cache.snapshot.memoryIndex.map((m) => ({
+                memoryId: m.id,
+                title: m.title,
+                source: m.source,
+              })),
+              inbox: [],
+              sourceFingerprints: cache.snapshot.sourceFingerprints,
+              problems: cache.snapshot.problems,
+            }
+          : undefined,
+        contextItems: [],
+        attentionItems: [],
+        artifacts: [],
+        tasks: [],
+        evidenceItems: [],
+      };
+      const { revision } = await compileWorkGraph({
+        projectId,
+        sourceDigest: 'live',
+        facts,
+      });
+      return { revision };
+    } catch (e) {
+      return { error: String(e) };
+    }
   });
 
   return { refresh };
