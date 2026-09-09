@@ -59,11 +59,6 @@ function App() {
           <h1 className="app-title">Workbench vNext</h1>
           <span className="project-badge">{revision.candidate.scope.projectId}</span>
         </div>
-        <div className="header-right">
-          <div className="revision-info">
-            rev <code>{revision.revisionId}</code> · {revision.candidate.semanticFacts.nodes.length} nodes · {revision.candidate.semanticFacts.edges.length} edges
-          </div>
-        </div>
       </header>
       <main className="vnext-main">
         <WorkGraphCanvas revision={revision} onRefresh={load} />

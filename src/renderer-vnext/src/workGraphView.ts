@@ -33,7 +33,7 @@ export function buildGraphElements(revision: WorkGraphRevision): { nodes: Canvas
     return {
       id: semantic.id,
       type: 'workgraph',
-      position: { x: 60 + column * 270, y: 60 + row * 150 },
+      position: { x: 60 + column * 230, y: 60 + row * 116 },
       data: {
         semantic,
         kind: semantic.kind,

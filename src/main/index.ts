@@ -73,7 +73,8 @@ import { RecoverableSerialQueue } from './recoverableSerialQueue';
 import { allowlistedVersionToken } from './adapters/evidenceBounds';
 import { codexAgentContent, eventEvidence, packetTaskSummary, protocolText } from './activityEvidence';
 import { compileWorkGraph } from '../core/workgraph/compiler';
-import type { WorkGraphSourceFacts, WorkGraphCompileOptions } from '../core/workgraph/revision';
+import type { WorkGraphCompileOptions, WorkGraphGovernanceFact } from '../core/workgraph/revision';
+import { buildCanonicalWorkGraphFacts } from '../core/workgraph/sourceFacts';
 import { rendererEntryForEnvironment } from './featureFlags';
 import { applyAttentionLocalState, reduceAttention } from '../core/attention/reducer';
 
@@ -1277,8 +1278,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
         reduceAttention({ activity: activityPage.events, limit: 200 }),
         attentionLocal,
       ).filter((item) => item.projectId === projectId);
-      const facts: WorkGraphSourceFacts = {
-        governanceBindings: Object.entries(rootBindings.bindings).map(([boundProjectId, binding]) => ({
+      const governanceBindings: WorkGraphGovernanceFact[] = Object.entries(rootBindings.bindings).map(([boundProjectId, binding]) => ({
               projectId: boundProjectId,
               workId: undefined,
               binding: {
@@ -1288,43 +1288,24 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
                 observedAt: binding.verifiedAt,
                 verification: binding.verification,
               },
-            })),
-        historySessions: [],
-        memoryEntries: [],
-        packets: [],
-        handoffs: [],
-        adapterExecutions: [],
-        overlaySnapshot: {
-              conversations: snapshot.conversations.map((c) => ({
-                conversationKey: c.key,
-                canonicalConversationId: c.conversationId,
-                projectId: c.project,
-                role: c.role,
-                platform: c.platform,
-                lifecycleState: c.status,
-                taskState: c.taskState,
-                runtimeState: c.runtimeState,
-                attentionState: c.attention,
-                verification: c.verification,
-                evidenceRefs: [],
-              })),
-              projects: snapshot.projects.map((p) => ({
-                projectId: p.projectId,
-                label: p.displayName,
-                canonicalSource: p.canonicalSource?.path
-                  ? { path: p.canonicalSource.path, remote: p.canonicalSource.remote }
-                  : undefined,
-              })),
-              memoryIndex: snapshot.memoryIndex.map((m) => ({
-                memoryId: m.id,
-                title: m.title,
-                source: m.sourceRef,
-              })),
-              inbox: snapshot.inbox.map((item) => ({ id: item.id, line: item.line, text: item.raw })),
-              sourceFingerprints: snapshot.sourceFingerprints,
-              problems: snapshot.problems,
-            },
-        contextItems: [],
+            }));
+      const graphProblems: OverlaySnapshot['problems'] = [];
+      const localRoot = rootBindings.bindings[projectId]?.root ?? snapshot.machine?.projectRoots[projectId];
+      const gitFacts = localRoot
+        ? await readGitFacts(projectId, localRoot).catch((error) => {
+          graphProblems.push({ source: `git:${projectId}`, message: String(error) });
+          return null;
+        })
+        : null;
+      const facts = buildCanonicalWorkGraphFacts({
+        projectId,
+        snapshot: graphProblems.length > 0
+          ? { ...snapshot, problems: [...snapshot.problems, ...graphProblems] }
+          : snapshot,
+        activity: activityPage.events,
+        liveExecutionIds: liveExecutions.list().map((execution) => execution.executionId),
+        gitFacts,
+        governanceBindings,
         attentionItems: attentionItems.map((item) => ({
           id: item.id,
           kind: item.kind,
@@ -1338,10 +1319,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
           observedAt: item.observedAt,
           verification: item.verification,
         })),
-        artifacts: [],
-        tasks: [],
-        evidenceItems: [],
-      };
+      });
       const { revision } = await compileWorkGraph({
         projectId,
         sourceDigest: 'live',

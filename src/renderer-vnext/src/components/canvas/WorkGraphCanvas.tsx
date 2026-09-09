@@ -33,7 +33,6 @@ function WorkGraphNodeCard({ data, selected }: NodeProps<WorkGraphNodeData>) {
         <span className="verification-badge">{data.verification}</span>
       </div>
       <div className="node-label" title={data.label}>{data.label}</div>
-      <div className="node-source-ref" title={data.sourceRef}>{data.sourceRef}</div>
       <Handle type="source" position={Position.Right} isConnectable={false} />
     </div>
   );
@@ -47,12 +46,14 @@ const edgeColors: Record<string, string> = {
   'derived-from': '#6366f1',
 };
 
-function styledEdges(edges: CanvasEdge[]): CanvasEdge[] {
+function styledEdges(edges: CanvasEdge[], selectedId: string | null, hoveredEdgeId: string | null): CanvasEdge[] {
   return edges.map((edge) => ({
     ...edge,
     type: 'smoothstep',
     animated: edge.data?.kind === 'handoff' || edge.data?.kind === 'uses-context',
-    label: edge.data?.evidenceCount ? `${edge.data.kind} · ◇${edge.data.evidenceCount}` : edge.data?.kind,
+    label: (edge.id === hoveredEdgeId || edge.source === selectedId || edge.target === selectedId)
+      ? (edge.data?.evidenceCount ? `${edge.data.kind} · ◇${edge.data.evidenceCount}` : edge.data?.kind)
+      : undefined,
     labelStyle: { fill: '#94a3b8', fontSize: 9 },
     labelBgStyle: { fill: '#0f172a', fillOpacity: 0.88 },
     style: {
@@ -66,17 +67,19 @@ function styledEdges(edges: CanvasEdge[]): CanvasEdge[] {
 export function WorkGraphCanvas({ revision, onRefresh }: { revision: WorkGraphRevision; onRefresh: () => Promise<void> }) {
   const initial = useMemo(() => buildGraphElements(revision), [revision]);
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkGraphNodeData>(initial.nodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(styledEdges(initial.edges));
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const [instance, setInstance] = useState<ReactFlowInstance | null>(null);
 
   useEffect(() => {
     setNodes(initial.nodes);
-    setEdges(styledEdges(initial.edges));
+    setEdges(initial.edges);
     setSelectedId((current) => current && initial.nodes.some((node) => node.id === current) ? current : null);
   }, [initial, setEdges, setNodes]);
 
   const detail = selectedId ? buildFocusDetail(revision, selectedId) : null;
+  const visibleEdges = useMemo(() => styledEdges(edges, selectedId, hoveredEdgeId), [edges, hoveredEdgeId, selectedId]);
   const focusCurrentOrProject = useCallback(() => {
     if (!instance) return;
     const targetId = selectedId ?? nodes.find((node) => node.data.kind === 'project')?.id;
@@ -89,12 +92,17 @@ export function WorkGraphCanvas({ revision, onRefresh }: { revision: WorkGraphRe
     <div className="workgraph-canvas-container">
       <ReactFlow
         nodes={nodes}
-        edges={edges}
+        edges={visibleEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onInit={setInstance}
-        onNodeClick={(_event, node) => setSelectedId(node.id)}
+        onNodeClick={(_event, node) => {
+          setSelectedId(node.id);
+          void instance?.setCenter(node.position.x + 80, node.position.y + 36, { zoom: Math.max(instance.getZoom(), 0.7), duration: 250 });
+        }}
         onPaneClick={() => setSelectedId(null)}
+        onEdgeMouseEnter={(_event, edge) => setHoveredEdgeId(edge.id)}
+        onEdgeMouseLeave={() => setHoveredEdgeId(null)}
         nodeTypes={nodeTypes}
         nodesConnectable={false}
         fitView
