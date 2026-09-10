@@ -223,15 +223,27 @@ export function buildWorkGraphCandidate(options: WorkGraphCompileOptions): WorkG
   });
 
   // ---- Work nodes: ONLY from explicit governance workId ----
-  const workIds = new Map<WorkGraphWorkId, { label: string; verification: ObservationVerification; observedAt: string; sourceRef: string }>();
+  const workIds = new Map<WorkGraphWorkId, {
+    label: string;
+    verification: ObservationVerification;
+    currentness: 'CURRENT' | 'STALE' | 'INVALID' | 'UNKNOWN';
+    observedAt: string;
+    source: string;
+    sourceRef: string;
+    conversationIds: string[];
+  }>();
   for (const g of facts.governanceBindings) {
     if (g.projectId !== projectId || !g.workId) continue;
     if (!workIds.has(g.workId)) {
       workIds.set(g.workId, {
         label: g.workLabel ?? g.workId,
-        verification: asVerification(g.binding.verification),
-        observedAt: g.binding.observedAt,
-        sourceRef: `governance-work:${g.workId}`,
+        verification: asVerification(g.workSource?.verification ?? g.binding.verification),
+        currentness: g.workSource?.currentness
+          ?? (g.binding.verification === 'VERIFIED' ? 'CURRENT' : 'UNKNOWN'),
+        observedAt: g.workSource?.observedAt ?? g.binding.observedAt,
+        source: g.workSource?.source ?? 'governance-work',
+        sourceRef: g.workSource?.sourceRef ?? `governance-work:${g.workId}`,
+        conversationIds: [...(g.workSource?.conversationIds ?? [])],
       });
     }
   }
@@ -245,12 +257,12 @@ export function buildWorkGraphCandidate(options: WorkGraphCompileOptions): WorkG
       projectId,
       label: meta.label,
       workId,
-      source: 'governance-work',
+      source: meta.source,
       sourceRef: meta.sourceRef,
       observedAt: meta.observedAt,
       verification: meta.verification,
-      currentness: meta.verification === 'VERIFIED' ? 'CURRENT' : 'UNKNOWN',
-      conversationIds: [],
+      currentness: meta.currentness,
+      conversationIds: [...meta.conversationIds],
       executionIds: [],
     });
     edges.push({
@@ -334,6 +346,7 @@ export function buildWorkGraphCandidate(options: WorkGraphCompileOptions): WorkG
       sourceRef: t.sourceRef,
       observedAt: t.observedAt,
       verification: asVerification(t.verification),
+      currentness: t.currentness ?? (t.verification === 'VERIFIED' ? 'CURRENT' : 'UNKNOWN'),
       taskId: t.taskId,
       taskState: t.taskState ?? 'unknown',
       attentionState: t.attentionState ?? 'unknown',
@@ -548,13 +561,15 @@ export function buildWorkGraphCandidate(options: WorkGraphCompileOptions): WorkG
       id: nodeId,
       projectId,
       label: a.title,
-      source: 'adapter',
-      sourceRef: `artifact:${a.artifactId}`,
-      observedAt: now,
-      verification: 'OBSERVED',
+      source: a.source ?? 'adapter',
+      sourceRef: a.sourceRef ?? `artifact:${a.artifactId}`,
+      observedAt: a.observedAt ?? now,
+      verification: asVerification(a.verification ?? 'OBSERVED'),
+      currentness: a.currentness ?? ((a.verification ?? 'OBSERVED') === 'VERIFIED' ? 'CURRENT' : 'UNKNOWN'),
       artifactId: a.artifactId,
       artifactKind: a.kind,
       ...(a.executionId ? { executionId: a.executionId } : {}),
+      ...(a.taskId ? { taskId: a.taskId } : {}),
       ...(a.eventRef ? { eventRef: a.eventRef } : {}),
       title: a.title,
       ...(a.content !== undefined ? { content: a.content } : {}),
@@ -569,7 +584,7 @@ export function buildWorkGraphCandidate(options: WorkGraphCompileOptions): WorkG
       structuralSource: { entityId: projectNodeId(projectId), fieldPath: 'artifacts' },
       evidenceRefs: [...a.evidenceRefs],
       observedAt: now,
-      verification: 'OBSERVED',
+      verification: asVerification(a.verification ?? 'OBSERVED'),
     });
     if (a.executionId) {
       const execNode = executionNodeByRef.get(a.executionId);
@@ -583,7 +598,7 @@ export function buildWorkGraphCandidate(options: WorkGraphCompileOptions): WorkG
           structuralSource: { entityId: nodeId, fieldPath: 'executionId' },
           evidenceRefs: [...a.evidenceRefs],
           observedAt: now,
-          verification: 'OBSERVED',
+          verification: asVerification(a.verification ?? 'OBSERVED'),
           ...(a.eventRef ? { eventRef: a.eventRef } : {}),
         });
       } else {
@@ -859,15 +874,19 @@ export function buildWorkGraphCandidate(options: WorkGraphCompileOptions): WorkG
   };
 }
 
-/** Semantic hash: nodes + edges + evidence. Never layout. */
+/** Semantic hash: semantic fields only. Observation time and layout never affect identity. */
 export function computeWorkGraphSemanticHash(candidate: WorkGraphCandidate): string {
   const facts = candidate.semanticFacts;
+  const withoutObservationTime = <T extends { observedAt: string }>(value: T): Omit<T, 'observedAt'> => {
+    const { observedAt: _observedAt, ...semantic } = value;
+    return semantic;
+  };
   return sha256Hex(
     canonicalJson({
       schemaVersion: 1,
-      nodes: [...facts.nodes].sort(byId),
-      edges: [...facts.edges].sort(byId),
-      evidenceRefs: [...facts.evidenceRefs].sort(byId),
+      nodes: [...facts.nodes].sort(byId).map(withoutObservationTime),
+      edges: [...facts.edges].sort(byId).map(withoutObservationTime),
+      evidenceRefs: [...facts.evidenceRefs].sort(byId).map(withoutObservationTime),
     }),
   );
 }

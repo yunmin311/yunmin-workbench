@@ -73,6 +73,51 @@ describe('Project -> Work -> Execution', () => {
   });
 });
 
+describe('canonical Work, Task, and Artifact projection', () => {
+  it('preserves pinned provenance/currentness and emits only explicit membership edges', async () => {
+    const pinned = 'git:yunmin311/creative-os@50e0:specs/001-inspiration-capture';
+    const facts = baseFacts({
+      governanceBindings: [{
+        projectId: 'p1', workId: 'w1', workLabel: 'Work 1',
+        workSource: { source: 'canonical-project-fact', sourceRef: `${pinned}/spec.md`, observedAt: NOW, verification: 'VERIFIED', currentness: 'CURRENT', conversationIds: [] },
+        binding: { projectId: 'p1', root: '/r', canonicalPath: `${pinned}/facts.yaml#works/w1`, observedAt: NOW, verification: 'VERIFIED' },
+      }],
+      tasks: [{
+        taskId: 'T1', projectId: 'p1', label: 'Task 1', source: 'canonical-project-fact',
+        sourceRef: `${pinned}/tasks.md#T1`, observedAt: NOW, verification: 'VERIFIED', currentness: 'CURRENT',
+        workId: 'w1', conversationKeys: [], evidenceRefs: [],
+      }],
+      artifacts: [{
+        artifactId: 'p1:T1:file', projectId: 'p1', kind: 'file-evidence', title: 'src/file.ts',
+        source: 'canonical-project-fact', sourceRef: 'git:yunmin311/creative-os@50e0:src/file.ts',
+        observedAt: NOW, verification: 'VERIFIED', currentness: 'CURRENT', taskId: 'T1', evidenceRefs: [],
+      }],
+    });
+    const { revision } = await compileWorkGraph(options('p1', facts));
+    const repeated = await compileWorkGraph({
+      ...options('p1', facts), now: '2026-09-10T01:02:03.000Z',
+    });
+    const semantic = revision!.candidate.semanticFacts;
+
+    expect(semantic.nodes.find((node) => node.id === 'work:p1:w1')).toMatchObject({
+      source: 'canonical-project-fact', sourceRef: `${pinned}/spec.md`, currentness: 'CURRENT', conversationIds: [],
+    });
+    expect(semantic.nodes.find((node) => node.id === 'task:p1:T1')).toMatchObject({
+      sourceRef: `${pinned}/tasks.md#T1`, currentness: 'CURRENT', conversationKeys: [], evidenceRefs: [],
+    });
+    expect(semantic.nodes.find((node) => node.id === 'artifact:p1:p1:T1:file')).toMatchObject({
+      sourceRef: 'git:yunmin311/creative-os@50e0:src/file.ts', currentness: 'CURRENT', taskId: 'T1', evidenceRefs: [],
+    });
+    expect(semantic.nodes.filter((node) => ['conversation', 'execution', 'evidence', 'gate'].includes(node.kind))).toEqual([]);
+    expect(semantic.edges.map((edge) => [edge.source, edge.target])).toEqual(expect.arrayContaining([
+      ['project:p1', 'work:p1:w1'], ['project:p1', 'task:p1:T1'], ['work:p1:w1', 'task:p1:T1'],
+      ['project:p1', 'artifact:p1:p1:T1:file'],
+    ]));
+    expect(semantic.edges.some((edge) => edge.source === 'task:p1:T1' && edge.target === 'artifact:p1:p1:T1:file')).toBe(false);
+    expect(repeated.revision?.semanticHash).toBe(revision?.semanticHash);
+  });
+});
+
 describe('Work spans two executors', () => {
   it('one Work node links a Paseo and a native execution', async () => {
     const facts = baseFacts({

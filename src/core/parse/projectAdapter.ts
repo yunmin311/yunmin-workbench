@@ -37,6 +37,16 @@ export function parseProjectAdapter(yamlText: string, observed: Observation = FA
       if (typeof v === 'string') gates[k] = v;
     }
   }
+  const canonicalFactSources = Array.isArray(doc.canonical_fact_sources)
+    ? doc.canonical_fact_sources
+        .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+        .map((item) => ({
+          kind: String(item.kind ?? ''),
+          sourceRef: String(item.source_ref ?? ''),
+          format: String(item.format ?? ''),
+          verification: String(item.verification ?? 'UNVERIFIED'),
+        }))
+    : [];
   return {
     projectId: doc.project_id,
     displayName: typeof doc.display_name === 'string' ? doc.display_name : doc.project_id,
@@ -50,6 +60,7 @@ export function parseProjectAdapter(yamlText: string, observed: Observation = FA
       commit: typeof cs.commit === 'string' ? cs.commit : undefined,
       verification: typeof cs.verification === 'string' ? cs.verification : undefined,
     },
+    canonicalFactSources,
     roles,
     gates,
     trust: trustOf(doc.status, cs.verification),

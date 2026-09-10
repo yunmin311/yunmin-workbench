@@ -198,6 +198,15 @@ export interface WorkGraphGovernanceFact {
   projectId: string;
   workId?: string;
   workLabel?: string;
+  /** Exact source metadata for an explicit Work fact. Absent on root-only bindings. */
+  workSource?: {
+    source: string;
+    sourceRef: string;
+    observedAt: string;
+    verification: 'VERIFIED' | 'OBSERVED' | 'INFERRED' | 'UNKNOWN';
+    currentness: 'CURRENT' | 'STALE' | 'INVALID' | 'UNKNOWN';
+    conversationIds: string[];
+  };
   binding: {
     projectId: string;
     root: string;
@@ -349,6 +358,13 @@ export interface WorkGraphArtifactFact {
   eventRef?: string;
   title: string;
   content?: string;
+  source?: string;
+  sourceRef?: string;
+  observedAt?: string;
+  verification?: 'VERIFIED' | 'OBSERVED' | 'INFERRED' | 'UNKNOWN';
+  currentness?: 'CURRENT' | 'STALE' | 'INVALID' | 'UNKNOWN';
+  /** Exact Task relation carried by canonical facts; no edge is inferred from it. */
+  taskId?: string;
   evidenceRefs: string[];
 }
 
@@ -365,6 +381,7 @@ export interface WorkGraphTaskFact {
   sourceRef: string;
   observedAt: string;
   verification: 'VERIFIED' | 'OBSERVED' | 'INFERRED' | 'UNKNOWN';
+  currentness?: 'CURRENT' | 'STALE' | 'INVALID' | 'UNKNOWN';
   taskState?: 'active' | 'waiting' | 'blocked' | 'standby' | 'unknown';
   attentionState?: 'none' | 'needs-user' | 'approval' | 'blocked' | 'unknown';
   /** Explicit Work binding declared by the task source. */

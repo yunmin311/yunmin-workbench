@@ -75,4 +75,35 @@ describe('canonical WorkGraph source facts', () => {
     expect(facts.tasks).toEqual([]);
     expect(facts.handoffs).toEqual([]);
   });
+
+  it('adopts validated canonical project facts through the single source-facts ingress', () => {
+    const canonical = {
+      governanceBindings: [{
+        projectId: 'p1', workId: 'w1', workLabel: 'Canonical work',
+        binding: { projectId: 'p1', root: '/p1', canonicalPath: 'git:r@a:facts.yaml#works/w1', observedAt: NOW, verification: 'VERIFIED' as const },
+      }],
+      tasks: [{
+        taskId: 'T1', projectId: 'p1', label: 'Canonical task', source: 'canonical-project-fact',
+        sourceRef: 'git:r@a:tasks.md#T1', observedAt: NOW, verification: 'VERIFIED' as const,
+        currentness: 'CURRENT' as const, workId: 'w1', conversationKeys: [], evidenceRefs: [],
+      }],
+      artifacts: [{
+        artifactId: 'p1:T1:file', projectId: 'p1', kind: 'file-evidence' as const,
+        title: 'src/file.ts', source: 'canonical-project-fact', sourceRef: 'git:r@a:src/file.ts',
+        observedAt: NOW, verification: 'VERIFIED' as const, currentness: 'CURRENT' as const,
+        taskId: 'T1', evidenceRefs: [],
+      }],
+      sourceFingerprints: [{ sourceRef: 'git:r@a:facts.yaml', sha256: 'a'.repeat(64) }],
+      problems: [{ source: 'future-kind', message: 'ignored' }],
+    };
+    const facts = buildCanonicalWorkGraphFacts({
+      projectId: 'p1', snapshot: snapshot(), activity: [], canonicalFacts: canonical,
+    });
+
+    expect(facts.governanceBindings).toEqual(canonical.governanceBindings);
+    expect(facts.tasks).toEqual(canonical.tasks);
+    expect(facts.artifacts).toEqual(canonical.artifacts);
+    expect(facts.overlaySnapshot?.sourceFingerprints).toContainEqual(canonical.sourceFingerprints[0]);
+    expect(facts.overlaySnapshot?.problems).toContainEqual(canonical.problems[0]);
+  });
 });

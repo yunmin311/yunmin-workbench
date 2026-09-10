@@ -4,9 +4,20 @@ import { buildStaging } from '../project/staging';
 import type { ActivityEvent, GitFacts, OverlaySnapshot } from '../types';
 import type {
   WorkGraphAttentionFact,
+  WorkGraphArtifactFact,
   WorkGraphGovernanceFact,
+  WorkGraphSourceFingerprint,
   WorkGraphSourceFacts,
+  WorkGraphTaskFact,
 } from './revision';
+
+export interface CanonicalProjectWorkGraphFacts {
+  governanceBindings: WorkGraphGovernanceFact[];
+  tasks: WorkGraphTaskFact[];
+  artifacts: WorkGraphArtifactFact[];
+  sourceFingerprints: WorkGraphSourceFingerprint[];
+  problems: { source: string; message: string }[];
+}
 
 export interface CanonicalWorkGraphFactInput {
   projectId: string;
@@ -16,6 +27,7 @@ export interface CanonicalWorkGraphFactInput {
   gitFacts?: GitFacts | null;
   governanceBindings?: WorkGraphGovernanceFact[];
   attentionItems?: WorkGraphAttentionFact[];
+  canonicalFacts?: CanonicalProjectWorkGraphFacts;
 }
 
 function executionIdFromRef(ref: string | undefined): string | undefined {
@@ -138,7 +150,10 @@ export function buildCanonicalWorkGraphFacts(input: CanonicalWorkGraphFactInput)
     }));
 
   return {
-    governanceBindings: input.governanceBindings ?? [],
+    governanceBindings: [
+      ...(input.governanceBindings ?? []),
+      ...(input.canonicalFacts?.governanceBindings ?? []),
+    ],
     historySessions: [],
     memoryEntries: [],
     packets: [],
@@ -171,13 +186,19 @@ export function buildCanonicalWorkGraphFacts(input: CanonicalWorkGraphFactInput)
         source: memory.sourceRef,
       })),
       inbox: input.snapshot.inbox.map((item) => ({ id: item.id, line: item.line, text: item.raw })),
-      sourceFingerprints: input.snapshot.sourceFingerprints,
-      problems: input.snapshot.problems,
+      sourceFingerprints: [
+        ...input.snapshot.sourceFingerprints,
+        ...(input.canonicalFacts?.sourceFingerprints ?? []),
+      ],
+      problems: [
+        ...input.snapshot.problems,
+        ...(input.canonicalFacts?.problems ?? []),
+      ],
     },
     contextItems,
     attentionItems: input.attentionItems ?? [],
-    artifacts,
-    tasks: [],
+    artifacts: [...artifacts, ...(input.canonicalFacts?.artifacts ?? [])],
+    tasks: input.canonicalFacts?.tasks ?? [],
     evidenceItems,
   };
 }

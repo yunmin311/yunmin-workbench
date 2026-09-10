@@ -25,6 +25,7 @@ import {
   writeOverlayRootBinding,
 } from './adapters/overlaySource';
 import { readGitFacts } from './adapters/gitFacts';
+import { lastGoodForCanonicalRead, readPinnedCanonicalFacts } from './adapters/canonicalFacts';
 import { createProjectFileContext, fingerprintFileAtRoot, fingerprintProjectFile } from './adapters/projectFiles';
 import { CodexAppServerAdapter } from './adapters/codexAppServer';
 import { appendActivity, clearActivity, readActivityPage } from './activityPersistence';
@@ -73,7 +74,7 @@ import { RecoverableSerialQueue } from './recoverableSerialQueue';
 import { allowlistedVersionToken } from './adapters/evidenceBounds';
 import { codexAgentContent, eventEvidence, packetTaskSummary, protocolText } from './activityEvidence';
 import { compileWorkGraph } from '../core/workgraph/compiler';
-import type { WorkGraphCompileOptions, WorkGraphGovernanceFact } from '../core/workgraph/revision';
+import type { WorkGraphCompileOptions, WorkGraphGovernanceFact, WorkGraphRevision } from '../core/workgraph/revision';
 import { buildCanonicalWorkGraphFacts } from '../core/workgraph/sourceFacts';
 import { rendererEntryForEnvironment } from './featureFlags';
 import { applyAttentionLocalState, reduceAttention } from '../core/attention/reducer';
@@ -154,6 +155,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
   let refreshing: Promise<OverlaySnapshot> | null = null;
   const activityWrites = new RecoverableSerialQueue();
   const liveExecutions = new LiveExecutionRegistry();
+  const lastGoodWorkGraphs = new Map<string, WorkGraphRevision>();
   const runtimeContexts = new RuntimeContextRegistry<{
     projectId: string;
     conversationKey: string;
@@ -1291,6 +1293,27 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
             }));
       const graphProblems: OverlaySnapshot['problems'] = [];
       const localRoot = rootBindings.bindings[projectId]?.root ?? snapshot.machine?.projectRoots[projectId];
+      const projectAdapter = snapshot.projects.find((project) => project.projectId === projectId);
+      const hasCanonicalLocators = Boolean(projectAdapter?.canonicalFactSources?.length);
+      const canonicalFacts = projectAdapter && localRoot
+        ? await readPinnedCanonicalFacts(projectAdapter, localRoot).catch((error) => ({
+          ok: false,
+          governanceBindings: [],
+          tasks: [],
+          artifacts: [],
+          sourceFingerprints: [],
+          problems: [{ source: `canonical-facts:${projectId}`, message: String(error) }],
+        }))
+        : {
+          ok: !hasCanonicalLocators,
+          governanceBindings: [],
+          tasks: [],
+          artifacts: [],
+          sourceFingerprints: [],
+          problems: hasCanonicalLocators
+            ? [{ source: `canonical-facts:${projectId}`, message: 'bound project root is unavailable' }]
+            : [],
+        };
       const gitFacts = localRoot
         ? await readGitFacts(projectId, localRoot).catch((error) => {
           graphProblems.push({ source: `git:${projectId}`, message: String(error) });
@@ -1306,6 +1329,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
         liveExecutionIds: liveExecutions.list().map((execution) => execution.executionId),
         gitFacts,
         governanceBindings,
+        canonicalFacts,
         attentionItems: attentionItems.map((item) => ({
           id: item.id,
           kind: item.kind,
@@ -1320,11 +1344,19 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
           verification: item.verification,
         })),
       });
+      const previousRevision = lastGoodWorkGraphs.get(projectId);
+      const retainedRevision = lastGoodForCanonicalRead(canonicalFacts, previousRevision);
+      if (retainedRevision) {
+        console.warn(`[workgraph] canonical facts unavailable; retained ${retainedRevision.revisionId}: ${canonicalFacts.problems.map((p) => p.message).join('; ')}`);
+        return { revision: retainedRevision };
+      }
       const { revision } = await compileWorkGraph({
         projectId,
         sourceDigest: 'live',
         facts,
+        ...(previousRevision ? { previousRevision } : {}),
       });
+      if (revision) lastGoodWorkGraphs.set(projectId, revision);
       return { revision };
     } catch (e) {
       return { error: String(e) };

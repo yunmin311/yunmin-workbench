@@ -130,6 +130,7 @@ export interface WorkGraphWorkNode extends WorkGraphNodeBase {
  */
 export interface WorkGraphTaskNode extends WorkGraphNodeBase {
   kind: 'task';
+  currentness: 'CURRENT' | 'STALE' | 'INVALID' | 'UNKNOWN';
   taskId: WorkGraphTaskId;
   taskState: TaskState;
   attentionState: 'none' | 'needs-user' | 'approval' | 'blocked' | 'unknown';
@@ -230,6 +231,7 @@ export interface WorkGraphMemorySourceNode extends WorkGraphNodeBase {
 /** Artifact / evidence node — result, tool output, file, receipt. */
 export interface WorkGraphArtifactNode extends WorkGraphNodeBase {
   kind: 'artifact';
+  currentness: 'CURRENT' | 'STALE' | 'INVALID' | 'UNKNOWN';
   artifactId: WorkGraphArtifactId;
   artifactKind:
     | 'agent-result'
@@ -241,6 +243,7 @@ export interface WorkGraphArtifactNode extends WorkGraphNodeBase {
     | 'history-fact'
     | 'memory-index';
   executionId?: WorkGraphExecutionId;
+  taskId?: WorkGraphTaskId;
   eventRef?: string;
   title: string;
   content?: string;

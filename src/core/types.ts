@@ -122,6 +122,13 @@ export interface ProjectAdapter {
     commit?: string;
     verification?: string;
   };
+  /** Discovery-only locators for project-owned facts; never facts themselves. */
+  canonicalFactSources?: {
+    kind: string;
+    sourceRef: string;
+    format: string;
+    verification: string;
+  }[];
   roles: { name: string; responsibility: string }[];
   gates: Record<string, string>;
   trust: TrustLevel;
