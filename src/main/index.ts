@@ -164,6 +164,9 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     intentId?: string;
     groupId?: string;
     parentSourceRef?: string;
+    workId?: string;
+    taskId?: string;
+    packetId?: string;
   }>();
   const pendingClaudeContexts = new Map<string, {
     projectId: string;
@@ -173,6 +176,9 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     intentId: string;
     groupId: string;
     parentSourceRef?: string;
+    workId?: string;
+    taskId?: string;
+    packetId?: string;
   }>();
   const reviewWorthyTurns = new Set<string>();
   const history = new HistoryService({ stateDir: stateDir(), roots: defaultHistoryRoots() });
@@ -253,6 +259,9 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       intentId: context.intentId,
       groupId: context.groupId,
       parentSourceRef: context.parentSourceRef,
+      workId: context.workId,
+      taskId: context.taskId,
+      packetId: context.packetId,
       observed: observed(`codex-app-server:${event.method}`),
     };
     if (event.method === 'adapter/error') {
@@ -368,6 +377,9 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       intentId: context.intentId,
       groupId: context.groupId,
       parentSourceRef: context.parentSourceRef,
+      workId: context.workId,
+      taskId: context.taskId,
+      packetId: context.packetId,
       observed: {
         source: 'protocol' as const,
         sourceRef: event.sourceRef,
@@ -854,6 +866,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
            kind: 'handoff-failed', summary: receipt.message,
            attentionKey: request.intentId,
            intentId: request.intentId, groupId: request.groupId, parentSourceRef: request.parentSourceRef,
+           workId: request.workId, taskId: request.taskId, packetId: request.packetId,
           observed: {
             source: 'process', sourceRef: `workbench-intent:${request.intentId}`,
             observedAt: receipt.at, verification: 'VERIFIED',
@@ -878,6 +891,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
            kind: 'handoff-failed', summary: receipt.message,
            attentionKey: request.intentId,
            intentId: request.intentId, groupId: request.groupId, parentSourceRef: request.parentSourceRef,
+           workId: request.workId, taskId: request.taskId, packetId: request.packetId,
            simulated,
           observed: {
             source: 'process', sourceRef: `workbench-intent:${request.intentId}`,
@@ -893,6 +907,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
          content: packetTaskSummary(request.packetText),
          attentionKey: request.intentId,
          intentId: request.intentId, groupId: request.groupId, parentSourceRef: request.parentSourceRef,
+         workId: request.workId, taskId: request.taskId, packetId: request.packetId,
          simulated,
         observed: {
           source: 'process', sourceRef: `workbench-intent:${request.intentId}`,
@@ -903,15 +918,18 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       let receipt: HandoffReceipt;
       try {
         const dispatchText = request.packetText;
-        const rememberRuntime = (threadId: string) => {
+const rememberRuntime = (threadId: string) => {
           runtimeContexts.set(harness, threadId, {
             projectId: request.projectId,
             conversationKey: request.conversationKey,
-           machine,
-           cwd,
-           intentId: request.intentId,
-           groupId: request.groupId,
-           parentSourceRef: request.parentSourceRef,
+            machine,
+            cwd,
+            intentId: request.intentId,
+            groupId: request.groupId,
+            parentSourceRef: request.parentSourceRef,
+            workId: request.workId,
+            taskId: request.taskId,
+            packetId: request.packetId,
           });
           liveExecutions.add(harness, threadId, new Date().toISOString(), harness === 'claude', request.intentId);
         };
@@ -923,6 +941,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
             kind: 'session-started', summary: `${harness} session created`, runtimeRef: threadId,
             runtimeState: 'unknown',
             intentId: request.intentId, groupId: request.groupId, parentSourceRef: request.parentSourceRef,
+            workId: request.workId, taskId: request.taskId, packetId: request.packetId,
             binding: {
               harness, machine, cwd, externalSessionRef: threadId,
             },
@@ -947,6 +966,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
               void recordActivity({
                 ...base, kind: 'session-started', capability: 'externalSessionRef',
                 summary: `${harness} demo session created`, runtimeState: 'unknown',
+                workId: request.workId, taskId: request.taskId, packetId: request.packetId,
                 binding: { harness, machine, cwd, externalSessionRef: runtimeRef },
               });
             } else if (event.method === 'turn/started') {
@@ -975,6 +995,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
           pendingClaudeContexts.set(request.intentId, {
             projectId: request.projectId, conversationKey: request.conversationKey, machine, cwd,
             intentId: request.intentId, groupId: request.groupId, parentSourceRef: request.parentSourceRef,
+            workId: request.workId, taskId: request.taskId, packetId: request.packetId,
           });
           try {
             const claudeReceipt = await (adapter as typeof claudeAdapter).dispatch(request.intentId, cwd, dispatchText, rememberRuntime);
@@ -987,7 +1008,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
           receipt = await (adapter as typeof deepseekAdapter).dispatch(request.intentId, cwd, dispatchText);
           // deepseek currently has no thread callback; if it later provides runtimeRef, ensure context
           if (receipt.runtimeRef) {
-            runtimeContexts.set('deepseek', receipt.runtimeRef, { projectId: request.projectId, conversationKey: request.conversationKey, machine, cwd });
+            runtimeContexts.set('deepseek', receipt.runtimeRef, { projectId: request.projectId, conversationKey: request.conversationKey, machine, cwd, workId: request.workId, taskId: request.taskId, packetId: request.packetId });
           }
         } else {
           receipt = await (adapter as typeof codexAdapter).dispatch(request.intentId, cwd, dispatchText, onCodexThread);
@@ -999,6 +1020,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
          kind: 'harness-error', summary: `${harness} harness error: ${String(error)}`,
          attentionKey: request.intentId,
          intentId: request.intentId, groupId: request.groupId, parentSourceRef: request.parentSourceRef,
+         workId: request.workId, taskId: request.taskId, packetId: request.packetId,
          simulated,
           observed: {
             source: 'process', sourceRef: `workbench-intent:${request.intentId}`,
@@ -1017,6 +1039,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
          attentionKey: request.intentId,
          runtimeRef: receipt.runtimeRef, turnRef: receipt.turnRef,
          intentId: request.intentId, groupId: request.groupId, parentSourceRef: request.parentSourceRef,
+         workId: request.workId, taskId: request.taskId, packetId: request.packetId,
          simulated,
         observed: observed(`${harness}:${receipt.protocolEvidence}`),
       });

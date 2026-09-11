@@ -196,6 +196,9 @@ export interface WorkGraphExecutionNode extends WorkGraphNodeBase {
   executionId: WorkGraphExecutionId;
   conversationId: WorkGraphConversationId | null;
   workId: WorkGraphWorkId | null;
+  /** Canonical lineage from dispatch — exact identity only, never inferred. */
+  taskId?: WorkGraphTaskId;
+  packetId?: string;
   backend: 'paseo' | 'native' | 'acp' | 'external';
   provider: string;
   /** Authoritative runtime handle (Paseo agentId / native session id). */

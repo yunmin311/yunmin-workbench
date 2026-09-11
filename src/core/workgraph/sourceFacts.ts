@@ -11,6 +11,19 @@ import type {
   WorkGraphTaskFact,
 } from './revision';
 
+function findLineageForExecution(projectActivity: ActivityEvent[], executionId: string, harness: string): { workId?: string; taskId?: string; packetId?: string } | undefined {
+  // Find the first event with this executionId that carries explicit lineage
+  for (const event of projectActivity) {
+    const eventExecutionId = executionIdForEvent(event);
+    if (eventExecutionId === executionId && event.harness === harness) {
+      if (event.workId || event.taskId || event.packetId) {
+        return { workId: event.workId, taskId: event.taskId, packetId: event.packetId };
+      }
+    }
+  }
+  return undefined;
+}
+
 export interface CanonicalProjectWorkGraphFacts {
   governanceBindings: WorkGraphGovernanceFact[];
   tasks: WorkGraphTaskFact[];
@@ -57,6 +70,7 @@ export function buildCanonicalWorkGraphFacts(input: CanonicalWorkGraphFactInput)
       : execution.intentState === 'failed' ? 'FAILED' as const
         : execution.intentState === 'cancelled' ? 'CANCELLED' as const
           : undefined;
+    const lineage = findLineageForExecution(projectActivity, execution.executionId, execution.harness);
     return {
       executionId: execution.executionId,
       backend: 'native' as const,
@@ -67,6 +81,9 @@ export function buildCanonicalWorkGraphFacts(input: CanonicalWorkGraphFactInput)
         ? { conversationKey: execution.conversationRef.slice('conversation:'.length) }
         : {}),
       ...(execution.intentId ? { intentId: execution.intentId } : {}),
+      ...(lineage?.workId ? { workId: lineage.workId } : {}),
+      ...(lineage?.taskId ? { taskId: lineage.taskId } : {}),
+      ...(lineage?.packetId ? { packetId: lineage.packetId } : {}),
       runtimeState: execution.runtimeState,
       live: execution.live,
       ...(receiptStatus ? { receiptStatus } : {}),

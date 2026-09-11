@@ -17,6 +17,10 @@ export const HarnessDispatchSchema = z.object({
   harness: z.enum(['codex', 'claude', 'deepseek']),
   environment: HarnessEnvironmentSchema,
   parentSourceRef: z.string().min(1).max(4096).optional(),
+  /** Optional canonical lineage from the dispatching Work/Task/Packet. Exact identity only; never inferred. */
+  workId: z.string().min(1).max(1024).optional(),
+  taskId: z.string().min(1).max(1024).optional(),
+  packetId: z.string().min(1).max(1024).optional(),
 });
 
 export const HarnessSmokeSchema = z.enum(['codex', 'claude', 'deepseek']);

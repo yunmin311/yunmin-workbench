@@ -300,6 +300,8 @@ export interface WorkGraphAdapterExecutionFact {
   projectId: string;
   conversationKey?: string;
   workId?: string;
+  taskId?: string;
+  packetId?: string;
   intentId?: string;
   runtimeState: string;
   live: boolean;

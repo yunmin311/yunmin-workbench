@@ -159,4 +159,91 @@ describe('one product dispatch pipeline', () => {
     }
     expect(governanceLines).toEqual([...demoRefs].sort());
   });
+
+  describe('canonical lineage transport (PHASE 3B.4)', () => {
+    it('explicit workId survives dispatch -> HarnessDispatchRequest', () => {
+      const ids = ['group-1', 'packet-1', 'intent-1'][Symbol.iterator]();
+      const plan = buildDispatchPlan({
+        projectId: 'project-1', conversationKey: 'conversation-1', taskSummary: 'Task with workId',
+        governanceRefs: [], staging: [], fingerprints: [], agents: ['codex'],
+        capabilities: { codex: capabilities('codex') }, environment: { kind: 'real' },
+        workId: 'w1',
+      }, () => ids.next().value as string);
+
+      expect(plan.requests[0].workId).toBe('w1');
+      expect(plan.requests[0].taskId).toBeUndefined();
+      expect(plan.requests[0].packetId).toBeUndefined();
+    });
+
+    it('explicit taskId survives dispatch -> HarnessDispatchRequest', () => {
+      const ids = ['group-1', 'packet-1', 'intent-1'][Symbol.iterator]();
+      const plan = buildDispatchPlan({
+        projectId: 'project-1', conversationKey: 'conversation-1', taskSummary: 'Task with taskId',
+        governanceRefs: [], staging: [], fingerprints: [], agents: ['codex'],
+        capabilities: { codex: capabilities('codex') }, environment: { kind: 'real' },
+        taskId: 'T006',
+      }, () => ids.next().value as string);
+
+      expect(plan.requests[0].taskId).toBe('T006');
+      expect(plan.requests[0].workId).toBeUndefined();
+      expect(plan.requests[0].packetId).toBeUndefined();
+    });
+
+    it('explicit packetId survives dispatch -> HarnessDispatchRequest', () => {
+      const ids = ['group-1', 'packet-1', 'intent-1'][Symbol.iterator]();
+      const plan = buildDispatchPlan({
+        projectId: 'project-1', conversationKey: 'conversation-1', taskSummary: 'Task with packetId',
+        governanceRefs: [], staging: [], fingerprints: [], agents: ['codex'],
+        capabilities: { codex: capabilities('codex') }, environment: { kind: 'real' },
+        packetId: 'pkt-123',
+      }, () => ids.next().value as string);
+
+      expect(plan.requests[0].packetId).toBe('pkt-123');
+      expect(plan.requests[0].workId).toBeUndefined();
+      expect(plan.requests[0].taskId).toBeUndefined();
+    });
+
+    it('all three lineage fields survive together', () => {
+      const ids = ['group-1', 'packet-1', 'intent-1'][Symbol.iterator]();
+      const plan = buildDispatchPlan({
+        projectId: 'project-1', conversationKey: 'conversation-1', taskSummary: 'Full lineage',
+        governanceRefs: [], staging: [], fingerprints: [], agents: ['codex'],
+        capabilities: { codex: capabilities('codex') }, environment: { kind: 'real' },
+        workId: 'w1', taskId: 'T006', packetId: 'pkt-123',
+      }, () => ids.next().value as string);
+
+      expect(plan.requests[0].workId).toBe('w1');
+      expect(plan.requests[0].taskId).toBe('T006');
+      expect(plan.requests[0].packetId).toBe('pkt-123');
+    });
+
+    it('missing lineage remains missing (no cwd/title/time heuristic)', () => {
+      const ids = ['group-1', 'packet-1', 'intent-1'][Symbol.iterator]();
+      const plan = buildDispatchPlan({
+        projectId: 'project-1', conversationKey: 'conversation-1', taskSummary: 'No lineage provided',
+        governanceRefs: [], staging: [], fingerprints: [], agents: ['codex'],
+        capabilities: { codex: capabilities('codex') }, environment: { kind: 'real' },
+      }, () => ids.next().value as string);
+
+      expect(plan.requests[0].workId).toBeUndefined();
+      expect(plan.requests[0].taskId).toBeUndefined();
+      expect(plan.requests[0].packetId).toBeUndefined();
+    });
+
+    it('handoff mode preserves lineage fields', () => {
+      const ids = ['group-1', 'packet-1', 'intent-1'][Symbol.iterator]();
+      const plan = buildDispatchPlan({
+        projectId: 'project-1', conversationKey: 'conversation-1', taskSummary: 'Handoff with lineage',
+        governanceRefs: [], staging: [], fingerprints: [], agents: ['claude'],
+        capabilities: { claude: capabilities('claude') }, environment: { kind: 'real' },
+        workId: 'w1', taskId: 'T007', packetId: 'pkt-456',
+        parentSourceRef: 'harness-result:codex::execution:prev',
+      }, () => ids.next().value as string);
+
+      expect(plan.mode).toBe('handoff');
+      expect(plan.requests[0].workId).toBe('w1');
+      expect(plan.requests[0].taskId).toBe('T007');
+      expect(plan.requests[0].packetId).toBe('pkt-456');
+    });
+  });
 });

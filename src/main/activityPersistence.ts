@@ -25,6 +25,10 @@ const ActivityEventSchema = z.object({
   intentId: z.string().min(1).max(1024).optional(),
   groupId: z.string().min(1).max(1024).optional(),
   parentSourceRef: z.string().min(1).max(4096).optional(),
+  /** Canonical lineage from dispatch. Exact identity only; never inferred from cwd/title/time. */
+  workId: z.string().min(1).max(1024).optional(),
+  taskId: z.string().min(1).max(1024).optional(),
+  packetId: z.string().min(1).max(1024).optional(),
   content: z.string().max(5_000_000).optional(),
   evidenceRef: z.string().min(1).max(4096).optional(),
   simulated: z.boolean().optional(),

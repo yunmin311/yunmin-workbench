@@ -22,6 +22,10 @@ export interface BuildDispatchPlanInput {
   environment: ExecutionEnvironment;
   parentSourceRef?: string;
   now?: string;
+  /** Optional canonical lineage. Exact identity only; never inferred from cwd/title/time. */
+  workId?: string;
+  taskId?: string;
+  packetId?: string;
 }
 
 export interface DispatchPlan {
@@ -81,6 +85,9 @@ export function buildDispatchPlan(
     environment: input.environment,
     groupId,
     parentSourceRef: input.parentSourceRef,
+    workId: input.workId,
+    taskId: input.taskId,
+    packetId: input.packetId,
   }));
   return {
     mode: input.parentSourceRef ? 'handoff' : agents.length > 1 ? 'parallel' : 'single',

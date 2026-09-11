@@ -414,6 +414,8 @@ export function buildWorkGraphCandidate(options: WorkGraphCompileOptions): WorkG
       executionId: e.executionId,
       conversationId: convKey ?? null,
       workId: e.workId && workIds.has(e.workId) ? e.workId : null,
+      ...(e.taskId ? { taskId: e.taskId } : {}),
+      ...(e.packetId ? { packetId: e.packetId } : {}),
       backend: e.backend,
       provider: e.provider,
       runtimeRef: e.runtimeRef,
