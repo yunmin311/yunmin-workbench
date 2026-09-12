@@ -66,7 +66,12 @@ function styledEdges(edges: CanvasEdge[], selectedId: string | null, hoveredEdge
   }));
 }
 
-export function WorkGraphCanvas({ revision, onRefresh }: { revision: WorkGraphRevision; onRefresh: () => Promise<void> }) {
+export function WorkGraphCanvas({ revision, onRefresh, navigateRequest, onNavigated }: {
+  revision: WorkGraphRevision;
+  onRefresh: () => Promise<void>;
+  navigateRequest?: { projectId: string; workId?: string; taskId?: string } | null;
+  onNavigated?: () => void;
+}) {
   const initial = useMemo(() => buildGraphElements(revision), [revision]);
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkGraphNodeData>(initial.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges);
@@ -81,6 +86,30 @@ export function WorkGraphCanvas({ revision, onRefresh }: { revision: WorkGraphRe
     setEdges(initial.edges);
     setSelectedId((current) => current && initial.nodes.some((node) => node.id === current) ? current : null);
   }, [initial, setEdges, setNodes]);
+
+  // Compact → Full handoff: apply the navigation identity to the canvas.
+  // Exact node ids only; unknown identities are ignored, never guessed.
+  useEffect(() => {
+    if (!navigateRequest || !instance) return;
+    const projectId = revision.candidate.scope.projectId;
+    if (navigateRequest.projectId !== projectId) {
+      onNavigated?.();
+      return;
+    }
+    const candidates = [
+      navigateRequest.taskId !== undefined ? `task:${projectId}:${navigateRequest.taskId}` : null,
+      navigateRequest.workId !== undefined ? `work:${projectId}:${navigateRequest.workId}` : null,
+      `project:${projectId}`,
+    ].filter((id): id is string => id !== null);
+    const target = candidates
+      .map((id) => nodes.find((node) => node.id === id))
+      .find((node) => node !== undefined);
+    if (target) {
+      setSelectedId(target.id);
+      void instance.setCenter(target.position.x + 80, target.position.y + 36, { zoom: Math.max(instance.getZoom(), 0.7), duration: 250 });
+    }
+    onNavigated?.();
+  }, [instance, navigateRequest, nodes, onNavigated, revision]);
 
   const detail = selectedId ? buildFocusDetail(revision, selectedId) : null;
   const visibleEdges = useMemo(() => styledEdges(edges, selectedId, hoveredEdgeId), [edges, hoveredEdgeId, selectedId]);
@@ -126,6 +155,19 @@ export function WorkGraphCanvas({ revision, onRefresh }: { revision: WorkGraphRe
         : {}),
     }
     : null;
+
+  // Explicit Full-Workbench Work/Task selection updates the thin local
+  // current-selection bookmark the Compact surface reads. Never written
+  // from recency/cwd/activity — only from this explicit click.
+  useEffect(() => {
+    const semantic = selectedNode?.data.semantic;
+    if (!semantic || (semantic.kind !== 'work' && semantic.kind !== 'task')) return;
+    void window.wb.setCurrentSelection({
+      projectId: revision.candidate.scope.projectId,
+      ...(semantic.kind === 'work' ? { workId: semantic.workId } : {}),
+      ...(semantic.kind === 'task' ? { workId: semantic.workId, taskId: semantic.taskId } : {}),
+    }).catch(() => undefined);
+  }, [selectedNode, revision]);
 
   return (
     <div className="workgraph-canvas-container">

@@ -69,6 +69,21 @@ const api = {
     ipcRenderer.invoke('cabinet-staging:load', { projectId }),
   saveCabinetStaging: (staging: CabinetStagingV1): Promise<{ path: string }> =>
     ipcRenderer.invoke('cabinet-staging:save', staging),
+  getCurrentSelection: (): Promise<unknown> =>
+    ipcRenderer.invoke('selection:get'),
+  setCurrentSelection: (selection: { projectId: string; workId?: string; taskId?: string }): Promise<void> =>
+    ipcRenderer.invoke('selection:set', selection),
+  toggleCompactWindow: (): Promise<{ visible: boolean }> =>
+    ipcRenderer.invoke('compact:toggle'),
+  setCompactExpanded: (expanded: boolean): Promise<{ expanded: boolean }> =>
+    ipcRenderer.invoke('compact:set-expanded', { expanded }),
+  openWorkbenchFromCompact: (identity: { projectId: string; workId?: string; taskId?: string }): Promise<{ focused: boolean }> =>
+    ipcRenderer.invoke('compact:open-workbench', identity),
+  onCompactNavigate: (cb: (identity: { projectId: string; workId?: string; taskId?: string }) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, identity: { projectId: string; workId?: string; taskId?: string }) => cb(identity);
+    ipcRenderer.on('compact:navigate', listener);
+    return () => ipcRenderer.removeListener('compact:navigate', listener);
+  },
   searchProjectFiles: (
     projectId: string,
     query: string,

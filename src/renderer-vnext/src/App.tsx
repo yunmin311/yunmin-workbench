@@ -7,6 +7,7 @@ function App() {
   const [revision, setRevision] = useState<WorkGraphRevision | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [navigateRequest, setNavigateRequest] = useState<{ projectId: string; workId?: string; taskId?: string } | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -23,6 +24,10 @@ function App() {
 
   useEffect(() => {
     void load();
+    // Compact → Full handoff: navigation identity only (no graph payload).
+    return window.wb.onCompactNavigate((identity) => {
+      setNavigateRequest(identity);
+    });
   }, []);
 
   if (loading) {
@@ -61,7 +66,12 @@ function App() {
         </div>
       </header>
       <main className="vnext-main">
-        <WorkGraphCanvas revision={revision} onRefresh={load} />
+        <WorkGraphCanvas
+          revision={revision}
+          onRefresh={load}
+          navigateRequest={navigateRequest}
+          onNavigated={() => setNavigateRequest(null)}
+        />
       </main>
     </div>
   );

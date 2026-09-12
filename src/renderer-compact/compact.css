@@ -1,0 +1,199 @@
+/* Workbench Compact — dense, dark, frameless edge panel. The window region
+   on top is draggable (-webkit-app-region); everything else stays clickable. */
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#compact-root {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: rgba(15, 23, 42, 0.96);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #e2e8f0;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  box-sizing: border-box;
+}
+
+.compact {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 0;
+}
+
+.compact-drag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  -webkit-app-region: drag;
+  border-bottom: 1px solid #1e293b;
+  user-select: none;
+}
+
+.compact-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #818cf8;
+}
+
+.compact-drag-spacer { flex: 1; }
+
+.compact-btn {
+  -webkit-app-region: no-drag;
+  border: 1px solid #475569;
+  border-radius: 5px;
+  background: #1e293b;
+  color: #cbd5e1;
+  padding: 2px 7px;
+  font: 600 10px/1.4 system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.compact-btn:hover { border-color: #818cf8; color: #fff; }
+
+.compact-empty {
+  margin: 10px 12px;
+  font-size: 11px;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.compact-error {
+  margin: 8px 12px 0;
+  font-size: 10.5px;
+  color: #fca5a5;
+}
+
+.compact-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.compact-scope {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: none;
+  background: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.compact-project {
+  font-size: 12px;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.compact-work {
+  font-size: 11px;
+  color: #cbd5e1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-task {
+  font-size: 10.5px;
+  color: #94a3b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-currentness {
+  font-style: normal;
+  margin-left: 6px;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+
+.compact-currentness.is-current { color: #84cc16; }
+.compact-currentness.is-stale { color: #f59e0b; }
+.compact-currentness.is-invalid { color: #ef4444; }
+
+.compact-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.compact-fact-label {
+  display: block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-bottom: 2px;
+}
+
+.compact-running { font-size: 10.5px; color: #a5b4fc; }
+
+.run-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #34d399;
+  margin-right: 4px;
+  animation: compact-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes compact-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.compact-run-row { display: block; padding: 1px 0; }
+
+.compact-attention-row {
+  display: block;
+  font-size: 10.5px;
+  padding: 2px 6px;
+  border-left: 2px solid #f59e0b;
+  color: #fde68a;
+  margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-attention-row.is-alert { border-left-color: #ef4444; color: #fca5a5; }
+
+.compact-expand-btn {
+  border: 1px solid #4d7c0f;
+  border-radius: 7px;
+  background: rgba(132, 204, 22, 0.12);
+  color: #bef264;
+  padding: 7px 10px;
+  font: 600 11px/1 system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.compact-expand-btn:hover { border-color: #84cc16; color: #fff; }
+
+.compact-footnote {
+  margin: 0;
+  font-size: 9.5px;
+  color: #475569;
+  line-height: 1.5;
+}

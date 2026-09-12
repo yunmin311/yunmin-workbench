@@ -16,6 +16,20 @@ export function isVNextRendererEnabled(): boolean {
   return process.env.WB_RENDERER_VNEXT === '1';
 }
 
+/**
+ * Compact / Edge Panel dev/migration flag (PHASE 4A). Launches the separate
+ * Compact window alongside the main window. NOT a product mode: the Compact
+ * surface's default rollout is decided after real product acceptance.
+ */
+export function isCompactWindowEnabled(): boolean {
+  return process.env.WB_COMPACT_WINDOW === '1';
+}
+
+/** The single集中-defined toggle accelerator; overridable for dev, never user-hostile defaults. */
+export function compactToggleShortcut(): string {
+  return process.env.WB_COMPACT_TOGGLE_SHORTCUT || 'Alt+Shift+B';
+}
+
 export function rendererEntryForEnvironment(
   env: { WB_RENDERER_VNEXT?: string },
 ): '../renderer-vnext/index.html' | '../renderer/index.html' {

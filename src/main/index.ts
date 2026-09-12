@@ -78,7 +78,19 @@ import { codexAgentContent, eventEvidence, packetTaskSummary, protocolText } fro
 import { compileWorkGraph } from '../core/workgraph/compiler';
 import type { WorkGraphCompileOptions, WorkGraphGovernanceFact, WorkGraphRevision } from '../core/workgraph/revision';
 import { buildCanonicalWorkGraphFacts } from '../core/workgraph/sourceFacts';
-import { rendererEntryForEnvironment } from './featureFlags';
+import { compactToggleShortcut, isCompactWindowEnabled, rendererEntryForEnvironment } from './featureFlags';
+import {
+  closeCompactForQuit,
+  createCompactWindow,
+  registerCompactShortcut,
+  setCompactExpanded,
+  toggleCompactWindow,
+} from './compactWindow';
+import {
+  readCurrentSelection,
+  writeCurrentSelectionAtomic,
+} from './currentSelectionPersistence';
+import { currentSelectionFromUser } from '../core/compact/snapshot';
 import { applyAttentionLocalState, reduceAttention } from '../core/attention/reducer';
 
 // test hook: Playwright E2E redirects Workbench-owned state to a temp dir
@@ -653,6 +665,38 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
   });
 
   const DraftScopeSchema = z.object({ projectId: KeySchema, conversationKey: KeySchema });
+
+  // Compact / Edge Panel + current-selection seam (PHASE 4A).
+  const CompactExpandSchema = z.object({ expanded: z.boolean() });
+  const SelectionSchema = z.object({
+    projectId: KeySchema,
+    workId: z.string().min(1).max(1_024).optional(),
+    taskId: z.string().min(1).max(1_024).optional(),
+  });
+  ipcMain.handle('selection:get', () => withProfileStateLock(() => readCurrentSelection(stateDir())));
+  ipcMain.handle('selection:set', async (_event, raw: unknown) => {
+    const parsed = SelectionSchema.parse(raw);
+    await withProfileStateLock(() => writeCurrentSelectionAtomic(stateDir(), currentSelectionFromUser(parsed)));
+  });
+  ipcMain.handle('compact:toggle', () => toggleCompactWindow(stateDir()));
+  ipcMain.handle('compact:set-expanded', async (_event, raw: unknown) => {
+    const parsed = CompactExpandSchema.parse(raw);
+    return setCompactExpanded(stateDir(), parsed.expanded);
+  });
+  // Expand handoff: focus the existing main window (create when gone) and
+  // forward ONLY navigation identity. Compact never ships graph/context state.
+  ipcMain.handle('compact:open-workbench', async (_event, raw: unknown) => {
+    const identity = SelectionSchema.parse(raw);
+    let mainWindow = BrowserWindow.getAllWindows().find((candidate) => windowRoles.get(candidate)?.role === 'main');
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      mainWindow = await createWindow(refresh);
+    }
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+    mainWindow.webContents.send('compact:navigate', identity);
+    return { focused: true };
+  });
   ipcMain.handle('draft:load', (_event, rawScope: unknown) => {
     const scope = DraftScopeSchema.parse(rawScope);
     return withProfileStateLock(() => readWorkbenchDraft(stateDir(), scope.projectId, scope.conversationKey));
@@ -1547,6 +1591,7 @@ app.on('before-quit', () => {
   codexAdapter.close();
   claudeAdapter.close();
   deepseekAdapter.close();
+  closeCompactForQuit();
 });
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -1564,6 +1609,11 @@ if (!gotSingleInstanceLock) {
   app.whenReady().then(() => {
     const { refresh } = registerIpc();
     void createWindow(refresh);
+    // Compact / Edge Panel: separate explicit dev/migration seam (PHASE 4A).
+    if (isCompactWindowEnabled()) {
+      void createCompactWindow(stateDir());
+      registerCompactShortcut(stateDir(), compactToggleShortcut());
+    }
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) void createWindow(refresh);
     });

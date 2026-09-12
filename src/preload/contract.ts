@@ -90,6 +90,12 @@ export interface WorkbenchContractV1 {
     projectId: string,
   ): Promise<{ staging: CabinetStagingV1 | null; problem?: string; migrated?: boolean }>;
   saveCabinetStaging(staging: CabinetStagingV1): Promise<{ path: string }>;
+  getCurrentSelection(): Promise<unknown>;
+  setCurrentSelection(selection: { projectId: string; workId?: string; taskId?: string }): Promise<void>;
+  toggleCompactWindow(): Promise<{ visible: boolean }>;
+  setCompactExpanded(expanded: boolean): Promise<{ expanded: boolean }>;
+  openWorkbenchFromCompact(identity: { projectId: string; workId?: string; taskId?: string }): Promise<{ focused: boolean }>;
+  onCompactNavigate(cb: (identity: { projectId: string; workId?: string; taskId?: string }) => void): () => void;
   searchProjectFiles(
     projectId: string,
     query: string,
@@ -212,6 +218,12 @@ const CONTRACT_METHOD_NAMES: ReadonlyArray<ContractMethodNames> = [
   'clearDraft',
   'loadCabinetStaging',
   'saveCabinetStaging',
+  'getCurrentSelection',
+  'setCurrentSelection',
+  'toggleCompactWindow',
+  'setCompactExpanded',
+  'openWorkbenchFromCompact',
+  'onCompactNavigate',
   'searchProjectFiles',
   'readPinnedProjectFile',
   'loadWorkspaceSession',
