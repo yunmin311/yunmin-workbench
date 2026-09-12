@@ -40,6 +40,7 @@ import type {
 } from '../core/types';
 import type { WorkGraphRevision } from '../core/workgraph/revision';
 import type { WorkbenchDraftV1 } from '../core/project/draft';
+import type { CabinetStagingV1 } from '../core/project/cabinetStaging';
 import type { WorkspaceSessionV1 } from '../core/project/workspaceSession';
 import type { HistoryCatalogResult, HistoryQuery, HistorySearchResult, HistorySessionDetail } from '../core/history/types';
 import type { ProfileImportPreview } from '../core/portability/bundle';
@@ -84,6 +85,18 @@ export interface WorkbenchContractV1 {
   ): Promise<{ draft: WorkbenchDraftV1 | null; problem?: string }>;
   saveDraft(draft: WorkbenchDraftV1): Promise<{ path: string }>;
   clearDraft(projectId: string, conversationKey: string): Promise<void>;
+
+  loadCabinetStaging(
+    projectId: string,
+  ): Promise<{ staging: CabinetStagingV1 | null; problem?: string; migrated?: boolean }>;
+  saveCabinetStaging(staging: CabinetStagingV1): Promise<{ path: string }>;
+  searchProjectFiles(
+    projectId: string,
+    query: string,
+  ): Promise<{ matches: string[]; errors: string[] }>;
+  readPinnedProjectFile(
+    projectId: string,
+  ): Promise<{ item?: ContextItem; fingerprint?: SourceFingerprint; error?: string }>;
 
   loadWorkspaceSession(): Promise<{ session: WorkspaceSessionV1 | null; problem?: string }>;
   saveWorkspaceSession(session: WorkspaceSessionV1): Promise<{ path: string }>;
@@ -197,6 +210,10 @@ const CONTRACT_METHOD_NAMES: ReadonlyArray<ContractMethodNames> = [
   'loadDraft',
   'saveDraft',
   'clearDraft',
+  'loadCabinetStaging',
+  'saveCabinetStaging',
+  'searchProjectFiles',
+  'readPinnedProjectFile',
   'loadWorkspaceSession',
   'saveWorkspaceSession',
   'loadHarnessCapabilities',

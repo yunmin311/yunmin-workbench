@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import type { ActivityEvent, AttentionLocalState, ContextItem, ExecutionEnvironment, FrozenPacket, FrozenPacketSummary, GitFacts, HandoffReceipt, HarnessCapabilities, HarnessDispatchRequest, OverlaySnapshot, SourceFingerprint, TaskPacket } from '../core/types';
 import type { WorkbenchDraftV1 } from '../core/project/draft';
+import type { CabinetStagingV1 } from '../core/project/cabinetStaging';
 import type { WorkspaceSessionV1 } from '../core/project/workspaceSession';
 import type { HistoryCatalogResult, HistoryQuery, HistorySearchResult, HistorySessionDetail } from '../core/history/types';
 import type { ProfileImportPreview } from '../core/portability/bundle';
@@ -62,6 +63,21 @@ const api = {
     ipcRenderer.invoke('draft:save', draft),
   clearDraft: (projectId: string, conversationKey: string): Promise<void> =>
     ipcRenderer.invoke('draft:clear', { projectId, conversationKey }),
+  loadCabinetStaging: (
+    projectId: string,
+  ): Promise<{ staging: CabinetStagingV1 | null; problem?: string; migrated?: boolean }> =>
+    ipcRenderer.invoke('cabinet-staging:load', { projectId }),
+  saveCabinetStaging: (staging: CabinetStagingV1): Promise<{ path: string }> =>
+    ipcRenderer.invoke('cabinet-staging:save', staging),
+  searchProjectFiles: (
+    projectId: string,
+    query: string,
+  ): Promise<{ matches: string[]; errors: string[] }> =>
+    ipcRenderer.invoke('project-file:search', { projectId, query }),
+  readPinnedProjectFile: (
+    projectId: string,
+  ): Promise<{ item?: ContextItem; fingerprint?: SourceFingerprint; error?: string }> =>
+    ipcRenderer.invoke('project-file:pinned', { projectId }),
   loadWorkspaceSession: (): Promise<{ session: WorkspaceSessionV1 | null; problem?: string }> =>
     ipcRenderer.invoke('workspace:load'),
   saveWorkspaceSession: (session: WorkspaceSessionV1): Promise<{ path: string }> =>

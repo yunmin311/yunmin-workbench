@@ -66,6 +66,13 @@ function normalizedRemote(value: string): string {
   return value.trim().replace(/\\/g, '/').replace(/\/$/, '').replace(/\.git$/i, '').toLowerCase();
 }
 
+/** Canonical pinned locator: exactly the identity packet validity can re-check. */
+export function pinnedFileSourceRef(repository: string, commit: string, path: string): string {
+  return `git:${repository}@${commit}:${path}`;
+}
+
+export { normalizedRemote };
+
 function splitLocator(sourceRef: string): { path: string; fragment: string } | null {
   const hash = sourceRef.lastIndexOf('#');
   if (hash <= 0 || hash === sourceRef.length - 1) return null;

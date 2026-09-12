@@ -1,15 +1,18 @@
-import { cpSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { _electron, expect, test } from '@playwright/test';
 import { electronArgs, workbenchEnv } from './prototype-shell';
 import { rebindProjectRoot } from '../src/main/projectRootBindings';
+import { buildWorkbenchDraft } from '../src/core/project/draft';
+import { writeWorkbenchDraftAtomic } from '../src/main/draftPersistence';
 
 const realOverlay = process.env.WB_REAL_OVERLAY;
 const realStateRoot = process.env.WB_REAL_STATE_ROOT;
 const realCreativeOsRoot = process.env.WB_REAL_CREATIVE_OS_ROOT ?? 'E:\\1project\\creative-os';
 const screenshotDir = resolve('screenshots/workbench-vnext-20260907');
+const LEGACY_CABINET_KEY = 'cabinet:v1:creative-os';
 
 test('headed real overlay stages Context in the vNext Context Cabinet', async () => {
   test.skip(!realOverlay, 'WB_REAL_OVERLAY is required for the machine-local real walkthrough');
@@ -24,6 +27,27 @@ test('headed real overlay stages Context in the vNext Context Cabinet', async ()
     expectedProjectId: 'creative-os',
     expectedRemote: 'https://github.com/yunmin311/creative-os.git',
   });
+
+  // Seed a legacy 3C.1 cabinet draft so the one-time migration is exercised
+  // against real data: first real Memory atom Included + pinned.
+  const memoryIndexText = readFileSync(join(realOverlay!, 'memory', 'MEMORY.md'), 'utf8');
+  const firstAtom = memoryIndexText.match(/^- \[[^\]]+\]\(([^)]+\.md)\)/m);
+  expect(firstAtom).toBeTruthy();
+  const firstMemoryId = firstAtom![1].replace(/\.md$/, '');
+  await writeWorkbenchDraftAtomic(join(stateDir, 'state'), buildWorkbenchDraft('creative-os', LEGACY_CABINET_KEY, undefined, '', [
+    {
+      id: `memory:${firstMemoryId}`,
+      title: firstMemoryId,
+      source: `memory:${firstMemoryId}`,
+      body: '',
+      state: 'included',
+      pinned: true,
+      isReference: true,
+      sourceRef: 'overlay:memory/MEMORY.md',
+      provenance: 'EXTERNAL',
+    },
+  ], []));
+
   await mkdir(screenshotDir, { recursive: true });
   const app = await _electron.launch({
     args: [...electronArgs(), 'out/main/index.js'],
@@ -53,89 +77,134 @@ test('headed real overlay stages Context in the vNext Context Cabinet', async ()
       return {
         gateCount: Object.keys(adapter?.gates ?? {}).length,
         memoryCount: snapshot.memoryIndex.length,
-        fingerprintedRefs: snapshot.sourceFingerprints.length,
+        canonicalVerified: adapter?.canonicalSource?.verification === 'VERIFIED',
       };
     });
     expect(realReport.gateCount).toBeGreaterThan(0);
     expect(realReport.memoryCount).toBeGreaterThan(0);
-    // Governance rows = adapter gates + canonical source, all included by source default.
-    const governanceRows = cabinet.locator('.cabinet-group', { hasText: 'Governance' }).locator('.cabinet-row');
-    await expect(governanceRows).toHaveCount(realReport.gateCount + 1);
-    await expect(governanceRows.first()).toHaveClass(/is-included/);
-    // Memory rows exist and are unbound Available.
+    expect(realReport.canonicalVerified).toBe(true);
+
+    // Formal scope: the legacy draft was migrated once into
+    // project-context-cabinet (the Cabinet load itself performs the one-time
+    // migration), preserving the seeded decision.
+    const migration = await win.evaluate(async () => {
+      const stored = await window.wb.loadCabinetStaging('creative-os');
+      return {
+        kind: stored.staging?.scope.kind,
+        decisions: stored.staging?.decisions ?? [],
+      };
+    });
+    expect(migration.kind).toBe('project-context-cabinet');
+    expect(migration.decisions).toEqual([
+      expect.objectContaining({ contextId: `memory:${firstMemoryId}`, state: 'included', pinned: true }),
+    ]);
     const memoryGroup = cabinet.locator('.cabinet-group', { hasText: 'Memory' });
     const memoryRows = memoryGroup.locator('.cabinet-row');
     expect(await memoryRows.count()).toBe(realReport.memoryCount);
-    await expect(memoryRows.first()).toHaveClass(/is-available/);
+    await expect(memoryRows.nth(0)).toHaveClass(/is-included/);
+    await expect(memoryRows.nth(0)).toHaveClass(/is-pinned/);
     await expect(memoryRows.first().locator('.cabinet-unbound')).toHaveText('unbound');
     await win.screenshot({ path: join(screenshotDir, '11-context-cabinet-real.png') });
 
-    // One memory item: Available -> Included, then pinned.
-    const includedTitle = await memoryRows.nth(0).locator('.cabinet-item-title').innerText();
-    await memoryRows.nth(0).getByRole('button', { name: `Included: ${includedTitle}` }).click();
-    await expect(memoryRows.nth(0)).toHaveClass(/is-included/);
-    await memoryRows.nth(0).getByRole('button', { name: `Pin ${includedTitle}` }).click();
-    await expect(memoryRows.nth(0)).toHaveClass(/is-pinned/);
-
     // Another memory item: Available -> Excluded.
-    const excludedTitle = await memoryRows.nth(1).locator('.cabinet-item-title').innerText();
-    await memoryRows.nth(1).getByRole('button', { name: `Excluded: ${excludedTitle}` }).click();
+    await memoryRows.nth(1).getByRole('button', { name: /Excluded: / }).click();
     await expect(memoryRows.nth(1)).toHaveClass(/is-excluded/);
 
-    // Summary reflects the staging set.
-    await expect(cabinet.locator('.sum-pinned')).toHaveText('Pinned 1');
+    // --- Explicit project file: search -> pick -> Available -> Include -> Pin
+    await cabinet.getByRole('button', { name: '+ Project File' }).click();
+    const picker = cabinet.getByRole('search', { name: 'Add project file' });
+    await expect(picker).toBeVisible();
+    await picker.getByRole('textbox').fill('README.md');
+    await picker.getByRole('button', { name: 'Search' }).click();
+    // The exact path hit sorts first: the root README.md itself.
+    const matchRow = picker.locator('.cabinet-picker-list li', { hasText: 'README.md' }).first();
+    await expect(matchRow).toBeVisible();
+    await expect(matchRow).toHaveText(/^\s*README\.md/);
+    await win.screenshot({ path: join(screenshotDir, '15-project-file-picker-real.png') });
+    await matchRow.getByRole('button', { name: /as context/ }).click();
 
-    // Staging persisted through the Workbench draft seam with exact identity.
-    const draftReport = await win.evaluate(async () => {
-      const snapshot = await window.wb.loadOverlay();
-      const stored = await window.wb.loadDraft('creative-os', 'cabinet:v1:creative-os');
-      const decisions = stored.draft?.projectedDecisions ?? [];
+    const fileGroup = cabinet.locator('.cabinet-group', { hasText: 'Project Files' });
+    const fileRows = fileGroup.locator('.cabinet-row');
+    await expect(fileRows).toHaveCount(1);
+    const fileRow = fileRows.nth(0);
+    // Explicitly added files start Available — never auto-included.
+    await expect(fileRow).toHaveClass(/is-available/);
+    await expect(fileRow.locator('.cabinet-origin')).toHaveText('worktree');
+    await expect(fileRow.getByRole('button', { name: /Pin / })).toBeDisabled();
+    await fileRow.getByRole('button', { name: /Included: / }).click();
+    await expect(fileRow).toHaveClass(/is-included/);
+    await fileRow.getByRole('button', { name: /Pin / }).click();
+    await expect(fileRow).toHaveClass(/is-pinned/);
+
+    // Pinned canonical source is a distinct, explicitly added fact.
+    await cabinet.getByRole('button', { name: '+ Project File' }).click();
+    await picker.getByRole('button', { name: 'Add pinned canonical' }).click();
+    await expect(fileRows).toHaveCount(2);
+    const pinnedRow = fileRows.nth(1);
+    await expect(pinnedRow).toHaveClass(/is-available/);
+    await expect(pinnedRow.locator('.cabinet-origin')).toHaveText('pinned');
+
+    // Working-tree detail: WORKING TREE provenance + deterministic recheck.
+    await fileRow.locator('.cabinet-item-title').click();
+    let detail = cabinet.getByRole('complementary', { name: 'Context detail' });
+    await expect(detail).toBeVisible();
+    await expect(detail.locator('dd', { hasText: 'WORKING TREE' })).toBeVisible();
+    // Deterministic reason: after the explicit include+pin it names the user decision.
+    await expect(detail.locator('.cabinet-reason')).toContainText('User staging decision: included, pinned');
+    await detail.getByRole('button', { name: 'Recheck source' }).click();
+    await expect(detail.locator('.currentness')).toHaveText('CURRENT');
+    await win.screenshot({ path: join(screenshotDir, '16-project-file-context-real.png') });
+
+    // Formal staging state persisted through the cabinet seam.
+    const stagingState = await win.evaluate(async () => {
+      const stored = await window.wb.loadCabinetStaging('creative-os');
       return {
-        scope: stored.draft?.scope,
-        expectedFirstMemoryId: snapshot.memoryIndex[0]?.id,
-        expectedSecondMemoryId: snapshot.memoryIndex[1]?.id,
-        decisionCount: decisions.length,
-        included: decisions.filter((decision) => decision.state === 'included' && decision.pinned).map((decision) => decision.itemId),
-        excluded: decisions.filter((decision) => decision.state === 'excluded').map((decision) => decision.itemId),
-        manual: stored.draft?.manualContexts.length ?? 0,
+        scope: stored.staging?.scope,
+        includedIds: (stored.staging?.decisions ?? []).filter((d) => d.state === 'included').map((d) => d.contextId),
+        files: stored.staging?.projectFiles ?? [],
+        pinnedCanonicalFile: stored.staging?.pinnedCanonicalFile,
       };
     });
-    expect(draftReport.scope).toMatchObject({ projectId: 'creative-os', conversationKey: 'cabinet:v1:creative-os' });
-    expect(draftReport.included).toEqual([`memory:${draftReport.expectedFirstMemoryId}`]);
-    expect(draftReport.excluded).toEqual([`memory:${draftReport.expectedSecondMemoryId}`]);
-    expect(draftReport.manual).toBe(0);
+    expect(stagingState.scope).toMatchObject({ kind: 'project-context-cabinet', projectId: 'creative-os' });
+    expect(stagingState.includedIds).toContain('project-file:creative-os:README.md:context');
+    expect(stagingState.files).toEqual([
+      expect.objectContaining({ projectId: 'creative-os', relativePath: 'README.md', asReference: false }),
+    ]);
+    expect(stagingState.pinnedCanonicalFile).toBe(true);
 
-    // Close and reopen: decisions restore from identity, pinned survives.
-    await cabinet.getByRole('button', { name: 'Close Context Cabinet' }).click();
-    await expect(cabinet).toHaveCount(0);
-    await win.getByRole('button', { name: 'Cabinet', exact: true }).click();
-    await expect(cabinet).toBeVisible();
-    await expect(memoryRows.nth(0)).toHaveClass(/is-included/);
-    await expect(memoryRows.nth(0)).toHaveClass(/is-pinned/);
-    await expect(memoryRows.nth(1)).toHaveClass(/is-excluded/);
-    await win.screenshot({ path: join(screenshotDir, '12-context-staging-real.png') });
-
-    // Focus detail: identity, source, verification, deterministic reason.
-    await memoryRows.nth(0).locator('.cabinet-item-title').click();
-    const detail = cabinet.getByRole('complementary', { name: 'Context detail' });
-    await expect(detail).toBeVisible();
-    await expect(detail.locator('dt', { hasText: 'Source ref' })).toBeVisible();
-    await expect(detail.locator('.cabinet-reason')).toContainText(/Source default|User staging decision/);
-    // Recheck is deterministic and never silently upgrades to CURRENT.
-    await detail.getByRole('button', { name: 'Recheck source' }).click();
-    await expect(detail.locator('.currentness')).toHaveText(/CURRENT|STALE|INVALID|UNVERIFIED/);
-    await win.screenshot({ path: join(screenshotDir, '13-context-detail-real.png') });
-
-    // Compile Packet with an explicitly selected conversation target.
+    // --- Compile Packet with an explicitly selected conversation target.
     await win.locator('.react-flow__node[data-id^="conversation:"]').first().click();
     await cabinet.getByRole('button', { name: 'Compile Packet' }).click();
     const packetFooter = cabinet.getByRole('status', { name: 'Compiled packet' });
     await expect(packetFooter).toBeVisible({ timeout: 15_000 });
     await expect(packetFooter.locator('dd').first()).toHaveText(/^[0-9a-f-]{36}$/);
     await expect(packetFooter.locator('.currentness')).toHaveText(/CURRENT|STALE/);
-    await win.screenshot({ path: join(screenshotDir, '14-frozen-packet-real.png') });
+    await expect(packetFooter).toContainText('project-file:creative-os:README.md:context');
 
-    // Compile produced a frozen packet record but no Execution and no uses-context.
+    // The frozen packet really contains the file, fingerprinted at compile.
+    const packetCheck = await win.evaluate(async () => {
+      const revision = await window.wb.getWorkGraphRevision('creative-os');
+      const conversationNode = revision.revision?.candidate.semanticFacts.nodes
+        .find((node) => node.kind === 'conversation');
+      const conversationKey = conversationNode && 'conversationKey' in conversationNode
+        ? conversationNode.conversationKey
+        : '';
+      const listed = await window.wb.listFrozen('creative-os', conversationKey);
+      const summary = listed.packets.at(-1);
+      if (!summary) return { error: 'no frozen packet' };
+      const detailPacket = await window.wb.readFrozenDetail('creative-os', conversationKey, { version: summary.version });
+      return {
+        packetId: summary.packetId,
+        includedIds: detailPacket?.included.map((item) => item.id) ?? [],
+        fileFingerprints: detailPacket?.sourceFingerprints.filter((fingerprint) =>
+          fingerprint.sourceRef.startsWith('project-file:creative-os:README.md')),
+      };
+    });
+    expect(packetCheck.includedIds).toContain('project-file:creative-os:README.md:context');
+    expect(packetCheck.fileFingerprints).toHaveLength(1);
+    await win.screenshot({ path: join(screenshotDir, '17-project-file-packet-real.png') });
+
+    // Compile produced a frozen packet but no Execution and no uses-context.
     const afterReport = await win.evaluate(async () => {
       const response = await window.wb.getWorkGraphRevision('creative-os');
       if (!response.revision) return { error: response.error ?? 'missing revision' };

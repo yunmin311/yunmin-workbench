@@ -1,5 +1,6 @@
 import { cpSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { _electron, expect, test } from '@playwright/test';
@@ -10,6 +11,27 @@ const realOverlay = process.env.WB_REAL_OVERLAY;
 const realStateRoot = process.env.WB_REAL_STATE_ROOT;
 const realCreativeOsRoot = process.env.WB_REAL_CREATIVE_OS_ROOT ?? 'E:\\1project\\creative-os';
 const screenshotDir = resolve('screenshots/workbench-vnext-20260907');
+
+/**
+ * The authored acceptance state: the Governance commit that registers the
+ * creative-os canonical fact sources (WORK/TASK/ARTIFACT locators). The
+ * Work Graph stays fail-closed in production — without those locators there
+ * are simply no Work/Task/Artifact nodes. The test must not depend on which
+ * branch the user's Governance checkout happens to be on, so it exports THIS
+ * committed state into a temp overlay and points GOV_OVERLAY at the export.
+ * The user's repo is never checked out, stashed, or modified.
+ */
+const GOVERNANCE_PINNED_COMMIT = 'bdaa2e83229d3339a9d3830d9306f8991a442cf1';
+
+function exportGovernanceState(overlayRoot: string): string {
+  const exportDir = mkdtempSync(join(tmpdir(), 'wb-overlay-pin-'));
+  const tar = execFileSync('git', ['-C', overlayRoot, 'archive', GOVERNANCE_PINNED_COMMIT], {
+    encoding: 'buffer',
+    maxBuffer: 512 * 1024 * 1024,
+  });
+  execFileSync('tar', ['-xf', '-', '-C', exportDir], { input: tar, stdio: ['pipe', 'ignore', 'inherit'] });
+  return exportDir;
+}
 
 test('headed real overlay renders enriched WorkGraph facts', async () => {
   test.skip(!realOverlay, 'WB_REAL_OVERLAY is required for the machine-local real walkthrough');
@@ -25,9 +47,10 @@ test('headed real overlay renders enriched WorkGraph facts', async () => {
     expectedRemote: 'https://github.com/yunmin311/creative-os.git',
   });
   await mkdir(screenshotDir, { recursive: true });
+  const overlayExport = exportGovernanceState(realOverlay!);
   const app = await _electron.launch({
     args: [...electronArgs(), 'out/main/index.js'],
-    env: workbenchEnv({ GOV_OVERLAY: realOverlay, WB_STATE_DIR: stateDir, WB_RENDERER_VNEXT: '1' }),
+    env: workbenchEnv({ GOV_OVERLAY: overlayExport, WB_STATE_DIR: stateDir, WB_RENDERER_VNEXT: '1' }),
   });
   const win = await app.firstWindow();
   try {
@@ -96,5 +119,6 @@ test('headed real overlay renders enriched WorkGraph facts', async () => {
   } finally {
     await app.close();
     rmSync(stateDir, { recursive: true, force: true });
+    rmSync(overlayExport, { recursive: true, force: true });
   }
 });

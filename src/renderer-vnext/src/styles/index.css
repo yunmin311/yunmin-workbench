@@ -493,6 +493,98 @@ body,
   padding: 1px 4px;
 }
 
+.cabinet-origin {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 600;
+  border-radius: 3px;
+  padding: 1px 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.cabinet-origin.is-worktree {
+  color: #7dd3fc;
+  border: 1px solid rgba(125, 211, 252, 0.35);
+  background: rgba(125, 211, 252, 0.08);
+}
+
+.cabinet-origin.is-pinned {
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  background: rgba(251, 191, 36, 0.08);
+}
+
+.cabinet-add { border-color: #155e75; color: #67e8f9; }
+.cabinet-add:hover { border-color: #22d3ee; }
+.cabinet-add[aria-expanded='true'] { border-color: #22d3ee; }
+
+.cabinet-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-bottom: 1px solid #1e293b;
+}
+
+.cabinet-picker input {
+  flex: 1;
+  min-width: 220px;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 6px 9px;
+  font: 500 11px/1.4 system-ui, sans-serif;
+}
+
+.cabinet-picker input:focus { outline: none; border-color: #818cf8; }
+
+.cabinet-add-pinned { border-color: #92400e; color: #fbbf24; }
+.cabinet-add-pinned:hover:not(:disabled) { border-color: #fbbf24; }
+
+.cabinet-picker-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  width: 100%;
+  max-height: 132px;
+  overflow-y: auto;
+}
+
+.cabinet-picker-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(30, 41, 59, 0.6);
+}
+
+.picker-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  color: #cbd5e1;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Monaco', monospace;
+}
+
+.cabinet-picker-list button {
+  flex-shrink: 0;
+  border: 1px solid #475569;
+  border-radius: 5px;
+  background: #1e293b;
+  color: #cbd5e1;
+  padding: 3px 7px;
+  font: 600 10px/1 system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.cabinet-picker-list button:hover { border-color: #818cf8; color: #fff; }
+
 .cabinet-pin {
   flex-shrink: 0;
   background: none;

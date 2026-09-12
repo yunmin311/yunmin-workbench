@@ -40,7 +40,7 @@ export function cabinetScopeKey(projectId: string): string {
 }
 
 /** Groups come from the item's declared source only — never from content. */
-export type CabinetSourceGroup = 'governance' | 'inbox' | 'memory' | 'other';
+export type CabinetSourceGroup = 'governance' | 'inbox' | 'file' | 'memory' | 'other';
 
 /**
  * Declared relation to the Cabinet's project scope. `unbound` items remain
@@ -58,6 +58,7 @@ export interface CabinetItem extends ContextItem {
 function groupFor(source: string): CabinetSourceGroup {
   if (source.startsWith('adapter:')) return 'governance';
   if (source.startsWith('inbox:')) return 'inbox';
+  if (source.startsWith('project-file:') || source.startsWith('pinned-file:')) return 'file';
   if (source.startsWith('memory:') || source.startsWith('memory-projection:')) return 'memory';
   return 'other';
 }
@@ -80,6 +81,33 @@ export function buildCabinetItems(snapshot: OverlaySnapshot, projectId: string):
       fingerprintAvailable: item.sourceRef !== undefined && fingerprinted.has(item.sourceRef),
     };
   });
+}
+
+/**
+ * Cabinet view over an explicitly user-added ContextItem (project file /
+ * pinned canonical source). These items never come from a source scan.
+ */
+export function asCabinetItem(item: ContextItem, fingerprints: { sourceRef: string }[] = []): CabinetItem {
+  const group = groupFor(item.source);
+  const fingerprinted = new Set(fingerprints.map((f) => f.sourceRef));
+  return {
+    ...item,
+    group,
+    binding: bindingFor(group),
+    fingerprintAvailable: item.sourceRef !== undefined && fingerprinted.has(item.sourceRef),
+  };
+}
+
+/**
+ * Which concrete fact a file item points at. Working tree and pinned commit
+ * are different facts and must never silently merge into one identity.
+ */
+export type CabinetFileOrigin = 'working-tree' | 'pinned' | 'none';
+
+export function cabinetFileOrigin(item: Pick<CabinetItem, 'source'>): CabinetFileOrigin {
+  if (item.source.startsWith('project-file:')) return 'working-tree';
+  if (item.source.startsWith('pinned-file:')) return 'pinned';
+  return 'none';
 }
 
 /**

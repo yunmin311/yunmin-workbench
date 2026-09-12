@@ -27,6 +27,8 @@ import {
 import { readGitFacts } from './adapters/gitFacts';
 import { lastGoodForCanonicalRead, readPinnedCanonicalFacts } from './adapters/canonicalFacts';
 import { createProjectFileContext, fingerprintFileAtRoot, fingerprintProjectFile } from './adapters/projectFiles';
+import { readPinnedProjectFile, searchProjectFiles } from './adapters/projectFileSources';
+import { readCabinetStagingState, saveCabinetStagingState } from './cabinetStagingPersistence';
 import { CodexAppServerAdapter } from './adapters/codexAppServer';
 import { appendActivity, clearActivity, readActivityPage } from './activityPersistence';
 import { dismissAttention, readAttentionLocalState } from './attentionPersistence';
@@ -662,6 +664,40 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
   ipcMain.handle('draft:clear', async (_event, rawScope: unknown) => {
     const scope = DraftScopeSchema.parse(rawScope);
     await withProfileStateLock(() => clearWorkbenchDraft(stateDir(), scope.projectId, scope.conversationKey));
+  });
+
+  ipcMain.handle('cabinet-staging:load', (_event, rawScope: unknown) => {
+    const scope = z.object({ projectId: KeySchema }).parse(rawScope);
+    return withProfileStateLock(() => readCabinetStagingState(stateDir(), scope.projectId));
+  });
+  ipcMain.handle('cabinet-staging:save', async (_event, rawStaging: unknown) => {
+    z.object({ projectId: KeySchema }).parse((rawStaging as { scope?: { projectId?: unknown } })?.scope);
+    return withProfileStateLock(() => saveCabinetStagingState(stateDir(), rawStaging));
+  });
+
+  const ProjectFileSearchSchema = z.object({
+    projectId: KeySchema,
+    query: z.string().max(512),
+  });
+  ipcMain.handle('project-file:search', async (_event, rawRequest: unknown) => {
+    const request = ProjectFileSearchSchema.parse(rawRequest);
+    const snap = cache?.snapshot ?? (await refresh());
+    const boundRoot = await projectRoot(snap, request.projectId);
+    if (!boundRoot) return { matches: [], errors: [`no local root binding for project ${request.projectId}`] };
+    return searchProjectFiles(boundRoot, request.query);
+  });
+
+  ipcMain.handle('project-file:pinned', async (_event, rawScope: unknown) => {
+    const scope = z.object({ projectId: KeySchema }).parse(rawScope);
+    const snap = cache?.snapshot ?? (await refresh());
+    const adapter = snap.projects.find((project) => project.projectId === scope.projectId);
+    if (!adapter) return { error: `no project adapter for ${scope.projectId}` };
+    const boundRoot = await projectRoot(snap, scope.projectId);
+    if (!boundRoot) return { error: `no local root binding for project ${scope.projectId}` };
+    const result = await readPinnedProjectFile(adapter, boundRoot);
+    return result.ok
+      ? { item: result.item, fingerprint: result.fingerprint }
+      : { error: result.error };
   });
 
   ipcMain.handle('workspace:load', () => withProfileStateLock(() => readWorkspaceSession(stateDir())));
