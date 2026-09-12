@@ -11,6 +11,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import type { WorkGraphRevision } from '../../types';
+import { ContextCabinet, type CabinetSelection } from '../cabinet/ContextCabinet';
 import {
   buildFocusDetail,
   buildGraphElements,
@@ -71,6 +72,7 @@ export function WorkGraphCanvas({ revision, onRefresh }: { revision: WorkGraphRe
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const [instance, setInstance] = useState<ReactFlowInstance | null>(null);
+  const [cabinetOpen, setCabinetOpen] = useState(false);
 
   useEffect(() => {
     setNodes(initial.nodes);
@@ -87,6 +89,21 @@ export function WorkGraphCanvas({ revision, onRefresh }: { revision: WorkGraphRe
     if (target) void instance.fitView({ nodes: [target], padding: 0.8, duration: 250 });
   }, [instance, nodes, selectedId]);
   const attentionNodes = nodes.filter((node) => node.data.kind === 'gate');
+  const selectedNode = nodes.find((node) => node.id === selectedId) ?? null;
+  const cabinetSelection: CabinetSelection | null = selectedNode
+    ? {
+      kind: selectedNode.data.kind,
+      label: selectedNode.data.label,
+      ...((selectedNode.data.semantic.kind === 'conversation')
+        ? {
+          conversationKey: selectedNode.data.semantic.conversationKey,
+          ...(selectedNode.data.semantic.canonicalConversationId
+            ? { canonicalConversationId: selectedNode.data.semantic.canonicalConversationId }
+            : {}),
+        }
+        : {}),
+    }
+    : null;
 
   return (
     <div className="workgraph-canvas-container">
@@ -113,12 +130,29 @@ export function WorkGraphCanvas({ revision, onRefresh }: { revision: WorkGraphRe
         <Panel position="top-left" className="graph-controls" aria-label="Graph controls">
           <button type="button" onClick={() => void instance?.fitView({ padding: 0.18, duration: 250 })}>Fit</button>
           <button type="button" onClick={focusCurrentOrProject}>Focus {selectedId ? 'current' : 'project'}</button>
+          <button
+            type="button"
+            aria-pressed={cabinetOpen}
+            onClick={() => setCabinetOpen((open) => !open)}
+            title={selectedNode && (selectedNode.data.kind === 'work' || selectedNode.data.kind === 'task')
+              ? `Context Cabinet — staging for ${selectedNode.data.label}`
+              : 'Context Cabinet'}
+          >
+            Cabinet
+          </button>
           <button type="button" onClick={() => void onRefresh()}>Refresh</button>
           {attentionNodes.length > 0 && (
             <button type="button" onClick={() => void instance?.fitView({ nodes: attentionNodes, padding: 0.8, duration: 250 })}>Attention</button>
           )}
         </Panel>
       </ReactFlow>
+      {cabinetOpen && (
+        <ContextCabinet
+          projectId={revision.candidate.scope.projectId}
+          selection={cabinetSelection}
+          onClose={() => setCabinetOpen(false)}
+        />
+      )}
       {detail && (
         <aside className="focus-detail" role="complementary" aria-label="Focus Detail">
           <button className="focus-close" type="button" aria-label="Close Focus Detail" onClick={() => setSelectedId(null)}>×</button>
