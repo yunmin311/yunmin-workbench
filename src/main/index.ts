@@ -1551,6 +1551,10 @@ async function createWindow(refresh: () => Promise<OverlaySnapshot>): Promise<Br
   win.on('unmaximize', saveWindow);
   win.on('closed', () => {
     closeIsland();
+    // The hidden Compact window must not outlive the main window: otherwise
+    // window-all-closed never fires and the process lingers with no visible
+    // surface and no tray (donor-audit finding, PHASE 4A.1).
+    closeCompactForQuit();
   });
   // Pending debounced renderer saves (composer drafts, workspace session)
   // must not die with the window: a user who closes Workbench right after a

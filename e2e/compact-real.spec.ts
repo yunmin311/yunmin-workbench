@@ -114,7 +114,17 @@ test('headed real Compact edge surface mirrors canonical facts and hands off to 
       });
       expect(visible).toBe(false);
     }).toPass({ timeout: 10_000 });
-    await win.evaluate(() => window.wb.toggleCompactWindow());
+    const toggleOutcome = await win.evaluate(async () => {
+      try {
+        const result = await window.wb.toggleCompactWindow();
+        return { ok: true, result };
+      } catch (error) {
+        return { ok: false, error: String(error) };
+      }
+    });
+    const compactInfo = await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows().map((w) => ({ title: w.getTitle(), visible: w.isVisible(), destroyed: w.isDestroyed() })));
+    writeFileSync(join(stateDir, 'diagnostics.json'), JSON.stringify({ toggleOutcome, compactInfo }), 'utf8');
     await expect(async () => {
       const visible = await app.evaluate(({ BrowserWindow }) => {
         const candidate = BrowserWindow.getAllWindows().find((w) => w.getTitle() === 'Workbench Compact');
@@ -146,5 +156,46 @@ test('headed real Compact edge surface mirrors canonical facts and hands off to 
     await app.close();
     rmSync(stateDir, { recursive: true, force: true });
     rmSync(overlayExport, { recursive: true, force: true });
+  }
+});
+
+test('closing the main window quits even with a hidden Compact window alive', async () => {
+  const stateDir = mkdtempSync(join(tmpdir(), 'wb-compact-quit-'));
+  await mkdir(screenshotDir, { recursive: true });
+  // No overlay needed: this is pure window lifecycle (donor audit, PHASE 4A.1).
+  const app = await _electron.launch({
+    args: [...electronArgs(), 'out/main/index.js'],
+    env: workbenchEnv({ WB_STATE_DIR: stateDir, WB_COMPACT_WINDOW: '1' }),
+  });
+  const win = await app.firstWindow();
+  try {
+    await expect(win.locator('.prototype-chrome, .vnext-app').first()).toBeVisible();
+    // The launch flag already shows the Compact window.
+    await expect(async () => {
+      const visible = await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows().some((w) => w.getTitle() === 'Workbench Compact' && w.isVisible()));
+      expect(visible).toBe(true);
+    }).toPass({ timeout: 15_000 });
+
+    // Hide the compact, then close the main window: window-all-closed must
+    // fire (the hidden compact must not keep the process alive with no
+    // visible surface and no tray).
+    await app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()
+        .find((w) => w.getTitle() === 'Workbench Compact')
+        ?.hide();
+    });
+    await win.close();
+    await expect.poll(async () => {
+      try {
+        const count = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length);
+        return count;
+      } catch {
+        return 0; // process already exited
+      }
+    }, { timeout: 10_000 }).toBe(0);
+  } finally {
+    await app.close().catch(() => undefined);
+    rmSync(stateDir, { recursive: true, force: true });
   }
 });

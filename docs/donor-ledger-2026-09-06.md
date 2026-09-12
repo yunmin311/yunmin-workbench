@@ -68,6 +68,75 @@ its composer source this round.
 - **NOT ACCESSIBLE (deep source)**: composer internals not read this round;
   the Round-1 landing was guided by the in-repo adoption map, not source.
 
+## Todobar — `github.com/Leonxlnx/todobar` (public license) — DIRECTLY OBSERVED (2026-09-12, PHASE 4A.1)
+
+Registered late: the donor existed publicly, but was missing from the Round-1/2
+inventory — the earlier "DONOR NOT AVAILABLE" verdict in PHASE 4A reflected an
+inventory gap, not reality. Product form: a right/left/top dockable edge todo
+sidebar for macOS and Windows. Stack: Tauri (Rust) + React. Workbench reads its
+WINDOW/DOCK MECHANISMS only; its task/product semantics are out of scope.
+
+Read this round: `src-tauri/src/lib.rs` (whole file), `src-tauri/tauri.conf.json`
+(window config), `src/sidebarSettings.ts` (dock settings), `src/App.tsx`
+(`syncNativeWindow` ~L1259–1400, `syncHitTest` ~L1436–1600).
+
+- **DIRECTLY OBSERVED (mechanisms)**:
+  - window: `set_decorations(false)`, `set_resizable(false)`,
+    `set_always_on_top(true)`, `set_skip_taskbar(true)`, transparent background
+    (`tauri.conf.json`: `transparent/shadow:false/focus:false`)
+  - dock geometry (`lib.rs` setup + `App.tsx` `syncNativeWindow`):
+    `monitor_from_point(cursor)` → `currentMonitor()` fallback; full-height
+    side dock; closed state sits OFF-SCREEN with only a 42px (×scale_factor)
+    edge handle visible (`closed_offset = 2px×scale`); dockEdge right/left/top
+    (bottom migrates to top); open/close native position animation
+    (`animateNativePosition`, `motionMs` 230ms); `panelWidth` clamped against
+    work area
+  - click-through (`App.tsx` `syncHitTest`): transparent areas pass pointer
+    events via polled cursor-vs-rect hit test → `setIgnoreCursorEvents`
+    (two-interval polling, hover-reveal 650ms, cleanup restores false)
+  - tray (`lib.rs` `setup_tray`): menu toggle(Alt+T)/Settings/Quit; left-click
+    toggles; every route re-asserts `focus_main_window`
+  - global shortcuts (`setup_global_shortcuts`): Alt+T / Alt+Shift+T; register
+    failure logs and continues (fail-safe, same policy as Workbench)
+  - single-instance (`tauri_plugin_single_instance`): second launch focuses
+    the existing window
+  - autostart (`tauri_plugin_autostart` + `launchAtLogin`, best-effort try/catch)
+
+- **Workbench decision (PHASE 4A.1 audit vs `src/main/compactWindow.ts`)**:
+  - **KEEP** (already equal or better-suited): single-instance via
+    `app.requestSingleInstanceLock` + `second-instance` focus; fail-safe
+    global shortcut register/unregister; close=hide lifecycle; bounds clamp +
+    throttled persistence; frameless/alwaysOnTop/skipTaskbar; separate
+    renderer surface with shared preload; no tray/autostart
+  - **PATCH** (donor-informed fix, landed this round): closing the main window
+    now destroys the hidden Compact window — otherwise `window-all-closed`
+    never fires and the process lingers with no visible surface and no tray
+    (the exact "running but unfindable" state Todobar avoids via explicit
+    tray Quit). Landed in `src/main/index.ts` main-window `closed` handler +
+    `e2e/compact-real.spec.ts` lifecycle test.
+  - **DEFER** (recorded for a future phase, not implemented): true collapsed
+    edge-handle form (off-screen closed geometry + 42px handle + hover-reveal
+    + open/close animation); dock-edge settings (right/left/top);
+    click-through for a transparent edge strip (Electron equivalent:
+    `win.setIgnoreCursorEvents` with the same polled hit-test shape); tray
+    (only if a "main closed but resident" product decision ever lands);
+    autostart (Electron `app.setLoginItemSettings`)
+  - **REJECT**: porting Tauri/Rust; transparent window + `shadow:false` +
+    `focus:false` (Compact is an interactive focused surface with real
+    content, no transparent dead zone); Todobar task/product semantics;
+    `resizable:false` fixed-size dock (Workbench Compact resizes within
+    clamped bounds)
+
+## Ambient Island (in-repo) — `src/main/island.ts`, `src/core/ambient/island.ts` — IN-REPO MECHANISM DONOR
+
+Not an external donor: this is Workbench's own validated Electron window
+mechanism, reused as the implementation base for the Compact surface
+(multi-display workArea selection, bounds clamping, throttled position
+persistence, crash isolation, main-window lifecycle coupling). Todobar and the
+Island are not alternatives — Todobar supplies external product/window
+*behavior* references; the Island supplies the native Electron
+*implementation* patterns both build on.
+
 ## Not adopted / out of scope
 
 Scheduler/orchestrator patterns, conversation forking, dashboards, card
