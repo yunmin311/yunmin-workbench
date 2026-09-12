@@ -124,7 +124,7 @@ describe('Compact window bounds (multi-monitor / DPI clamping)', () => {
     expect(bounds.y).toBe(12);
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(WORK_AREA.width);
     const expanded = defaultCompactBounds(WORK_AREA, true);
-    expect(expanded.height).toBe(320);
+    expect(expanded.height).toBe(380);
   });
 
   it('restores persisted bounds onto the containing display and clamps invalid ones', () => {

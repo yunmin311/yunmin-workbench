@@ -105,7 +105,7 @@ function FocusDetailPanel({ detail, onClose, onPrepare, onOpenCabinet }: {
         )}
         {detail.taskState && detail.taskState !== 'unknown' && <span className="wb-chip">{detail.taskState}</span>}
         {detail.runtimeState && <span className="wb-chip is-blue">{detail.runtimeState}</span>}
-        {detail.attentionState && detail.attentionState !== 'none' && <span className="wb-chip is-amber">{detail.attentionState}</span>}
+        {detail.attentionState && detail.attentionState !== 'none' && detail.attentionState !== 'unknown' && <span className="wb-chip is-amber">{detail.attentionState}</span>}
       </div>
       <dl className="focus-meta">
         <dt>Source</dt><dd className="wb-mono">{detail.source}</dd>

@@ -100,8 +100,10 @@ test('headed real canonical Task prepares an explicit dispatch and stops before 
     await taskNode.click();
     const focusDetail = win.getByRole('complementary', { name: 'Focus Detail' });
     await expect(focusDetail).toBeVisible();
-    // Canonical manifest declares no lifecycle: the honest state is UNKNOWN.
-    await expect(focusDetail).toContainText('unknown');
+    // Canonical manifest declares no lifecycle: the UI shows no fabricated
+    // lifecycle claim (UNKNOWN stays out of the chips entirely).
+    await expect(focusDetail).toContainText('定义主/渲染共享类型');
+    await expect(focusDetail).not.toContainText('unknown');
 
     await win.getByRole('button', { name: 'Prepare', exact: true }).click();
     const surface = win.getByRole('region', { name: 'Dispatch' });
