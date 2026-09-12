@@ -1,0 +1,143 @@
+/* ============================================================
+   Yunmin Workbench — unified design tokens (FULL + COMPACT)
+   Single source for both renderer surfaces.
+
+   Sources actually reused:
+   - src/renderer/src/material/material-surfaces.css  → --wb-* surface/glass
+     token architecture (kept verbatim in spirit, values tuned for vNext)
+   - src/renderer/src/product-rebuild.css             → density scale,
+     low-saturation semantic palette pattern
+   - Creative OS craft 色梯 (design-library 灵感详情页-v4) → accent family,
+     flat fills, zero gradients, radius ladder (10/16 tightened for desktop)
+   ============================================================ */
+
+:root {
+  /* Surfaces — layered glass, dark, never pure black */
+  --wb-surface-base: #101318;
+  --wb-surface-raised: #161a21;
+  --wb-surface-overlay: #1c2129;
+  --wb-surface-sunken: #0c0f13;
+  --wb-surface-glass: rgba(24, 29, 37, 0.82);
+
+  /* Ink */
+  --wb-text: #e4e8ee;
+  --wb-text-secondary: #9aa4b2;
+  --wb-text-muted: #626d7d;
+  --wb-text-faint: #454e5c;
+
+  /* Lines — one quiet border weight everywhere */
+  --wb-border: rgba(148, 163, 184, 0.14);
+  --wb-border-strong: rgba(148, 163, 184, 0.28);
+
+  /* Accent — craft 灰青 #427e8a lifted for dark ground; flat, no gradient */
+  --wb-accent: #7fb5c0;
+  --wb-accent-strong: #a3d0d9;
+  --wb-accent-dim: rgba(127, 181, 192, 0.16);
+  --wb-accent-wash: rgba(127, 181, 192, 0.08);
+
+  /* Semantic — craft ladder dark-ground adaptations, low saturation */
+  --wb-green: #86c99a;
+  --wb-green-dim: rgba(134, 201, 154, 0.14);
+  --wb-blue: #8fa8e8;
+  --wb-blue-dim: rgba(143, 168, 232, 0.13);
+  --wb-violet: #a7a3e0;
+  --wb-violet-dim: rgba(167, 163, 224, 0.13);
+  --wb-amber: #e2b873;
+  --wb-amber-dim: rgba(226, 184, 115, 0.14);
+  --wb-red: #e08a80;
+  --wb-red-dim: rgba(224, 138, 128, 0.15);
+  --wb-teal: #7fc4b2;
+  --wb-teal-dim: rgba(127, 196, 178, 0.13);
+  --wb-slate: #8b98ab;
+  --wb-slate-dim: rgba(139, 152, 171, 0.12);
+
+  /* Entity tier hues — one hue per entity family, reused everywhere */
+  --wb-project: var(--wb-accent);
+  --wb-work: #a7a3e0;          /* violet — sustained container */
+  --wb-task: #e2b873;          /* amber — actionable unit */
+  --wb-conversation: #8fa8e8;  /* blue — durable carrier */
+  --wb-execution: #86c99a;     /* green — live runtime */
+  --wb-context: #7fc4b2;       /* teal — knowledge input */
+  --wb-artifact: #d8a46a;      /* warm sand — output */
+  --wb-gate: #e08a80;          /* red — attention */
+  --wb-evidence: #9db8c9;      /* grey-cyan — verification */
+  --wb-memory: #c9a3d8;        /* mauve — memory source */
+
+  /* Density */
+  --wb-fs-xs: 10px;
+  --wb-fs-sm: 11px;
+  --wb-fs-md: 12px;
+  --wb-fs-lg: 13.5px;
+  --wb-fs-xl: 16px;
+  --wb-space-1: 4px;
+  --wb-space-2: 8px;
+  --wb-space-3: 12px;
+  --wb-space-4: 16px;
+  --wb-space-5: 24px;
+
+  /* Shape — craft ladder tightened for desktop density */
+  --wb-radius-sm: 5px;
+  --wb-radius: 8px;
+  --wb-radius-lg: 12px;
+
+  /* Elevation */
+  --wb-shadow-1: 0 2px 10px rgba(0, 0, 0, 0.35);
+  --wb-shadow-2: 0 10px 34px rgba(0, 0, 0, 0.45);
+  --wb-shadow-3: 0 18px 48px rgba(0, 0, 0, 0.55);
+
+  /* Motion — restrained */
+  --wb-motion-fast: 120ms ease;
+  --wb-motion: 200ms ease;
+}
+
+/* Glass recipe — layering + light border, never heavy glow (material layer rule) */
+.wb-glass {
+  background: var(--wb-surface-glass);
+  backdrop-filter: blur(14px) saturate(1.15);
+  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+  border: 1px solid var(--wb-border);
+}
+
+.wb-panel {
+  background: var(--wb-surface-overlay);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-lg);
+  box-shadow: var(--wb-shadow-2);
+}
+
+/* Shared micro-typography helpers */
+.wb-kicker {
+  font-size: var(--wb-fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--wb-text-muted);
+}
+
+.wb-mono {
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  font-size: 0.92em;
+}
+
+/* Shared chip — single chip language across all surfaces */
+.wb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: var(--wb-fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  border: 1px solid var(--wb-border);
+  color: var(--wb-text-secondary);
+  white-space: nowrap;
+}
+
+.wb-chip.is-accent { color: var(--wb-accent-strong); border-color: rgba(127, 181, 192, 0.35); background: var(--wb-accent-dim); }
+.wb-chip.is-green { color: var(--wb-green); border-color: rgba(134, 201, 154, 0.3); background: var(--wb-green-dim); }
+.wb-chip.is-amber { color: var(--wb-amber); border-color: rgba(226, 184, 115, 0.3); background: var(--wb-amber-dim); }
+.wb-chip.is-red { color: var(--wb-red); border-color: rgba(224, 138, 128, 0.3); background: var(--wb-red-dim); }
+.wb-chip.is-violet { color: var(--wb-violet); border-color: rgba(167, 163, 224, 0.3); background: var(--wb-violet-dim); }
+.wb-chip.is-teal { color: var(--wb-teal); border-color: rgba(127, 196, 178, 0.3); background: var(--wb-teal-dim); }
+.wb-chip.is-blue { color: var(--wb-blue); border-color: rgba(143, 168, 232, 0.3); background: var(--wb-blue-dim); }

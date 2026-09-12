@@ -190,6 +190,7 @@ export interface WorkbenchContractV1 {
   runDoctor(): Promise<DoctorReport>;
   onMaterialChanged(cb: (pref: { material: string }) => void): () => void;
   getWorkGraphRevision(projectId?: string): Promise<{ revision: WorkGraphRevision | null; error?: string }>;
+  getFixtureWorkGraph(): Promise<{ revision: WorkGraphRevision | null; error?: string }>;
 }
 
 export type WorkbenchContract = WorkbenchContractV1;
@@ -265,6 +266,7 @@ const CONTRACT_METHOD_NAMES: ReadonlyArray<ContractMethodNames> = [
   'runDoctor',
   'onMaterialChanged',
   'getWorkGraphRevision',
+  'getFixtureWorkGraph',
 ];
 
 const contractMethodMarker: WorkbenchContractV1 = new Proxy({} as WorkbenchContractV1, {

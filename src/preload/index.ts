@@ -196,6 +196,8 @@ const api = {
   runDoctor: (): Promise<DoctorReport> => ipcRenderer.invoke('doctor:run'),
   getWorkGraphRevision: (projectId?: string): Promise<{ revision: WorkGraphRevision | null; error?: string }> =>
     ipcRenderer.invoke('workgraph:get', projectId),
+  getFixtureWorkGraph: (): Promise<{ revision: WorkGraphRevision | null; error?: string }> =>
+    ipcRenderer.invoke('workgraph:fixture'),
   onMaterialChanged: (cb: (pref: { material: string }) => void): (() => void) => {
     const listener = (_e: IpcRendererEvent, pref: unknown) => cb(pref as { material: string });
     ipcRenderer.on('material:changed', listener);

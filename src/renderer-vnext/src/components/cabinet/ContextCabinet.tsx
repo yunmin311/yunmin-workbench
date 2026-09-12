@@ -457,15 +457,16 @@ export function ContextCabinet({ projectId, selection, onClose }: {
     }
   }, [compileTarget, compiling, currentFingerprints, items, projectId, selection, snapshot]);
 
-  const stateButton = (item: CabinetItem, value: CabinetItem['state'], label: string) => (
+  const stateButton = (item: CabinetItem, value: CabinetItem['state'], label: string, short: string) => (
     <button
       type="button"
       className={`cabinet-state${item.state === value ? ' is-active' : ` is-${value}`}`}
       aria-pressed={item.state === value}
       aria-label={`${label}: ${item.title}`}
+      title={label}
       onClick={() => decideState(item.id, value)}
     >
-      {label}
+      {short}
     </button>
   );
 
@@ -550,7 +551,7 @@ export function ContextCabinet({ projectId, selection, onClose }: {
           )}
         </div>
       )}
-      <div className="cabinet-body">
+      <div className={`cabinet-body${selected ? ' has-detail' : ''}`}>
         <div className="cabinet-groups">
           {GROUP_ORDER.map((group) => {
             const groupItems = items.filter((item) => item.group === group);
@@ -562,9 +563,9 @@ export function ContextCabinet({ projectId, selection, onClose }: {
                   {groupItems.map((item) => (
                     <li key={item.id} className={`cabinet-row is-${item.state}${item.pinned ? ' is-pinned' : ''}`}>
                       <div className="cabinet-states" role="group" aria-label={`Staging state for ${item.title}`}>
-                        {stateButton(item, 'available', 'Available')}
-                        {stateButton(item, 'included', 'Included')}
-                        {stateButton(item, 'excluded', 'Excluded')}
+                        {stateButton(item, 'available', 'Available', 'Avail')}
+                        {stateButton(item, 'included', 'Included', 'Incl')}
+                        {stateButton(item, 'excluded', 'Excluded', 'Excl')}
                       </div>
                       <button type="button" className="cabinet-item-title" onClick={() => openDetail(item)} title={item.title}>
                         {item.title}
@@ -590,7 +591,7 @@ export function ContextCabinet({ projectId, selection, onClose }: {
           {items.length === 0 && !error && <p className="cabinet-empty">No context candidates from the bound sources.</p>}
         </div>
         <aside className="cabinet-detail" aria-label="Context detail">
-          {!selected && <p className="cabinet-empty">Select a context to inspect its identity and source.</p>}
+          {!selected && <p className="cabinet-empty" style={{ opacity: 0.55 }}>Select a context to inspect its identity and source.</p>}
           {selected && (
             <>
               <h3>{selected.title}</h3>

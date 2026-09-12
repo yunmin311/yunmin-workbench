@@ -1368,6 +1368,17 @@ const rememberRuntime = (threadId: string) => {
     });
   });
 
+  ipcMain.handle('workgraph:fixture', async () => {
+    // TEST FIXTURE scene only (explicit renderer flag): compiled through the
+    // real WorkGraph compiler so every visual is semantically legal.
+    const { buildFixtureRevision } = await import('../core/workgraph/fixtureScene');
+    try {
+      return { revision: await buildFixtureRevision() };
+    } catch (e) {
+      return { error: String(e) };
+    }
+  });
+
   ipcMain.handle('workgraph:get', async (_e, rawProjectId?: unknown) => {
     try {
       const snapshot = cache?.snapshot ?? await refresh();

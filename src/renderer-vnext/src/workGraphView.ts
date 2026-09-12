@@ -1,13 +1,19 @@
 import type { Edge, Node, XYPosition } from 'reactflow';
 import type { WorkGraphRevision } from '../../core/workgraph/revision';
 import type { WorkGraphEdge, WorkGraphNode } from '../../core/workgraph/types';
+import { buildWorkspaceLayout, familyOf, type NodeFamily, type WorkspaceRegion } from './workspace/workspaceLayout';
+
+export type { NodeFamily };
 
 export interface WorkGraphNodeData {
   semantic: WorkGraphNode;
   kind: WorkGraphNode['kind'];
+  family: NodeFamily;
   label: string;
   verification: WorkGraphNode['verification'];
   sourceRef: string;
+  /** Set on synthetic region containers. */
+  region?: WorkspaceRegion;
 }
 
 export interface WorkGraphEdgeData {
@@ -19,33 +25,56 @@ export interface WorkGraphEdgeData {
 export type CanvasNode = Node<WorkGraphNodeData>;
 export type CanvasEdge = Edge<WorkGraphEdgeData>;
 
-const columns: Record<WorkGraphNode['kind'], number> = {
-  project: 0, work: 1, task: 2, conversation: 2, execution: 3, context: 4,
-  'memory-source': 4, artifact: 4, evidence: 5, gate: 5, handoff: 4,
-};
-
+/**
+ * Workspace graph elements: semantic regions (Work containers) + tiered
+ * node cards placed by the workspace layout. Node ids stay the semantic
+ * ids — Focus, Compact navigation and E2E all address the same identity.
+ */
 export function buildGraphElements(revision: WorkGraphRevision): { nodes: CanvasNode[]; edges: CanvasEdge[] } {
-  const rows = new Map<number, number>();
-  const nodes = revision.candidate.semanticFacts.nodes.map((semantic) => {
-    const column = columns[semantic.kind];
-    const row = rows.get(column) ?? 0;
-    rows.set(column, row + 1);
-    return {
-      id: semantic.id,
-      type: 'workgraph',
-      position: { x: 60 + column * 230, y: 60 + row * 116 },
+  const layout = buildWorkspaceLayout(revision);
+  const nodes: CanvasNode[] = [];
+
+  for (const region of layout.regions) {
+    nodes.push({
+      id: region.id,
+      type: 'wb-region',
+      position: { x: region.x, y: region.y },
+      style: { width: region.width, height: region.height },
       data: {
-        semantic,
-        kind: semantic.kind,
-        label: semantic.label,
-        verification: semantic.verification,
-        sourceRef: semantic.sourceRef,
+        semantic: revision.candidate.semanticFacts.nodes[0],
+        kind: 'work',
+        family: 'work',
+        label: region.label,
+        verification: 'UNKNOWN',
+        sourceRef: '',
+        region,
       },
-    };
-  });
+      draggable: true,
+      selectable: false,
+    });
+  }
+
+  for (const placed of layout.nodes) {
+    const isGrouped = placed.regionId !== null;
+    nodes.push({
+      id: placed.id,
+      type: `wb-${placed.family}`,
+      position: { x: placed.x, y: placed.y },
+      ...(isGrouped ? { parentNode: placed.regionId!, extent: 'parent' as const } : {}),
+      data: {
+        semantic: placed.node,
+        kind: placed.node.kind,
+        family: placed.family,
+        label: placed.label,
+        verification: placed.node.verification,
+        sourceRef: placed.node.sourceRef,
+      },
+    });
+  }
+
   const edges = revision.candidate.semanticFacts.edges.map((semantic) => ({
     id: semantic.id,
-    type: 'workgraph',
+    type: 'wb-edge',
     source: semantic.source,
     target: semantic.target,
     data: { semantic, kind: semantic.kind, evidenceCount: semantic.evidenceRefs.length },
@@ -63,11 +92,14 @@ export interface FocusRelation {
   source: string;
   target: string;
   otherLabel: string;
+  otherFamily: NodeFamily;
+  direction: 'in' | 'out';
 }
 
 export interface FocusDetail {
   label: string;
   kind: WorkGraphNode['kind'];
+  family: NodeFamily;
   source: string;
   sourceRef: string;
   verification: WorkGraphNode['verification'];
@@ -83,15 +115,25 @@ export function buildFocusDetail(revision: WorkGraphRevision, nodeId: string): F
   const node = facts.nodes.find((candidate) => candidate.id === nodeId);
   if (!node) return null;
   const byId = new Map(facts.nodes.map((candidate) => [candidate.id, candidate]));
-  const relations = facts.edges
+  const relations: FocusRelation[] = facts.edges
     .filter((edge) => edge.source === nodeId || edge.target === nodeId)
     .map((edge) => {
       const otherId = edge.source === nodeId ? edge.target : edge.source;
-      return { id: edge.id, kind: edge.kind, source: edge.source, target: edge.target, otherLabel: byId.get(otherId)?.label ?? otherId };
+      const other = byId.get(otherId);
+      return {
+        id: edge.id,
+        kind: edge.kind,
+        source: edge.source,
+        target: edge.target,
+        otherLabel: other?.label ?? otherId,
+        otherFamily: other ? familyOf(other) : 'context',
+        direction: edge.source === nodeId ? 'out' : 'in',
+      };
     });
   return {
     label: node.label,
     kind: node.kind,
+    family: familyOf(node),
     source: node.source,
     sourceRef: node.sourceRef,
     verification: node.verification,
@@ -101,4 +143,14 @@ export function buildFocusDetail(revision: WorkGraphRevision, nodeId: string): F
     ...('attentionState' in node ? { attentionState: node.attentionState } : {}),
     relations,
   };
+}
+
+/** Neighbor ids of the focused node — everything else dims in Focus mode. */
+export function focusNeighborhood(revision: WorkGraphRevision, nodeId: string): Set<string> {
+  const ids = new Set<string>([nodeId]);
+  for (const edge of revision.candidate.semanticFacts.edges) {
+    if (edge.source === nodeId) ids.add(edge.target);
+    if (edge.target === nodeId) ids.add(edge.source);
+  }
+  return ids;
 }

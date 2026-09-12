@@ -158,13 +158,19 @@ export function CompactApp() {
             </div>
           )}
 
-          <button type="button" className="compact-expand-btn" onClick={openWorkbench}>
-            Open Workbench
-          </button>
-          {expanded && (
-            <p className="compact-footnote">
-              Compact reads the same facts as the full Workbench. Editing, staging and dispatch live there.
-            </p>
+          {expanded ? (
+            <>
+              <button type="button" className="compact-expand-btn" onClick={openWorkbench}>
+                Open Workbench
+              </button>
+              <p className="compact-footnote">
+                Compact reads the same facts as the full Workbench. Editing, staging and dispatch live there.
+              </p>
+            </>
+          ) : (
+            <button type="button" className="compact-expand-btn" onClick={openWorkbench} title="Expand to the full Workbench">
+              Open Workbench
+            </button>
           )}
         </div>
       )}

@@ -27,8 +27,8 @@ import { z } from 'zod';
  */
 
 const COMPACT_DEFAULT_WIDTH = 380;
-const COMPACT_COLLAPSED_HEIGHT = 92;
-const COMPACT_EXPANDED_HEIGHT = 320;
+const COMPACT_COLLAPSED_HEIGHT = 150;
+const COMPACT_EXPANDED_HEIGHT = 380;
 const EDGE_MARGIN = 12;
 
 export const DEFAULT_COMPACT_TOGGLE_SHORTCUT = 'Alt+Shift+B';
@@ -146,7 +146,7 @@ export async function createCompactWindow(stateDir: string): Promise<BrowserWind
     width: bounds.width,
     height: bounds.height,
     minWidth: 280,
-    minHeight: 72,
+    minHeight: 96,
     maxWidth: 640,
     maxHeight: 560,
     frame: false,

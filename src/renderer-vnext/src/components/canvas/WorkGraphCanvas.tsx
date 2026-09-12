@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactFlow, {
   Background,
-  Handle,
+  BackgroundVariant,
   Panel,
-  Position,
   useEdgesState,
   useNodesState,
-  type NodeProps,
   type ReactFlowInstance,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
@@ -16,54 +14,132 @@ import { DispatchSurface, type DispatchSelection } from '../dispatch/DispatchSur
 import {
   buildFocusDetail,
   buildGraphElements,
+  focusNeighborhood,
   type CanvasEdge,
+  type FocusDetail,
   type WorkGraphNodeData,
 } from '../../workGraphView';
+import { wbNodeTypes } from './nodes';
 
-const kindColor: Record<WorkGraphNodeData['kind'], string> = {
-  project: '#8b5cf6', work: '#6366f1', task: '#a855f7', conversation: '#06b6d4',
-  execution: '#f59e0b', context: '#84cc16', 'memory-source': '#ec4899', artifact: '#f97316',
-  gate: '#ef4444', evidence: '#14b8a6', handoff: '#eab308',
-};
-
-function WorkGraphNodeCard({ data, selected }: NodeProps<WorkGraphNodeData>) {
+function WorkspaceTally({ revision }: { revision: WorkGraphRevision }) {
+  const nodes = revision.candidate.semanticFacts.nodes;
+  const count = (predicate: (kind: string) => boolean) =>
+    nodes.filter((node) => predicate(node.kind)).length;
+  const running = count((kind) => kind === 'execution');
+  const gates = count((kind) => kind === 'gate');
   return (
-    <div className={`workgraph-node${selected ? ' is-selected' : ''}`} style={{ borderColor: kindColor[data.kind] }} data-kind={data.kind}>
-      <Handle type="target" position={Position.Left} isConnectable={false} />
-      <div className="node-header">
-        <span className="node-kind-badge" style={{ backgroundColor: kindColor[data.kind] }}>{data.kind}</span>
-        <span className="verification-badge">{data.verification}</span>
-      </div>
-      <div className="node-label" title={data.label}>{data.label}</div>
-      <Handle type="source" position={Position.Right} isConnectable={false} />
-    </div>
+    <span className="wb-tally" aria-label="Workspace tally">
+      <span>Works {count((kind) => kind === 'work')}</span>
+      <span>Tasks {count((kind) => kind === 'task')}</span>
+      <span>Artifacts {count((kind) => kind === 'artifact')}</span>
+      <span className={running > 0 ? 'is-live' : ''}>Running {running}</span>
+      {gates > 0 && <span className="is-gate">Gates {gates}</span>}
+    </span>
   );
 }
 
-const nodeTypes = { workgraph: WorkGraphNodeCard };
+/* Edge language: structure is quiet, flow is alive, verification is secondary.
+   Labels only appear on focus/hover. */
 
-const edgeColors: Record<string, string> = {
-  membership: '#475569', 'depends-on': '#64748b', 'uses-context': '#84cc16', produces: '#f59e0b',
-  evidences: '#14b8a6', 'blocked-by': '#ef4444', handoff: '#eab308', 'execution-of': '#f59e0b',
-  'derived-from': '#6366f1',
+const EDGE_STYLE: Record<string, { stroke: string; width: number; dash?: string; flow?: boolean }> = {
+  membership: { stroke: 'rgba(148,163,184,0.2)', width: 1, dash: '2 5' },
+  'execution-of': { stroke: 'rgba(134,201,154,0.55)', width: 1.6, flow: true },
+  'uses-context': { stroke: 'rgba(127,196,178,0.55)', width: 1.6, flow: true },
+  produces: { stroke: 'rgba(216,164,106,0.6)', width: 1.6, flow: true },
+  handoff: { stroke: 'rgba(143,168,232,0.6)', width: 1.6, flow: true },
+  'derived-from': { stroke: 'rgba(167,163,224,0.5)', width: 1.4, flow: true },
+  'blocked-by': { stroke: 'rgba(224,138,128,0.55)', width: 1.6 },
+  evidences: { stroke: 'rgba(157,184,201,0.4)', width: 1.2, dash: '6 4' },
+  'depends-on': { stroke: 'rgba(148,163,184,0.4)', width: 1.2, dash: '5 4' },
 };
 
-function styledEdges(edges: CanvasEdge[], selectedId: string | null, hoveredEdgeId: string | null): CanvasEdge[] {
-  return edges.map((edge) => ({
-    ...edge,
-    type: 'smoothstep',
-    animated: edge.data?.kind === 'handoff' || edge.data?.kind === 'uses-context',
-    label: (edge.id === hoveredEdgeId || edge.source === selectedId || edge.target === selectedId)
-      ? (edge.data?.evidenceCount ? `${edge.data.kind} · ◇${edge.data.evidenceCount}` : edge.data?.kind)
-      : undefined,
-    labelStyle: { fill: '#94a3b8', fontSize: 9 },
-    labelBgStyle: { fill: '#0f172a', fillOpacity: 0.88 },
-    style: {
-      stroke: edgeColors[edge.data?.kind ?? ''] ?? '#64748b',
-      strokeWidth: edge.data?.kind === 'membership' ? 1 : 1.8,
-      strokeDasharray: edge.data?.kind === 'membership' ? '4 4' : undefined,
-    },
-  }));
+function styledEdges(edges: CanvasEdge[], focusId: string | null, neighborhood: Set<string> | null, hoveredEdgeId: string | null): CanvasEdge[] {
+  return edges.map((edge) => {
+    const base = EDGE_STYLE[edge.data?.kind ?? ''] ?? { stroke: 'rgba(148,163,184,0.35)', width: 1.2 };
+    const touched = focusId === null
+      || edge.source === focusId || edge.target === focusId
+      || edge.id === hoveredEdgeId;
+    return {
+      ...edge,
+      type: 'smoothstep',
+      animated: Boolean(base.flow) && touched,
+      label: (edge.id === hoveredEdgeId || (focusId !== null && (edge.source === focusId || edge.target === focusId)))
+        ? edge.data?.kind
+        : undefined,
+      labelStyle: { fill: '#9aa4b2', fontSize: 9 },
+      labelBgStyle: { fill: 'rgba(16,19,24,0.9)', fillOpacity: 0.92 },
+      style: {
+        stroke: base.stroke,
+        strokeWidth: touched ? base.width + 0.4 : base.width,
+        strokeDasharray: base.dash,
+        opacity: focusId === null || touched ? 1 : 0.16,
+      },
+      ...(neighborhood ? {} : {}),
+    };
+  });
+}
+
+function FocusDetailPanel({ detail, onClose, onPrepare, onOpenCabinet }: {
+  detail: FocusDetail;
+  onClose: () => void;
+  onPrepare: () => void;
+  onOpenCabinet: () => void;
+}) {
+  const grouped = detail.relations.reduce<Record<string, FocusDetail['relations']>>((acc, relation) => {
+    const key = relation.kind;
+    (acc[key] ??= []).push(relation);
+    return acc;
+  }, {});
+  const canPrepare = detail.kind === 'task' || detail.kind === 'work';
+  return (
+    <aside className="focus-panel wb-glass" role="complementary" aria-label="Focus Detail">
+      <button className="focus-close" type="button" aria-label="Close Focus Detail" onClick={onClose}>×</button>
+      <p className="wb-kicker">Focus · {detail.family}</p>
+      <h2 className="focus-title">{detail.label}</h2>
+      <div className="focus-chips">
+        <span className="wb-chip">{detail.verification}</span>
+        {detail.currentness && detail.currentness !== 'UNKNOWN' && (
+          <span className={`wb-chip ${detail.currentness === 'CURRENT' ? 'is-green' : detail.currentness === 'STALE' ? 'is-amber' : detail.currentness === 'INVALID' ? 'is-red' : ''}`}>
+            {detail.currentness}
+          </span>
+        )}
+        {detail.taskState && detail.taskState !== 'unknown' && <span className="wb-chip">{detail.taskState}</span>}
+        {detail.runtimeState && <span className="wb-chip is-blue">{detail.runtimeState}</span>}
+        {detail.attentionState && detail.attentionState !== 'none' && <span className="wb-chip is-amber">{detail.attentionState}</span>}
+      </div>
+      <dl className="focus-meta">
+        <dt>Source</dt><dd className="wb-mono">{detail.source}</dd>
+        <dt>Source ref</dt><dd className="wb-mono">{detail.sourceRef || '—'}</dd>
+      </dl>
+      <div className="focus-actions">
+        {canPrepare && (
+          <button type="button" className="wb-btn is-accent" onClick={onPrepare}>
+            Prepare Work
+          </button>
+        )}
+        <button type="button" className="wb-btn" onClick={onOpenCabinet}>
+          Context Cabinet
+        </button>
+      </div>
+      <h3 className="wb-kicker">Relations</h3>
+      {detail.relations.length === 0 && <p className="focus-empty">No direct relations.</p>}
+      {Object.entries(grouped).map(([kind, relations]) => (
+        <div className="focus-relation-group" key={kind}>
+          <div className="focus-relation-kind">{kind}</div>
+          <ul>
+            {relations.map((relation) => (
+              <li key={relation.id}>
+                <span className={`wb-relation-arrow ${relation.direction === 'in' ? 'is-in' : ''}`} aria-hidden="true">
+                  {relation.direction === 'in' ? '←' : '→'}
+                </span>
+                <span className="focus-relation-label">{relation.otherLabel}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </aside>
+  );
 }
 
 export function WorkGraphCanvas({ revision, onRefresh, navigateRequest, onNavigated }: {
@@ -106,21 +182,42 @@ export function WorkGraphCanvas({ revision, onRefresh, navigateRequest, onNaviga
       .find((node) => node !== undefined);
     if (target) {
       setSelectedId(target.id);
-      void instance.setCenter(target.position.x + 80, target.position.y + 36, { zoom: Math.max(instance.getZoom(), 0.7), duration: 250 });
+      void instance.setCenter(target.position.x + 80, target.position.y + 36, { zoom: Math.max(instance.getZoom(), 0.85), duration: 320 });
     }
     onNavigated?.();
   }, [instance, navigateRequest, nodes, onNavigated, revision]);
 
-  const detail = selectedId ? buildFocusDetail(revision, selectedId) : null;
-  const visibleEdges = useMemo(() => styledEdges(edges, selectedId, hoveredEdgeId), [edges, hoveredEdgeId, selectedId]);
-  const focusCurrentOrProject = useCallback(() => {
-    if (!instance) return;
-    const targetId = selectedId ?? nodes.find((node) => node.data.kind === 'project')?.id;
-    const target = nodes.find((node) => node.id === targetId);
-    if (target) void instance.fitView({ nodes: [target], padding: 0.8, duration: 250 });
-  }, [instance, nodes, selectedId]);
-  const attentionNodes = nodes.filter((node) => node.data.kind === 'gate');
-  const selectedNode = nodes.find((node) => node.id === selectedId) ?? null;
+  const selectedNode = nodes.find((node) => node.id === selectedId && node.type !== 'wb-region') ?? null;
+  const detail = selectedId && selectedNode ? buildFocusDetail(revision, selectedId) : null;
+  const neighborhood = useMemo(
+    () => (selectedId ? focusNeighborhood(revision, selectedId) : null),
+    [revision, selectedId],
+  );
+  const visibleEdges = useMemo(
+    () => styledEdges(edges, selectedNode ? selectedId : null, neighborhood, hoveredEdgeId),
+    [edges, selectedNode, selectedId, neighborhood, hoveredEdgeId],
+  );
+  const visibleNodes = useMemo(() => {
+    if (!selectedId || !neighborhood) return nodes;
+    return nodes.map((node) => ({
+      ...node,
+      className: neighborhood.has(node.id) ? 'is-neighbor' : node.className,
+    }));
+  }, [nodes, selectedId, neighborhood]);
+
+  // Explicit Full-Workbench Work/Task selection updates the thin local
+  // current-selection bookmark the Compact surface reads. Never written
+  // from recency/cwd/activity — only from this explicit click.
+  useEffect(() => {
+    const semantic = selectedNode?.data.semantic;
+    if (!semantic || (semantic.kind !== 'work' && semantic.kind !== 'task')) return;
+    void window.wb.setCurrentSelection({
+      projectId: revision.candidate.scope.projectId,
+      ...(semantic.kind === 'work' ? { workId: semantic.workId } : {}),
+      ...(semantic.kind === 'task' ? { workId: semantic.workId, taskId: semantic.taskId } : {}),
+    }).catch(() => undefined);
+  }, [selectedNode, revision]);
+
   const cabinetSelection: CabinetSelection | null = selectedNode
     ? {
       kind: selectedNode.data.kind,
@@ -156,70 +253,83 @@ export function WorkGraphCanvas({ revision, onRefresh, navigateRequest, onNaviga
     }
     : null;
 
-  // Explicit Full-Workbench Work/Task selection updates the thin local
-  // current-selection bookmark the Compact surface reads. Never written
-  // from recency/cwd/activity — only from this explicit click.
-  useEffect(() => {
-    const semantic = selectedNode?.data.semantic;
-    if (!semantic || (semantic.kind !== 'work' && semantic.kind !== 'task')) return;
-    void window.wb.setCurrentSelection({
-      projectId: revision.candidate.scope.projectId,
-      ...(semantic.kind === 'work' ? { workId: semantic.workId } : {}),
-      ...(semantic.kind === 'task' ? { workId: semantic.workId, taskId: semantic.taskId } : {}),
-    }).catch(() => undefined);
-  }, [selectedNode, revision]);
+  const focusCurrentOrProject = useCallback(() => {
+    if (!instance) return;
+    const targetId = selectedId ?? nodes.find((node) => node.data.kind === 'project')?.id;
+    const target = nodes.find((node) => node.id === targetId);
+    if (target) void instance.fitView({ nodes: [target], padding: 0.9, duration: 280 });
+  }, [instance, nodes, selectedId]);
+  const attentionNodes = nodes.filter((node) => node.data.kind === 'gate');
+  const workRegions = nodes.filter((node) => node.type === 'wb-region');
+
+  const dimmed = selectedNode !== null;
 
   return (
     <div className="workgraph-canvas-container">
-      <ReactFlow
-        nodes={nodes}
-        edges={visibleEdges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onInit={setInstance}
-        onNodeClick={(_event, node) => {
-          setSelectedId(node.id);
-          void instance?.setCenter(node.position.x + 80, node.position.y + 36, { zoom: Math.max(instance.getZoom(), 0.7), duration: 250 });
-        }}
-        onPaneClick={() => setSelectedId(null)}
-        onEdgeMouseEnter={(_event, edge) => setHoveredEdgeId(edge.id)}
-        onEdgeMouseLeave={() => setHoveredEdgeId(null)}
-        nodeTypes={nodeTypes}
-        nodesConnectable={false}
-        fitView
-        fitViewOptions={{ padding: 0.18 }}
-        minZoom={0.2}
-      >
-        <Background color="#334155" gap={24} size={1} />
-        <Panel position="top-left" className="graph-controls" aria-label="Graph controls">
-          <button type="button" onClick={() => void instance?.fitView({ padding: 0.18, duration: 250 })}>Fit</button>
-          <button type="button" onClick={focusCurrentOrProject}>Focus {selectedId ? 'current' : 'project'}</button>
-          <button
-            type="button"
-            aria-pressed={cabinetOpen}
-            onClick={() => setCabinetOpen((open) => !open)}
-            title={selectedNode && (selectedNode.data.kind === 'work' || selectedNode.data.kind === 'task')
-              ? `Context Cabinet — staging for ${selectedNode.data.label}`
-              : 'Context Cabinet'}
-          >
-            Cabinet
-          </button>
-          <button type="button" onClick={() => void onRefresh()}>Refresh</button>
-          <button
-            type="button"
-            aria-pressed={dispatchOpen}
-            onClick={() => setDispatchOpen((open) => !open)}
-            title={selectedNode && (selectedNode.data.kind === 'task' || selectedNode.data.kind === 'work')
-              ? `Dispatch ${selectedNode.data.label}`
-              : 'Dispatch — QUICK (no canonical Task)'}
-          >
-            Dispatch
-          </button>
-          {attentionNodes.length > 0 && (
-            <button type="button" onClick={() => void instance?.fitView({ nodes: attentionNodes, padding: 0.8, duration: 250 })}>Attention</button>
+      <div className={`wb-canvas-skin${dimmed ? ' is-focus-mode' : ''}`}>
+        <ReactFlow
+          nodes={visibleNodes}
+          edges={visibleEdges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onInit={setInstance}
+          onNodeClick={(_event, node) => {
+            if (node.type === 'wb-region') return;
+            setSelectedId(node.id);
+            void instance?.setCenter(node.positionAbsolute?.x ?? node.position.x + 80, (node.positionAbsolute?.y ?? node.position.y) + 36, { zoom: Math.max(instance.getZoom(), 0.85), duration: 280 });
+          }}
+          onPaneClick={() => setSelectedId(null)}
+          onEdgeMouseEnter={(_event, edge) => setHoveredEdgeId(edge.id)}
+          onEdgeMouseLeave={() => setHoveredEdgeId(null)}
+          nodeTypes={wbNodeTypes as never}
+          nodesConnectable={false}
+          minZoom={0.25}
+          defaultEdgeOptions={{ type: 'smoothstep' }}
+          proOptions={{ hideAttribution: true }}
+          fitView
+          fitViewOptions={{ padding: 0.16 }}
+        >
+          <Background color="#1a212b" gap={26} size={1} variant={BackgroundVariant.Dots} />
+          <Panel position="top-left" className="wb-canvas-toolbar wb-glass" aria-label="Graph controls">
+            <span className="wb-toolbar-brand">Yunmin <em>Workbench</em></span>
+            <span className="wb-toolbar-sep" aria-hidden="true" />
+            <button type="button" className="wb-tool" onClick={() => void instance?.fitView({ padding: 0.16, duration: 280 })}>Fit</button>
+            <button type="button" className="wb-tool" onClick={focusCurrentOrProject}>Focus {selectedId ? 'current' : 'project'}</button>
+            <button type="button" className="wb-tool" aria-pressed={cabinetOpen} onClick={() => setCabinetOpen((open) => !open)}>Context</button>
+            <button
+              type="button"
+              className="wb-tool"
+              aria-pressed={dispatchOpen}
+              onClick={() => setDispatchOpen((open) => !open)}
+              title={selectedNode && (selectedNode.data.kind === 'task' || selectedNode.data.kind === 'work') ? `Prepare · ${selectedNode.data.label}` : 'Prepare Work'}
+            >
+              Prepare
+            </button>
+            <button type="button" className="wb-tool" onClick={() => void onRefresh()}>Refresh</button>
+            {attentionNodes.length > 0 && (
+              <button type="button" className="wb-tool is-attention" onClick={() => void instance?.fitView({ nodes: attentionNodes, padding: 0.9, duration: 280 })}>
+                ⚑ {attentionNodes.length}
+              </button>
+            )}
+            <span className="wb-toolbar-sep" aria-hidden="true" />
+            <WorkspaceTally revision={revision} />
+          </Panel>
+          {workRegions.length === 0 && (
+            <Panel position="bottom-center" className="wb-canvas-note">
+              No Work regions yet — Work appears when a canonical source declares it.
+            </Panel>
           )}
-        </Panel>
-      </ReactFlow>
+        </ReactFlow>
+      </div>
+
+      {detail && (
+        <FocusDetailPanel
+          detail={detail}
+          onClose={() => setSelectedId(null)}
+          onPrepare={() => { setDispatchOpen(true); setCabinetOpen(false); }}
+          onOpenCabinet={() => { setCabinetOpen(true); setDispatchOpen(false); }}
+        />
+      )}
       {dispatchOpen && (
         <DispatchSurface
           projectId={revision.candidate.scope.projectId}
@@ -233,27 +343,6 @@ export function WorkGraphCanvas({ revision, onRefresh, navigateRequest, onNaviga
           selection={cabinetSelection}
           onClose={() => setCabinetOpen(false)}
         />
-      )}
-      {detail && (
-        <aside className="focus-detail" role="complementary" aria-label="Focus Detail">
-          <button className="focus-close" type="button" aria-label="Close Focus Detail" onClick={() => setSelectedId(null)}>×</button>
-          <p className="detail-kicker">Focus Detail</p>
-          <h2>{detail.label}</h2>
-          <dl>
-            <dt>Kind</dt><dd>{detail.kind}</dd>
-            <dt>Source</dt><dd>{detail.source}</dd>
-            <dt>Source ref</dt><dd>{detail.sourceRef}</dd>
-            <dt>Verification</dt><dd>{detail.verification}</dd>
-            {detail.currentness && <><dt>Currentness</dt><dd>{detail.currentness}</dd></>}
-            {detail.taskState && <><dt>Task</dt><dd>{detail.taskState}</dd></>}
-            {detail.runtimeState && <><dt>Runtime</dt><dd>{detail.runtimeState}</dd></>}
-            {detail.attentionState && <><dt>Attention</dt><dd>{detail.attentionState}</dd></>}
-          </dl>
-          <h3>Direct relations</h3>
-          {detail.relations.length > 0
-            ? <ul>{detail.relations.map((relation) => <li key={relation.id}><span>{relation.kind}</span>{relation.otherLabel}</li>)}</ul>
-            : <p className="detail-empty">None</p>}
-        </aside>
       )}
     </div>
   );
