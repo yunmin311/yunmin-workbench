@@ -12,6 +12,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import type { WorkGraphRevision } from '../../types';
 import { ContextCabinet, type CabinetSelection } from '../cabinet/ContextCabinet';
+import { DispatchSurface, type DispatchSelection } from '../dispatch/DispatchSurface';
 import {
   buildFocusDetail,
   buildGraphElements,
@@ -73,6 +74,7 @@ export function WorkGraphCanvas({ revision, onRefresh }: { revision: WorkGraphRe
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const [instance, setInstance] = useState<ReactFlowInstance | null>(null);
   const [cabinetOpen, setCabinetOpen] = useState(false);
+  const [dispatchOpen, setDispatchOpen] = useState(false);
 
   useEffect(() => {
     setNodes(initial.nodes);
@@ -101,6 +103,26 @@ export function WorkGraphCanvas({ revision, onRefresh }: { revision: WorkGraphRe
             ? { canonicalConversationId: selectedNode.data.semantic.canonicalConversationId }
             : {}),
         }
+        : {}),
+    }
+    : null;
+  const dispatchSelection: DispatchSelection | null = selectedNode
+    ? {
+      kind: selectedNode.data.kind,
+      label: selectedNode.data.label,
+      sourceRef: selectedNode.data.sourceRef,
+      ...((selectedNode.data.semantic.kind === 'task')
+        ? {
+          workId: selectedNode.data.semantic.workId,
+          taskId: selectedNode.data.semantic.taskId,
+          taskState: selectedNode.data.semantic.taskState,
+        }
+        : {}),
+      ...((selectedNode.data.semantic.kind === 'work')
+        ? { workId: selectedNode.data.semantic.workId }
+        : {}),
+      ...((selectedNode.data.semantic.kind === 'conversation')
+        ? { conversationKey: selectedNode.data.semantic.conversationKey }
         : {}),
     }
     : null;
@@ -141,11 +163,28 @@ export function WorkGraphCanvas({ revision, onRefresh }: { revision: WorkGraphRe
             Cabinet
           </button>
           <button type="button" onClick={() => void onRefresh()}>Refresh</button>
+          <button
+            type="button"
+            aria-pressed={dispatchOpen}
+            onClick={() => setDispatchOpen((open) => !open)}
+            title={selectedNode && (selectedNode.data.kind === 'task' || selectedNode.data.kind === 'work')
+              ? `Dispatch ${selectedNode.data.label}`
+              : 'Dispatch — QUICK (no canonical Task)'}
+          >
+            Dispatch
+          </button>
           {attentionNodes.length > 0 && (
             <button type="button" onClick={() => void instance?.fitView({ nodes: attentionNodes, padding: 0.8, duration: 250 })}>Attention</button>
           )}
         </Panel>
       </ReactFlow>
+      {dispatchOpen && (
+        <DispatchSurface
+          projectId={revision.candidate.scope.projectId}
+          selection={dispatchSelection}
+          onClose={() => setDispatchOpen(false)}
+        />
+      )}
       {cabinetOpen && (
         <ContextCabinet
           projectId={revision.candidate.scope.projectId}
