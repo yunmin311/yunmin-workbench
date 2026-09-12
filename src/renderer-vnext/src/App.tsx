@@ -4,15 +4,17 @@ import { WorkGraphCanvas } from './components/canvas/WorkGraphCanvas';
 import '../../../src/design/tokens.css';
 import './styles/index.css';
 import type { WorkGraphRevision } from './types';
+import { projectIdsFromOverlay } from './workGraphView';
 
 function App() {
   const [revision, setRevision] = useState<WorkGraphRevision | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isFixture, setIsFixture] = useState(false);
-  const [navigateRequest, setNavigateRequest] = useState<{ projectId: string; workId?: string; taskId?: string } | null>(null);
+  const [navigateRequest, setNavigateRequest] = useState<{ projectId: string; workId?: string; taskId?: string; action?: 'continue' | 'prepare' } | null>(null);
+  const [projectIds, setProjectIds] = useState<string[]>([]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (projectId?: string) => {
     setError(null);
     // TEST FIXTURE scene: explicit dev flag, clearly badged in the UI, and
     // never mixed with real facts. The real read model stays the default.
@@ -30,9 +32,13 @@ function App() {
       return;
     }
     try {
-      const response = await window.wb.getWorkGraphRevision();
+      const [response, overlay] = await Promise.all([
+        window.wb.getWorkGraphRevision(projectId),
+        window.wb.loadOverlay(),
+      ]);
       if (response.error) throw new Error(response.error);
       setRevision(response.revision);
+      setProjectIds(projectIdsFromOverlay(overlay));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -84,7 +90,9 @@ function App() {
       <main className="vnext-main">
         <WorkGraphCanvas
           revision={revision}
-          onRefresh={load}
+          projectIds={projectIds}
+          onSelectProject={(projectId) => void load(projectId)}
+          onRefresh={() => load(revision.candidate.scope.projectId)}
           navigateRequest={navigateRequest}
           onNavigated={() => setNavigateRequest(null)}
         />

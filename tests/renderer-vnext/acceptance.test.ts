@@ -4,7 +4,15 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { compileWorkGraph } from '../../src/core/workgraph/compiler';
 import type { WorkGraphCompileOptions, WorkGraphSourceFacts } from '../../src/core/workgraph/revision';
-import { buildFocusDetail, buildGraphElements, moveGraphNode } from '../../src/renderer-vnext/src/workGraphView';
+import {
+  buildExecutionStory,
+  buildFocusDetail,
+  buildGraphElements,
+  buildRegionNavigation,
+  moveGraphNode,
+  projectRegionVisibility,
+  projectIdsFromOverlay,
+} from '../../src/renderer-vnext/src/workGraphView';
 
 const NOW = '2026-09-08T00:00:00.000Z';
 
@@ -17,7 +25,7 @@ function facts(): WorkGraphSourceFacts {
     historySessions: [], memoryEntries: [], packets: [], handoffs: [],
     adapterExecutions: [{
       executionId: 'paseo-agent-1', backend: 'paseo', provider: 'codex', runtimeRef: 'agent-1',
-      projectId: 'p1', workId: 'w1', runtimeState: 'working', live: true,
+      projectId: 'p1', workId: 'w1', taskId: 'task-1', runtimeState: 'working', live: true,
       evidenceRefs: [], sourceRef: 'paseo:agent-1',
     }],
     contextItems: [
@@ -79,6 +87,38 @@ describe('vNext renderer acceptance', () => {
     expect(detail?.relations.every((relation) => relation.source === 'task:p1:task-1' || relation.target === 'task:p1:task-1')).toBe(true);
     expect(JSON.stringify(detail)).not.toContain('semanticHash');
     expect(JSON.stringify(detail)).not.toContain('candidate');
+  });
+
+  it('projects region navigation and collapses presentation without changing semantic nodes', async () => {
+    const rev = await revision();
+    const graph = buildGraphElements(rev);
+    const navigation = buildRegionNavigation(graph.nodes, 'task:p1:task-1');
+    expect(navigation).toEqual([
+      expect.objectContaining({ workId: 'w1', label: 'Workbench acceptance', active: true }),
+    ]);
+
+    const projected = projectRegionVisibility(graph.nodes, graph.edges, new Set([navigation[0]!.regionId]));
+    expect(projected.nodes.find((node) => node.id === navigation[0]!.regionId)).toMatchObject({ hidden: false });
+    expect(projected.nodes.find((node) => node.id === 'task:p1:task-1')).toMatchObject({ hidden: true });
+    expect(projected.edges.some((edge) => edge.hidden)).toBe(true);
+    expect(rev.candidate.semanticFacts.nodes.find((node) => node.id === 'task:p1:task-1')).toBeTruthy();
+  });
+
+  it('offers exact declared project ids without inventing a recent project', () => {
+    expect(projectIdsFromOverlay({ projects: [{ projectId: 'p2' }, { projectId: 'p1' }, { projectId: 'p2' }] }))
+      .toEqual(['p1', 'p2']);
+  });
+
+  it('explains a running execution only from exact graph relations and fields', async () => {
+    const rev = await revision();
+    const story = buildExecutionStory(rev, 'execution:p1:paseo-agent-1');
+    expect(story).toMatchObject({
+      doing: 'Close Phase 3B',
+      context: ['Included'],
+      outputs: [],
+      next: 'No next-step fact yet',
+    });
+    expect(JSON.stringify(story)).not.toContain('Available only');
   });
 });
 

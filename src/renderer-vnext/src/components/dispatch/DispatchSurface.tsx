@@ -47,16 +47,23 @@ function mergeFingerprints(groups: { sourceRef: string; sha256: string }[][]): {
   return [...merged].map(([sourceRef, sha256]) => ({ sourceRef, sha256 }));
 }
 
-export function DispatchSurface({ projectId, selection, onClose }: {
+export function DispatchSurface({ projectId, selection, initialConversationKey, initialPacketId, onEditContext, onClose }: {
   projectId: string;
   selection: DispatchSelection | null;
+  initialConversationKey?: string;
+  initialPacketId?: string;
+  onEditContext?: () => void;
   onClose: () => void;
 }) {
   const [snapshot, setSnapshot] = useState<OverlaySnapshot | null>(null);
-  const [draft, setDraft] = useState<DispatchDraftV1>(() => createDispatchDraft(projectId, {
-    ...(selection?.workId !== undefined ? { workId: selection.workId } : {}),
-    ...(selection?.taskId !== undefined ? { taskId: selection.taskId } : {}),
-  }));
+  const [draft, setDraft] = useState<DispatchDraftV1>(() => {
+    const base = createDispatchDraft(projectId, {
+      ...(selection?.workId !== undefined ? { workId: selection.workId } : {}),
+      ...(selection?.taskId !== undefined ? { taskId: selection.taskId } : {}),
+    });
+    const withConversation = initialConversationKey ? setDispatchConversation(base, initialConversationKey) : base;
+    return initialPacketId ? setDispatchPacket(withConversation, initialPacketId) : withConversation;
+  });
   const [capabilities, setCapabilities] = useState<Partial<Record<HarnessCapabilities['harness'], HarnessCapabilities>>>({});
   const [frozenList, setFrozenList] = useState<FrozenPacketSummary[]>([]);
   const [packetDetail, setPacketDetail] = useState<FrozenPacket | null>(null);
@@ -165,6 +172,10 @@ export function DispatchSurface({ projectId, selection, onClose }: {
   }, []);
 
   const canDispatch = preflight.ok && packetDetail !== null && !dispatching;
+  const setupReady = snapshot !== null
+    && packetDetail !== null
+    && packetValidity !== null
+    && Object.keys(capabilities).length > 0;
 
   const dispatch = useCallback(() => {
     if (!canDispatch || !packetDetail) return;
@@ -205,7 +216,12 @@ export function DispatchSurface({ projectId, selection, onClose }: {
   return (
     <section className="dispatch-surface" role="region" aria-label="Dispatch">
       <header className="dispatch-header">
-        <h2>Dispatch</h2>
+        <div className="preparation-steps" aria-label="Preparation progress">
+          <button type="button" onClick={onEditContext} aria-label="Back to Context"><b>1</b> Context</button>
+          <span className="is-current"><b>2</b> Preflight</span>
+          <span><b>3</b> Execute</span>
+        </div>
+        <h2>Review and start</h2>
         <span className="cabinet-scope">{projectId}</span>
         {canonical
           ? <span className="dispatch-lineage is-canonical">Task {draft.taskId} · Work {draft.workId}</span>
@@ -235,6 +251,9 @@ export function DispatchSurface({ projectId, selection, onClose }: {
               onChange={(event) => pickConversation(event.target.value || null)}
             >
               <option value="">— select an existing conversation —</option>
+              {draft.conversationKey && !conversations.some((conversation) => conversation.key === draft.conversationKey) && (
+                <option value={draft.conversationKey}>Checking conversation…</option>
+              )}
               {conversations.map((conversation) => (
                 <option key={conversation.key} value={conversation.key}>
                   {conversation.key} · {conversation.role}
@@ -313,15 +332,19 @@ export function DispatchSurface({ projectId, selection, onClose }: {
 
         <aside className="dispatch-preflight" aria-label="Dispatch preflight">
           <h3>Preflight</h3>
-          <ul>
-            {preflight.checks.map((check) => (
-              <li key={check.id} className={`preflight-check is-${check.status.toLowerCase()}`}>
-                <span className="preflight-status">{check.status}</span>
-                <span className="preflight-label">{check.label}</span>
-                <span className="preflight-detail">{check.detail}</span>
-              </li>
-            ))}
-          </ul>
+          {!setupReady ? (
+            <p className="dispatch-checking" role="status">Checking packet, project root and executors…</p>
+          ) : (
+            <ul className="dispatch-ready">
+              {preflight.checks.map((check) => (
+                <li key={check.id} className={`preflight-check is-${check.status.toLowerCase()}`}>
+                  <span className="preflight-status">{check.status}</span>
+                  <span className="preflight-label">{check.label}</span>
+                  <span className="preflight-detail">{check.detail}</span>
+                </li>
+              ))}
+            </ul>
+          )}
           <button
             type="button"
             className="dispatch-button"

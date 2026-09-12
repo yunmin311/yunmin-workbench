@@ -185,6 +185,8 @@ body,
 
 .compact-attention-row.is-alert { border-left-color: var(--wb-red); color: var(--wb-red); }
 
+.compact-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+
 .compact-expand-btn {
   border: 1px solid rgba(127, 181, 192, 0.4);
   border-radius: var(--wb-radius);
@@ -198,6 +200,12 @@ body,
 }
 
 .compact-expand-btn:hover { background: rgba(127, 181, 192, 0.24); border-color: var(--wb-accent); color: #fff; }
+.compact-expand-btn.is-prepare {
+  border-color: rgba(167, 163, 224, .34);
+  background: var(--wb-violet-dim);
+  color: var(--wb-violet);
+}
+.compact-expand-btn.is-prepare:hover { border-color: var(--wb-violet); background: rgba(167,163,224,.2); color: #fff; }
 
 .compact-footnote {
   margin: 0;

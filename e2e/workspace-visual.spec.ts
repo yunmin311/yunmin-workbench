@@ -1,10 +1,10 @@
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { _electron, expect, test } from '@playwright/test';
 import { electronArgs, workbenchEnv } from './prototype-shell';
 import { rebindProjectRoot } from '../src/main/projectRootBindings';
+import { exportPinnedRepository } from './pinnedRepoExport';
 
 /**
  * GOAL MODE final visual acceptance. Real Creative OS canonical facts
@@ -16,10 +16,7 @@ const GOVERNANCE_PINNED_COMMIT = 'bdaa2e83229d3339a9d3830d9306f8991a442cf1';
 const outDir = resolve('screenshots/workbench-vnext-20260907');
 
 function exportGovernanceState(overlayRoot: string): string {
-  const exportDir = mkdtempSync(join(tmpdir(), 'wb-visual-pin-'));
-  const tar = execFileSync('git', ['-C', overlayRoot, 'archive', GOVERNANCE_PINNED_COMMIT], { encoding: 'buffer', maxBuffer: 512 * 1024 * 1024 });
-  execFileSync('tar', ['-xf', '-', '-C', exportDir], { input: tar, stdio: ['pipe', 'ignore', 'inherit'] });
-  return exportDir;
+  return exportPinnedRepository(overlayRoot, GOVERNANCE_PINNED_COMMIT, 'wb-visual-pin-');
 }
 
 test('workspace visual acceptance (real facts + badged fixture)', async () => {
@@ -45,12 +42,17 @@ test('workspace visual acceptance (real facts + badged fixture)', async () => {
       WB_RENDERER_VNEXT: '1', WB_COMPACT_WINDOW: '1',
     }),
   });
-  const win = await app.firstWindow();
+  await expect.poll(() => app.windows().length).toBeGreaterThanOrEqual(2);
+  const windows = app.windows();
+  const surfaces = windows.map((page) => ({ page, url: page.url() }));
+  const win = surfaces.find((candidate) => candidate.url.includes('renderer-vnext'))?.page ?? await app.firstWindow();
   try {
     await win.setViewportSize({ width: 1728, height: 1000 });
     await expect(win.locator('.vnext-app')).toBeVisible();
     await win.evaluate(() => window.wb.getWorkGraphRevision('creative-os'));
     await win.waitForTimeout(1400);
+    await expect(win.getByRole('navigation', { name: 'Work regions' })).toBeVisible();
+    await expect(win.getByRole('navigation', { name: 'Work regions' })).toContainText('Creative OS');
     await win.screenshot({ path: join(outDir, '40-full-workspace-real.png') });
 
     // Task focus: contextual dim + glass detail + actions.
@@ -59,20 +61,21 @@ test('workspace visual acceptance (real facts + badged fixture)', async () => {
     await expect(win.getByRole('complementary', { name: 'Focus Detail' })).toBeVisible();
     await win.screenshot({ path: join(outDir, '41-task-focus-real.png') });
 
-    // Context Cabinet as a contextual workspace over the focused task.
-    await win.getByRole('button', { name: 'Context Cabinet' }).click();
+    // Prepare enters one continuous Context -> packet -> preflight workflow.
+    await win.getByRole('button', { name: 'Prepare Work', exact: true }).click();
     await win.waitForTimeout(1400);
     const cabinet = win.getByRole('region', { name: 'Context Cabinet' });
     await expect(cabinet).toBeVisible();
+    await expect(cabinet).toContainText('Available is not used');
+    await expect(cabinet).toContainText('Will use');
     await win.screenshot({ path: join(outDir, '42-context-cabinet-real.png') });
-    await cabinet.getByRole('button', { name: 'Close Context Cabinet' }).click();
-
-    // Prepare Work: task lineage + preflight.
-    await win.getByRole('button', { name: 'Prepare Work' }).click();
-    await win.waitForTimeout(900);
+    await cabinet.locator('#prepare-conversation').selectOption('creative-os::claude::CO 主对话');
+    await cabinet.getByRole('button', { name: 'Freeze and review preflight' }).click();
     const dispatch = win.getByRole('region', { name: 'Dispatch' });
     await expect(dispatch).toBeVisible();
+    await expect(dispatch.locator('.dispatch-ready')).toBeVisible();
     await expect(dispatch.locator('.dispatch-lineage.is-canonical')).toHaveText('Task T006 · Work 001-inspiration-capture');
+    await expect(dispatch.getByRole('button', { name: 'Back to Context' })).toBeVisible();
     await win.screenshot({ path: join(outDir, '43-prepare-work-real.png') });
     await dispatch.getByRole('button', { name: 'Close Dispatch' }).click();
 
@@ -85,6 +88,8 @@ test('workspace visual acceptance (real facts + badged fixture)', async () => {
     }).toPass({ timeout: 15_000 });
     if (compactWin) {
       await compactWin.waitForTimeout(2500);
+      await expect(compactWin.getByRole('button', { name: 'Continue current work' })).toBeVisible();
+      await expect(compactWin.getByRole('button', { name: 'Prepare current work' })).toBeVisible();
       await compactWin.screenshot({ path: join(outDir, '44-compact-real.png') });
     }
 
@@ -97,6 +102,13 @@ test('workspace visual acceptance (real facts + badged fixture)', async () => {
     await win.evaluate((url) => { window.location.href = url; }, fixtureUrl);
     await win.waitForTimeout(2600);
     await expect(win.locator('.wb-fixture-badge')).toBeVisible();
+    const fixtureRegions = win.getByRole('navigation', { name: 'Work regions' });
+    await expect(fixtureRegions.locator('.region-nav-row')).toHaveCount(2);
+    await win.locator('.react-flow__node[data-id="execution:fixture-os:fixture-agent-7"]').click();
+    const executionStory = win.getByRole('region', { name: 'Execution story' });
+    await expect(executionStory).toContainText('Fixture · implement flow');
+    await expect(executionStory).toContainText('Fixture brief');
+    await expect(executionStory).toContainText('src/fixture/output.ts');
     await win.screenshot({ path: join(outDir, '45-governance-fixture.png') });
   } finally {
     await app.close();

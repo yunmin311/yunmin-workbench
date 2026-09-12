@@ -1,11 +1,11 @@
-import { cpSync, existsSync, mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
-import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { _electron, expect, test } from '@playwright/test';
 import { electronArgs, workbenchEnv } from './prototype-shell';
 import { rebindProjectRoot } from '../src/main/projectRootBindings';
+import { exportPinnedRepository } from './pinnedRepoExport';
 
 const realOverlay = process.env.WB_REAL_OVERLAY;
 const realCreativeOsRoot = process.env.WB_REAL_CREATIVE_OS_ROOT ?? 'E:\\1project\\creative-os';
@@ -13,13 +13,7 @@ const screenshotDir = resolve('screenshots/workbench-vnext-20260907');
 const GOVERNANCE_PINNED_COMMIT = 'bdaa2e83229d3339a9d3830d9306f8991a442cf1';
 
 function exportGovernanceState(overlayRoot: string): string {
-  const exportDir = mkdtempSync(join(tmpdir(), 'wb-compact-pin-'));
-  const tar = execFileSync('git', ['-C', overlayRoot, 'archive', GOVERNANCE_PINNED_COMMIT], {
-    encoding: 'buffer',
-    maxBuffer: 512 * 1024 * 1024,
-  });
-  execFileSync('tar', ['-xf', '-', '-C', exportDir], { input: tar, stdio: ['pipe', 'ignore', 'inherit'] });
-  return exportDir;
+  return exportPinnedRepository(overlayRoot, GOVERNANCE_PINNED_COMMIT, 'wb-compact-pin-');
 }
 
 test('headed real Compact edge surface mirrors canonical facts and hands off to the full Workbench', async () => {
@@ -63,9 +57,13 @@ test('headed real Compact edge surface mirrors canonical facts and hands off to 
       WB_COMPACT_WINDOW: '1',
     }),
   });
-  const win = await app.firstWindow();
+  const firstWindow = await app.firstWindow();
+  let win = app.windows().find((candidate) => !candidate.url().includes('renderer-compact')) ?? firstWindow;
   try {
-    await expect(win.locator('.vnext-app')).toBeVisible();
+    await expect(async () => {
+      win = app.windows().find((candidate) => !candidate.url().includes('renderer-compact')) ?? win;
+      await expect(win.locator('.vnext-app')).toBeVisible();
+    }).toPass({ timeout: 15_000 });
     const baseline = await win.evaluate(async () => {
       const response = await window.wb.getWorkGraphRevision('creative-os');
       return response.revision?.semanticHash ?? null;
@@ -87,6 +85,8 @@ test('headed real Compact edge surface mirrors canonical facts and hands off to 
     // No real execution exists -> no Running module. No attention instance -> none.
     await expect(compactWindow.locator('.compact-running')).toHaveCount(0);
     await expect(compactWindow.locator('.compact-attention')).toHaveCount(0);
+    await expect(compactWindow.getByRole('button', { name: 'Continue current work' })).toBeVisible();
+    await expect(compactWindow.getByRole('button', { name: 'Prepare current work' })).toBeVisible();
     // Invalid persisted bounds (-4000,-4000) restored inside a visible work
     // area — asserted through real window bounds after hide/show below.
     await compactWindow.screenshot({ path: join(screenshotDir, '20-compact-real.png') });
@@ -97,11 +97,19 @@ test('headed real Compact edge surface mirrors canonical facts and hands off to 
     await compactWindow.screenshot({ path: join(screenshotDir, '21-compact-expanded-real.png') });
 
     // Expand handoff: identity-only navigation into the focused full window.
-    await compactWindow.getByRole('button', { name: 'Open Workbench' }).click();
+    await compactWindow.getByRole('button', { name: 'Continue current work' }).click();
     const focusDetail = win.getByRole('complementary', { name: 'Focus Detail' });
     await expect(focusDetail).toBeVisible();
     await expect(focusDetail).toContainText('定义主/渲染共享类型');
     await win.screenshot({ path: join(screenshotDir, '22-compact-workbench-handoff-real.png') });
+
+    // Prepare carries the same exact identity plus a UI-only navigation
+    // intent; Context staging still loads from the Full Workbench source.
+    await compactWindow.getByRole('button', { name: 'Prepare current work' }).click();
+    const preparation = win.getByRole('region', { name: 'Context Cabinet' });
+    await expect(preparation).toBeVisible();
+    await expect(preparation).toContainText('staging for · 定义主/渲染共享类型');
+    await preparation.getByRole('button', { name: 'Close Context Cabinet' }).click();
 
     // hide/show keeps the window lifecycle inside the existing process and
     // the bounds inside a visible work area. (Window visibility is asserted
@@ -167,9 +175,13 @@ test('closing the main window quits even with a hidden Compact window alive', as
     args: [...electronArgs(), 'out/main/index.js'],
     env: workbenchEnv({ WB_STATE_DIR: stateDir, WB_COMPACT_WINDOW: '1' }),
   });
-  const win = await app.firstWindow();
+  const firstWindow = await app.firstWindow();
+  let win = app.windows().find((candidate) => !candidate.url().includes('renderer-compact')) ?? firstWindow;
   try {
-    await expect(win.locator('.prototype-chrome, .vnext-app').first()).toBeVisible();
+    await expect(async () => {
+      win = app.windows().find((candidate) => !candidate.url().includes('renderer-compact')) ?? win;
+      await expect(win.locator('.prototype-chrome, .vnext-app').first()).toBeVisible();
+    }).toPass({ timeout: 15_000 });
     // The launch flag already shows the Compact window.
     await expect(async () => {
       const visible = await app.evaluate(({ BrowserWindow }) =>

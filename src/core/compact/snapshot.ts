@@ -90,6 +90,27 @@ export interface CompactSnapshot {
   attention: CompactAttentionFact[];
 }
 
+export type CompactNavigationAction = 'continue' | 'prepare';
+export interface CompactNavigationIntent {
+  projectId: string;
+  workId?: string;
+  taskId?: string;
+  action: CompactNavigationAction;
+}
+
+export function compactNavigationFromSnapshot(
+  snapshot: CompactSnapshot,
+  action: CompactNavigationAction,
+): CompactNavigationIntent | null {
+  if (!snapshot.project) return null;
+  return {
+    projectId: snapshot.project.projectId,
+    ...(snapshot.work ? { workId: snapshot.work.workId } : {}),
+    ...(snapshot.task ? { taskId: snapshot.task.taskId } : {}),
+    action,
+  };
+}
+
 export interface CompactFactsInput {
   selection: CurrentSelectionV1 | null;
   /** The verified Work Graph revision for the selected project (same read model as Full). */

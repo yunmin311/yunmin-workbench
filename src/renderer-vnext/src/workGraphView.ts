@@ -25,6 +25,19 @@ export interface WorkGraphEdgeData {
 export type CanvasNode = Node<WorkGraphNodeData>;
 export type CanvasEdge = Edge<WorkGraphEdgeData>;
 
+export interface RegionNavigationItem {
+  regionId: string;
+  workId: string | null;
+  label: string;
+  currentness: string;
+  taskCount: number;
+  active: boolean;
+}
+
+export function projectIdsFromOverlay(snapshot: { projects: { projectId: string }[] }): string[] {
+  return [...new Set(snapshot.projects.map((project) => project.projectId))].sort((a, b) => a.localeCompare(b));
+}
+
 /**
  * Workspace graph elements: semantic regions (Work containers) + tiered
  * node cards placed by the workspace layout. Node ids stay the semantic
@@ -86,6 +99,50 @@ export function moveGraphNode(nodes: CanvasNode[], nodeId: string, position: XYP
   return nodes.map((node) => node.id === nodeId ? { ...node, position } : node);
 }
 
+/** Canvas-only region index. It reads parent ids already produced by the
+ * deterministic layout and never creates Work identity from coordinates. */
+export function buildRegionNavigation(nodes: CanvasNode[], selectedId: string | null): RegionNavigationItem[] {
+  const selected = selectedId ? nodes.find((node) => node.id === selectedId) : undefined;
+  const activeRegionId = selected?.type === 'wb-region' ? selected.id : selected?.parentNode ?? null;
+  return nodes
+    .filter((node) => node.type === 'wb-region' && node.data.region)
+    .map((node) => ({
+      regionId: node.id,
+      workId: node.data.region!.workId,
+      label: node.data.region!.label,
+      currentness: node.data.region!.currentness,
+      taskCount: node.data.region!.taskCount,
+      active: node.id === activeRegionId,
+    }));
+}
+
+/** Collapse is a presentation projection only. Semantic nodes and edges stay
+ * intact; React Flow receives hidden children/edges and a compact region. */
+export function projectRegionVisibility(
+  nodes: CanvasNode[],
+  edges: CanvasEdge[],
+  collapsedRegionIds: ReadonlySet<string>,
+): { nodes: CanvasNode[]; edges: CanvasEdge[] } {
+  const hiddenNodeIds = new Set(
+    nodes.filter((node) => node.parentNode && collapsedRegionIds.has(node.parentNode)).map((node) => node.id),
+  );
+  return {
+    nodes: nodes.map((node) => {
+      if (node.type === 'wb-region') {
+        const collapsed = collapsedRegionIds.has(node.id);
+        return {
+          ...node,
+          hidden: false,
+          className: `${node.className ?? ''}${collapsed ? ' is-region-collapsed' : ''}`.trim(),
+          style: { ...node.style, ...(collapsed ? { height: 54 } : {}) },
+        };
+      }
+      return { ...node, hidden: hiddenNodeIds.has(node.id) };
+    }),
+    edges: edges.map((edge) => ({ ...edge, hidden: hiddenNodeIds.has(edge.source) || hiddenNodeIds.has(edge.target) })),
+  };
+}
+
 export interface FocusRelation {
   id: string;
   kind: WorkGraphEdge['kind'];
@@ -108,6 +165,49 @@ export interface FocusDetail {
   runtimeState?: string;
   attentionState?: string;
   relations: FocusRelation[];
+}
+
+export interface ExecutionStory {
+  doing: string;
+  context: string[];
+  outputs: string[];
+  evidence: string[];
+  next: string;
+  packetId?: string;
+  intentId?: string;
+}
+
+/** Human-readable execution depth made only from exact fields/edges already in
+ * the graph. Missing facts remain explicit instead of being narrated. */
+export function buildExecutionStory(revision: WorkGraphRevision, nodeId: string): ExecutionStory | null {
+  const facts = revision.candidate.semanticFacts;
+  const node = facts.nodes.find((candidate) => candidate.id === nodeId);
+  if (!node || node.kind !== 'execution') return null;
+  const byId = new Map(facts.nodes.map((candidate) => [candidate.id, candidate]));
+  const labelsFor = (kind: WorkGraphEdge['kind'], direction: 'out' | 'in' = 'out') => facts.edges
+    .filter((edge) => edge.kind === kind && (direction === 'out' ? edge.source === nodeId : edge.target === nodeId))
+    .map((edge) => byId.get(direction === 'out' ? edge.target : edge.source)?.label)
+    .filter((label): label is string => Boolean(label));
+  const task = node.taskId
+    ? facts.nodes.find((candidate) => candidate.kind === 'task' && candidate.taskId === node.taskId)
+    : undefined;
+  const directNext = labelsFor('blocked-by');
+  const taskNext = task
+    ? facts.edges
+      .filter((edge) => edge.kind === 'blocked-by' && edge.source === task.id)
+      .map((edge) => byId.get(edge.target)?.label)
+      .filter((label): label is string => Boolean(label))
+    : [];
+  const nextFacts = [...new Set([...directNext, ...taskNext])];
+  return {
+    doing: task?.label ?? 'No canonical Task linked',
+    context: labelsFor('uses-context'),
+    outputs: labelsFor('produces'),
+    evidence: labelsFor('evidences', 'in'),
+    next: nextFacts.length > 0 ? nextFacts.join(' · ') : 'No next-step fact yet',
+    ...(node.packetId ? { packetId: node.packetId } : {}),
+    ...(node.intentId ? { intentId: node.intentId } : {}),
+  };
 }
 
 export function buildFocusDetail(revision: WorkGraphRevision, nodeId: string): FocusDetail | null {

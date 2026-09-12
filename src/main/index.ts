@@ -673,6 +673,9 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     workId: z.string().min(1).max(1_024).optional(),
     taskId: z.string().min(1).max(1_024).optional(),
   });
+  const CompactNavigationSchema = SelectionSchema.extend({
+    action: z.enum(['continue', 'prepare']).optional(),
+  });
   ipcMain.handle('selection:get', () => withProfileStateLock(() => readCurrentSelection(stateDir())));
   ipcMain.handle('selection:set', async (_event, raw: unknown) => {
     const parsed = SelectionSchema.parse(raw);
@@ -686,7 +689,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
   // Expand handoff: focus the existing main window (create when gone) and
   // forward ONLY navigation identity. Compact never ships graph/context state.
   ipcMain.handle('compact:open-workbench', async (_event, raw: unknown) => {
-    const identity = SelectionSchema.parse(raw);
+    const identity = CompactNavigationSchema.parse(raw);
     let mainWindow = BrowserWindow.getAllWindows().find((candidate) => windowRoles.get(candidate)?.role === 'main');
     if (!mainWindow || mainWindow.isDestroyed()) {
       mainWindow = await createWindow(refresh);

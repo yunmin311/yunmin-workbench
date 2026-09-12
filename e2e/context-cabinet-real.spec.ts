@@ -65,7 +65,7 @@ test('headed real overlay stages Context in the vNext Context Cabinet', async ()
     expect(baselineHash).toBeTruthy();
 
     // Open the Cabinet from the Canvas and wait for real source groups.
-    await win.getByRole('button', { name: 'Context', exact: true }).click();
+    await win.getByRole('button', { name: 'Prepare work', exact: true }).click();
     const cabinet = win.getByRole('region', { name: 'Context Cabinet' });
     await expect(cabinet).toBeVisible();
     await expect(cabinet.locator('.cabinet-group h3', { hasText: 'Governance' })).toBeVisible();
@@ -172,23 +172,20 @@ test('headed real overlay stages Context in the vNext Context Cabinet', async ()
     ]);
     expect(stagingState.pinnedCanonicalFile).toBe(true);
 
-    // --- Compile Packet with an explicitly selected conversation target.
-    await win.locator('.react-flow__node[data-id^="conversation:"]').first().click();
-    await cabinet.getByRole('button', { name: 'Compile Packet' }).click();
-    const packetFooter = cabinet.getByRole('status', { name: 'Compiled packet' });
-    await expect(packetFooter).toBeVisible({ timeout: 15_000 });
-    await expect(packetFooter.locator('dd').first()).toHaveText(/^[0-9a-f-]{36}$/);
-    await expect(packetFooter.locator('.currentness')).toHaveText(/CURRENT|STALE/);
-    await expect(packetFooter).toContainText('project-file:creative-os:README.md:context');
+    // --- Freeze Packet with an explicitly selected conversation target,
+    // then continue in-place to preflight.
+    const conversationSelect = cabinet.locator('#prepare-conversation');
+    const selectedConversationKey = await conversationSelect.locator('option').nth(1).getAttribute('value');
+    expect(selectedConversationKey).toBeTruthy();
+    await conversationSelect.selectOption(selectedConversationKey!);
+    await cabinet.getByRole('button', { name: 'Freeze and review preflight' }).click();
+    const dispatch = win.getByRole('region', { name: 'Dispatch' });
+    await expect(dispatch.locator('.dispatch-ready')).toBeVisible({ timeout: 15_000 });
+    const preparedPacketId = await dispatch.locator('#dispatch-packet').inputValue();
+    expect(preparedPacketId).toMatch(/^[0-9a-f-]{36}$/);
 
     // The frozen packet really contains the file, fingerprinted at compile.
-    const packetCheck = await win.evaluate(async () => {
-      const revision = await window.wb.getWorkGraphRevision('creative-os');
-      const conversationNode = revision.revision?.candidate.semanticFacts.nodes
-        .find((node) => node.kind === 'conversation');
-      const conversationKey = conversationNode && 'conversationKey' in conversationNode
-        ? conversationNode.conversationKey
-        : '';
+    const packetCheck = await win.evaluate(async (conversationKey) => {
       const listed = await window.wb.listFrozen('creative-os', conversationKey);
       const summary = listed.packets.at(-1);
       if (!summary) return { error: 'no frozen packet' };
@@ -199,7 +196,7 @@ test('headed real overlay stages Context in the vNext Context Cabinet', async ()
         fileFingerprints: detailPacket?.sourceFingerprints.filter((fingerprint) =>
           fingerprint.sourceRef.startsWith('project-file:creative-os:README.md')),
       };
-    });
+    }, selectedConversationKey!);
     expect(packetCheck.includedIds).toContain('project-file:creative-os:README.md:context');
     expect(packetCheck.fileFingerprints).toHaveLength(1);
     await win.screenshot({ path: join(screenshotDir, '17-project-file-packet-real.png') });

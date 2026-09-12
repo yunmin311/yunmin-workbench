@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   buildCompactSnapshot,
+  compactNavigationFromSnapshot,
   normalizeCurrentSelection,
   type CompactSnapshot,
 } from '../core/compact/snapshot';
@@ -65,13 +66,10 @@ export function CompactApp() {
     };
   }, [load]);
 
-  const openWorkbench = useCallback(() => {
+  const openWorkbench = useCallback((action: 'continue' | 'prepare') => {
     if (!snapshot?.project) return;
-    void window.wb.openWorkbenchFromCompact({
-      projectId: snapshot.project.projectId,
-      ...(snapshot.work ? { workId: snapshot.work.workId } : {}),
-      ...(snapshot.task ? { taskId: snapshot.task.taskId } : {}),
-    });
+    const intent = compactNavigationFromSnapshot(snapshot, action);
+    if (intent) void window.wb.openWorkbenchFromCompact(intent);
   }, [snapshot]);
 
   const toggleExpand = useCallback(() => {
@@ -117,7 +115,7 @@ export function CompactApp() {
       )}
       {snapshot?.project && (
         <div className="compact-body">
-          <button type="button" className="compact-scope" onClick={openWorkbench} title="Open in the full Workbench">
+          <button type="button" className="compact-scope" onClick={() => openWorkbench('continue')} title="Continue in the full Workbench">
             <span className="compact-project">{snapshot.project.projectId}</span>
             {snapshot.work && (
               <span className="compact-work">
@@ -158,23 +156,23 @@ export function CompactApp() {
             </div>
           )}
 
-          {expanded ? (
+          <div className="compact-actions">
+            <button type="button" className="compact-expand-btn" onClick={() => openWorkbench('continue')} aria-label="Continue current work">
+              Continue
+            </button>
+            <button type="button" className="compact-expand-btn is-prepare" onClick={() => openWorkbench('prepare')} aria-label="Prepare current work">
+              Prepare
+            </button>
+          </div>
+          {expanded && (
             <>
-              <button type="button" className="compact-expand-btn" onClick={openWorkbench}>
-                Open Workbench
-              </button>
               <p className="compact-footnote">
-                Compact reads the same facts as the full Workbench. Editing, staging and dispatch live there.
+                Continue returns to the exact Work or Task. Prepare opens its Context staging before preflight.
               </p>
             </>
-          ) : (
-            <button type="button" className="compact-expand-btn" onClick={openWorkbench} title="Expand to the full Workbench">
-              Open Workbench
-            </button>
           )}
         </div>
       )}
     </div>
     );
 }
-

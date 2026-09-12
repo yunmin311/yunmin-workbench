@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   buildCompactSnapshot,
+  compactNavigationFromSnapshot,
   currentSelectionFromUser,
   normalizeCurrentSelection,
 } from '../../src/core/compact/snapshot';
@@ -90,6 +91,12 @@ describe('Compact snapshot assembly (same facts as Full, nothing invented)', () 
     expect(snapshot.task).toMatchObject({ taskId: 'T006', taskState: 'unknown' });
     expect(snapshot.running).toEqual([]);
     expect(snapshot.attention).toEqual([]);
+    expect(compactNavigationFromSnapshot(snapshot, 'prepare')).toEqual({
+      projectId: 'creative-os',
+      workId: '001-inspiration-capture',
+      taskId: 'T006',
+      action: 'prepare',
+    });
   });
 
   it('running appears only from real live executions; attention only from real instances', async () => {

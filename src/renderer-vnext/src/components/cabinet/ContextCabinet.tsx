@@ -102,9 +102,10 @@ function mergeFingerprints(groups: SourceFingerprint[][]): SourceFingerprint[] {
   return [...merged].map(([sourceRef, sha256]) => ({ sourceRef, sha256 }));
 }
 
-export function ContextCabinet({ projectId, selection, onClose }: {
+export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
   projectId: string;
   selection: CabinetSelection | null;
+  onPrepared: (packet: { conversationKey: string; packetId: string }) => void;
   onClose: () => void;
 }) {
   const [snapshot, setSnapshot] = useState<OverlaySnapshot | null>(null);
@@ -127,6 +128,7 @@ export function ContextCabinet({ projectId, selection, onClose }: {
   const [pickerMatches, setPickerMatches] = useState<string[]>([]);
   const [pickerBusy, setPickerBusy] = useState(false);
   const [pickerError, setPickerError] = useState('');
+  const [conversationKey, setConversationKey] = useState(selection?.conversationKey ?? '');
 
   useEffect(() => {
     let alive = true;
@@ -407,8 +409,8 @@ export function ContextCabinet({ projectId, selection, onClose }: {
       && !items.some((item) => item.source.startsWith('pinned-file:'));
   }, [items, projectId, snapshot]);
 
-  const compileTarget = selection?.conversationKey
-    ? snapshot?.conversations.find((conversation) => conversation.key === selection.conversationKey)
+  const compileTarget = conversationKey
+    ? snapshot?.conversations.find((conversation) => conversation.key === conversationKey)
     : undefined;
 
   const compilePacketAction = useCallback(() => {
@@ -445,6 +447,7 @@ export function ContextCabinet({ projectId, selection, onClose }: {
             roughTokens: compiled.roughTokens,
             includedIds: compiled.included.map((item) => item.id),
           });
+          onPrepared({ conversationKey: compileTarget.key, packetId: frozen.packetId });
         } catch (e) {
           setPacketError(e instanceof Error ? e.message : String(e));
         } finally {
@@ -455,7 +458,7 @@ export function ContextCabinet({ projectId, selection, onClose }: {
       setPacketError(e instanceof Error ? e.message : String(e));
       setCompiling(false);
     }
-  }, [compileTarget, compiling, currentFingerprints, items, projectId, selection, snapshot]);
+  }, [compileTarget, compiling, currentFingerprints, items, onPrepared, projectId, selection, snapshot]);
 
   const stateButton = (item: CabinetItem, value: CabinetItem['state'], label: string, short: string) => (
     <button
@@ -481,14 +484,19 @@ export function ContextCabinet({ projectId, selection, onClose }: {
     <section className="context-cabinet" role="region" aria-label="Context Cabinet">
       <header className="cabinet-header">
         <div className="cabinet-title">
-          <h2>Context Cabinet</h2>
+          <div className="preparation-steps" aria-label="Preparation progress">
+            <span className="is-current"><b>1</b> Context</span>
+            <span><b>2</b> Preflight</span>
+            <span><b>3</b> Execute</span>
+          </div>
+          <h2>Choose what this work can use</h2>
           <span className="cabinet-scope">{projectId}</span>
           {selection && (selection.kind === 'work' || selection.kind === 'task') && (
             <span className="cabinet-for">staging for · {selection.label}</span>
           )}
         </div>
         <div className="cabinet-summary" aria-label="Staging summary">
-          <span className="sum-included">Included {summary.included}</span>
+          <span className="sum-included">Will use {summary.included}</span>
           <span className="sum-size">~{summary.roughTokens} tok</span>
           <span className="sum-pinned">Pinned {summary.pinned}</span>
           <span className="sum-available">Available {summary.available}</span>
@@ -502,15 +510,6 @@ export function ContextCabinet({ projectId, selection, onClose }: {
             title="Explicitly add a project file as an Available staging candidate"
           >
             + Project File
-          </button>
-          <button
-            type="button"
-            className="cabinet-compile"
-            disabled={!snapshot || compiling}
-            onClick={compilePacketAction}
-            title={compileTarget ? 'Compile and freeze via the deterministic packet compiler' : 'Select a conversation node on the Canvas first'}
-          >
-            Compile Packet
           </button>
           <button type="button" className="cabinet-close" aria-label="Close Context Cabinet" onClick={onClose}>×</button>
         </div>
@@ -641,6 +640,35 @@ export function ContextCabinet({ projectId, selection, onClose }: {
         </aside>
         )}
       </div>
+      <footer className="preparation-footer">
+        <div className="preparation-meaning">
+          <strong>{summary.included} will be used</strong>
+          <span>Available is not used. Only “Will use” enters the next frozen packet.</span>
+        </div>
+        <label htmlFor="prepare-conversation">
+          <span>Continue in</span>
+          <select
+            id="prepare-conversation"
+            className="dispatch-select"
+            value={conversationKey}
+            onChange={(event) => setConversationKey(event.target.value)}
+          >
+            <option value="">Choose a conversation…</option>
+            {(snapshot?.conversations ?? []).filter((conversation) => conversation.project === projectId).map((conversation) => (
+              <option key={conversation.key} value={conversation.key}>{conversation.role} · {conversation.platform}</option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          className="cabinet-compile"
+          disabled={!snapshot || compiling || !compileTarget}
+          onClick={compilePacketAction}
+          title={compileTarget ? 'Freeze the staged Context, then review executor preflight' : 'Choose an explicit conversation target'}
+        >
+          {compiling ? 'Freezing…' : 'Freeze and review preflight'}
+        </button>
+      </footer>
       {(packet || packetError) && (
         <footer className="cabinet-packet" role="status" aria-label="Compiled packet">
           {packetError && <p className="cabinet-error">{packetError}</p>}

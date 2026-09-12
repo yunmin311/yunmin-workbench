@@ -94,8 +94,8 @@ export interface WorkbenchContractV1 {
   setCurrentSelection(selection: { projectId: string; workId?: string; taskId?: string }): Promise<void>;
   toggleCompactWindow(): Promise<{ visible: boolean }>;
   setCompactExpanded(expanded: boolean): Promise<{ expanded: boolean }>;
-  openWorkbenchFromCompact(identity: { projectId: string; workId?: string; taskId?: string }): Promise<{ focused: boolean }>;
-  onCompactNavigate(cb: (identity: { projectId: string; workId?: string; taskId?: string }) => void): () => void;
+  openWorkbenchFromCompact(identity: { projectId: string; workId?: string; taskId?: string; action?: 'continue' | 'prepare' }): Promise<{ focused: boolean }>;
+  onCompactNavigate(cb: (identity: { projectId: string; workId?: string; taskId?: string; action?: 'continue' | 'prepare' }) => void): () => void;
   searchProjectFiles(
     projectId: string,
     query: string,

@@ -1,11 +1,11 @@
 import { cpSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
-import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { _electron, expect, test } from '@playwright/test';
 import { electronArgs, workbenchEnv } from './prototype-shell';
 import { rebindProjectRoot } from '../src/main/projectRootBindings';
+import { exportPinnedRepository } from './pinnedRepoExport';
 
 const realOverlay = process.env.WB_REAL_OVERLAY;
 const realStateRoot = process.env.WB_REAL_STATE_ROOT;
@@ -24,13 +24,7 @@ const screenshotDir = resolve('screenshots/workbench-vnext-20260907');
 const GOVERNANCE_PINNED_COMMIT = 'bdaa2e83229d3339a9d3830d9306f8991a442cf1';
 
 function exportGovernanceState(overlayRoot: string): string {
-  const exportDir = mkdtempSync(join(tmpdir(), 'wb-overlay-pin-'));
-  const tar = execFileSync('git', ['-C', overlayRoot, 'archive', GOVERNANCE_PINNED_COMMIT], {
-    encoding: 'buffer',
-    maxBuffer: 512 * 1024 * 1024,
-  });
-  execFileSync('tar', ['-xf', '-', '-C', exportDir], { input: tar, stdio: ['pipe', 'ignore', 'inherit'] });
-  return exportDir;
+  return exportPinnedRepository(overlayRoot, GOVERNANCE_PINNED_COMMIT, 'wb-overlay-pin-');
 }
 
 test('headed real overlay renders enriched WorkGraph facts', async () => {

@@ -77,10 +77,10 @@ const api = {
     ipcRenderer.invoke('compact:toggle'),
   setCompactExpanded: (expanded: boolean): Promise<{ expanded: boolean }> =>
     ipcRenderer.invoke('compact:set-expanded', { expanded }),
-  openWorkbenchFromCompact: (identity: { projectId: string; workId?: string; taskId?: string }): Promise<{ focused: boolean }> =>
+  openWorkbenchFromCompact: (identity: { projectId: string; workId?: string; taskId?: string; action?: 'continue' | 'prepare' }): Promise<{ focused: boolean }> =>
     ipcRenderer.invoke('compact:open-workbench', identity),
-  onCompactNavigate: (cb: (identity: { projectId: string; workId?: string; taskId?: string }) => void): (() => void) => {
-    const listener = (_e: IpcRendererEvent, identity: { projectId: string; workId?: string; taskId?: string }) => cb(identity);
+  onCompactNavigate: (cb: (identity: { projectId: string; workId?: string; taskId?: string; action?: 'continue' | 'prepare' }) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, identity: { projectId: string; workId?: string; taskId?: string; action?: 'continue' | 'prepare' }) => cb(identity);
     ipcRenderer.on('compact:navigate', listener);
     return () => ipcRenderer.removeListener('compact:navigate', listener);
   },

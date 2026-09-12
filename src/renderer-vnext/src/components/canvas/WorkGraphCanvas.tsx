@@ -13,8 +13,11 @@ import { ContextCabinet, type CabinetSelection } from '../cabinet/ContextCabinet
 import { DispatchSurface, type DispatchSelection } from '../dispatch/DispatchSurface';
 import {
   buildFocusDetail,
+  buildExecutionStory,
   buildGraphElements,
+  buildRegionNavigation,
   focusNeighborhood,
+  projectRegionVisibility,
   type CanvasEdge,
   type FocusDetail,
   type WorkGraphNodeData,
@@ -79,11 +82,11 @@ function styledEdges(edges: CanvasEdge[], focusId: string | null, neighborhood: 
   });
 }
 
-function FocusDetailPanel({ detail, onClose, onPrepare, onOpenCabinet }: {
+function FocusDetailPanel({ detail, story, onClose, onPrepare }: {
   detail: FocusDetail;
+  story: ReturnType<typeof buildExecutionStory>;
   onClose: () => void;
   onPrepare: () => void;
-  onOpenCabinet: () => void;
 }) {
   const grouped = detail.relations.reduce<Record<string, FocusDetail['relations']>>((acc, relation) => {
     const key = relation.kind;
@@ -117,10 +120,23 @@ function FocusDetailPanel({ detail, onClose, onPrepare, onOpenCabinet }: {
             Prepare Work
           </button>
         )}
-        <button type="button" className="wb-btn" onClick={onOpenCabinet}>
-          Context Cabinet
-        </button>
       </div>
+      {story && (
+        <section className="execution-story" aria-label="Execution story">
+          <p className="wb-kicker">Running now</p>
+          <dl>
+            <dt>Doing</dt><dd>{story.doing}</dd>
+            <dt>Using</dt><dd>{story.context.length > 0 ? story.context.join(' · ') : 'No consumed Context fact'}</dd>
+            <dt>Output</dt><dd>{story.outputs.length > 0 ? story.outputs.join(' · ') : 'No produced Artifact fact yet'}</dd>
+            <dt>Next</dt><dd>{story.next}</dd>
+          </dl>
+          {(story.packetId || story.intentId) && (
+            <p className="execution-trace wb-mono">
+              {story.packetId ? `packet ${story.packetId}` : ''}{story.packetId && story.intentId ? ' · ' : ''}{story.intentId ? `intent ${story.intentId}` : ''}
+            </p>
+          )}
+        </section>
+      )}
       <h3 className="wb-kicker">Relations</h3>
       {detail.relations.length === 0 && <p className="focus-empty">No direct relations.</p>}
       {Object.entries(grouped).map(([kind, relations]) => (
@@ -142,10 +158,12 @@ function FocusDetailPanel({ detail, onClose, onPrepare, onOpenCabinet }: {
   );
 }
 
-export function WorkGraphCanvas({ revision, onRefresh, navigateRequest, onNavigated }: {
+export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefresh, navigateRequest, onNavigated }: {
   revision: WorkGraphRevision;
+  projectIds: string[];
+  onSelectProject: (projectId: string) => void;
   onRefresh: () => Promise<void>;
-  navigateRequest?: { projectId: string; workId?: string; taskId?: string } | null;
+  navigateRequest?: { projectId: string; workId?: string; taskId?: string; action?: 'continue' | 'prepare' } | null;
   onNavigated?: () => void;
 }) {
   const initial = useMemo(() => buildGraphElements(revision), [revision]);
@@ -154,13 +172,17 @@ export function WorkGraphCanvas({ revision, onRefresh, navigateRequest, onNaviga
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const [instance, setInstance] = useState<ReactFlowInstance | null>(null);
-  const [cabinetOpen, setCabinetOpen] = useState(false);
-  const [dispatchOpen, setDispatchOpen] = useState(false);
+  const [preparationStage, setPreparationStage] = useState<'context' | 'preflight' | null>(null);
+  const [preparedPacket, setPreparedPacket] = useState<{ conversationKey: string; packetId: string } | null>(null);
+  const [collapsedRegions, setCollapsedRegions] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     setNodes(initial.nodes);
     setEdges(initial.edges);
     setSelectedId((current) => current && initial.nodes.some((node) => node.id === current) ? current : null);
+    setCollapsedRegions(new Set());
+    setPreparedPacket(null);
+    setPreparationStage(null);
   }, [initial, setEdges, setNodes]);
 
   // Compact → Full handoff: apply the navigation identity to the canvas.
@@ -183,27 +205,36 @@ export function WorkGraphCanvas({ revision, onRefresh, navigateRequest, onNaviga
     if (target) {
       setSelectedId(target.id);
       void instance.setCenter(target.position.x + 80, target.position.y + 36, { zoom: Math.max(instance.getZoom(), 0.85), duration: 320 });
+      if (navigateRequest.action === 'prepare') {
+        setPreparedPacket(null);
+        setPreparationStage('context');
+      }
     }
     onNavigated?.();
   }, [instance, navigateRequest, nodes, onNavigated, revision]);
 
   const selectedNode = nodes.find((node) => node.id === selectedId && node.type !== 'wb-region') ?? null;
   const detail = selectedId && selectedNode ? buildFocusDetail(revision, selectedId) : null;
+  const executionStory = selectedId ? buildExecutionStory(revision, selectedId) : null;
   const neighborhood = useMemo(
     () => (selectedId ? focusNeighborhood(revision, selectedId) : null),
     [revision, selectedId],
   );
+  const visibility = useMemo(
+    () => projectRegionVisibility(nodes, edges, collapsedRegions),
+    [collapsedRegions, edges, nodes],
+  );
   const visibleEdges = useMemo(
-    () => styledEdges(edges, selectedNode ? selectedId : null, neighborhood, hoveredEdgeId),
-    [edges, selectedNode, selectedId, neighborhood, hoveredEdgeId],
+    () => styledEdges(visibility.edges, selectedNode ? selectedId : null, neighborhood, hoveredEdgeId),
+    [visibility.edges, selectedNode, selectedId, neighborhood, hoveredEdgeId],
   );
   const visibleNodes = useMemo(() => {
-    if (!selectedId || !neighborhood) return nodes;
-    return nodes.map((node) => ({
+    if (!selectedId || !neighborhood) return visibility.nodes;
+    return visibility.nodes.map((node) => ({
       ...node,
       className: neighborhood.has(node.id) ? 'is-neighbor' : node.className,
     }));
-  }, [nodes, selectedId, neighborhood]);
+  }, [visibility.nodes, selectedId, neighborhood]);
 
   // Explicit Full-Workbench Work/Task selection updates the thin local
   // current-selection bookmark the Compact surface reads. Never written
@@ -261,6 +292,34 @@ export function WorkGraphCanvas({ revision, onRefresh, navigateRequest, onNaviga
   }, [instance, nodes, selectedId]);
   const attentionNodes = nodes.filter((node) => node.data.kind === 'gate');
   const workRegions = nodes.filter((node) => node.type === 'wb-region');
+  const regionNavigation = useMemo(() => buildRegionNavigation(nodes, selectedId), [nodes, selectedId]);
+  const projectNode = nodes.find((node) => node.data.kind === 'project');
+
+  const focusRegion = useCallback((regionId: string) => {
+    setCollapsedRegions((current) => {
+      if (!current.has(regionId)) return current;
+      const next = new Set(current);
+      next.delete(regionId);
+      return next;
+    });
+    const region = nodes.find((node) => node.id === regionId);
+    if (region && instance) void instance.fitView({ nodes: [region], padding: 0.18, duration: 320 });
+  }, [instance, nodes]);
+
+  const toggleRegion = useCallback((regionId: string) => {
+    setCollapsedRegions((current) => {
+      const next = new Set(current);
+      if (next.has(regionId)) next.delete(regionId); else next.add(regionId);
+      return next;
+    });
+    const selected = nodes.find((node) => node.id === selectedId);
+    if (selected?.parentNode === regionId) setSelectedId(null);
+  }, [nodes, selectedId]);
+
+  const openPreparation = useCallback(() => {
+    setPreparedPacket(null);
+    setPreparationStage('context');
+  }, []);
 
   const dimmed = selectedNode !== null;
 
@@ -295,15 +354,14 @@ export function WorkGraphCanvas({ revision, onRefresh, navigateRequest, onNaviga
             <span className="wb-toolbar-sep" aria-hidden="true" />
             <button type="button" className="wb-tool" onClick={() => void instance?.fitView({ padding: 0.16, duration: 280 })}>Fit</button>
             <button type="button" className="wb-tool" onClick={focusCurrentOrProject}>Focus {selectedId ? 'current' : 'project'}</button>
-            <button type="button" className="wb-tool" aria-pressed={cabinetOpen} onClick={() => setCabinetOpen((open) => !open)}>Context</button>
             <button
               type="button"
               className="wb-tool"
-              aria-pressed={dispatchOpen}
-              onClick={() => setDispatchOpen((open) => !open)}
+              aria-pressed={preparationStage !== null}
+              onClick={openPreparation}
               title={selectedNode && (selectedNode.data.kind === 'task' || selectedNode.data.kind === 'work') ? `Prepare · ${selectedNode.data.label}` : 'Prepare Work'}
             >
-              Prepare
+              Prepare work
             </button>
             <button type="button" className="wb-tool" onClick={() => void onRefresh()}>Refresh</button>
             {attentionNodes.length > 0 && (
@@ -322,26 +380,83 @@ export function WorkGraphCanvas({ revision, onRefresh, navigateRequest, onNaviga
         </ReactFlow>
       </div>
 
+      {(projectNode || projectIds.length > 0) && (
+        <nav className="wb-region-nav wb-glass" aria-label="Work regions">
+          <div className="region-nav-project">
+            <span className="region-nav-kicker">Current project</span>
+            <strong>{projectNode?.data.label ?? revision.candidate.scope.projectId}</strong>
+            <select
+              aria-label="Switch project"
+              value={revision.candidate.scope.projectId}
+              disabled={projectIds.length < 2}
+              onChange={(event) => onSelectProject(event.target.value)}
+            >
+              {(projectIds.includes(revision.candidate.scope.projectId) ? projectIds : [revision.candidate.scope.projectId, ...projectIds]).map((projectId) => (
+                <option key={projectId} value={projectId}>{projectId}</option>
+              ))}
+            </select>
+          </div>
+          <div className="region-nav-list">
+            {regionNavigation.length === 0 && <p className="region-nav-empty">No canonical Work in this project.</p>}
+            {regionNavigation.map((region, index) => (
+              <div className={`region-nav-row${region.active ? ' is-active' : ''}`} key={region.regionId}>
+                <button type="button" className="region-nav-focus" onClick={() => focusRegion(region.regionId)}>
+                  <span className="region-nav-index">{String(index + 1).padStart(2, '0')}</span>
+                  <span className="region-nav-name" title={region.label}>{region.label}</span>
+                  <span className="region-nav-count">{region.taskCount}</span>
+                </button>
+                <button
+                  type="button"
+                  className="region-nav-collapse"
+                  aria-label={`${collapsedRegions.has(region.regionId) ? 'Expand' : 'Collapse'} ${region.label}`}
+                  onClick={() => toggleRegion(region.regionId)}
+                >
+                  {collapsedRegions.has(region.regionId) ? '+' : '−'}
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="region-nav-actions">
+            <button type="button" onClick={() => setCollapsedRegions(new Set())}>Show all</button>
+            <button
+              type="button"
+              disabled={!regionNavigation.some((region) => region.active)}
+              onClick={() => {
+                const active = regionNavigation.find((region) => region.active);
+                if (active) setCollapsedRegions(new Set(regionNavigation.filter((region) => region.regionId !== active.regionId).map((region) => region.regionId)));
+              }}
+            >Keep current</button>
+          </div>
+        </nav>
+      )}
+
       {detail && (
         <FocusDetailPanel
           detail={detail}
+          story={executionStory}
           onClose={() => setSelectedId(null)}
-          onPrepare={() => { setDispatchOpen(true); setCabinetOpen(false); }}
-          onOpenCabinet={() => { setCabinetOpen(true); setDispatchOpen(false); }}
+          onPrepare={openPreparation}
         />
       )}
-      {dispatchOpen && (
+      {preparationStage === 'preflight' && preparedPacket && (
         <DispatchSurface
           projectId={revision.candidate.scope.projectId}
           selection={dispatchSelection}
-          onClose={() => setDispatchOpen(false)}
+          initialConversationKey={preparedPacket.conversationKey}
+          initialPacketId={preparedPacket.packetId}
+          onEditContext={() => setPreparationStage('context')}
+          onClose={() => setPreparationStage(null)}
         />
       )}
-      {cabinetOpen && (
+      {preparationStage === 'context' && (
         <ContextCabinet
           projectId={revision.candidate.scope.projectId}
           selection={cabinetSelection}
-          onClose={() => setCabinetOpen(false)}
+          onPrepared={(packet) => {
+            setPreparedPacket(packet);
+            setPreparationStage('preflight');
+          }}
+          onClose={() => setPreparationStage(null)}
         />
       )}
     </div>

@@ -14,13 +14,22 @@ const NOW = '2026-09-12T00:00:00.000Z';
 
 function fixtureFacts(): WorkGraphSourceFacts {
   return {
-    governanceBindings: [{
-      projectId: 'fixture-os', workId: '100-fixture-flow', workLabel: 'Fixture · cross-entity flow check',
-      binding: {
-        projectId: 'fixture-os', root: '/fixture', canonicalPath: '/fixture/manifest.yaml',
-        observedAt: NOW, verification: 'VERIFIED',
+    governanceBindings: [
+      {
+        projectId: 'fixture-os', workId: '100-fixture-flow', workLabel: 'Fixture · cross-entity flow check',
+        binding: {
+          projectId: 'fixture-os', root: '/fixture', canonicalPath: '/fixture/manifest.yaml',
+          observedAt: NOW, verification: 'VERIFIED',
+        },
       },
-    }],
+      {
+        projectId: 'fixture-os', workId: '200-fixture-review', workLabel: 'Fixture · release review',
+        binding: {
+          projectId: 'fixture-os', root: '/fixture', canonicalPath: '/fixture/review.yaml',
+          observedAt: NOW, verification: 'VERIFIED',
+        },
+      },
+    ],
     historySessions: [],
     memoryEntries: [{
       memoryId: 'fixture-memory-index', title: 'Fixture memory source', source: 'fixture:memory/MEMORY.md',
@@ -63,11 +72,18 @@ function fixtureFacts(): WorkGraphSourceFacts {
       artifactId: 'fixture-artifact-1', projectId: 'fixture-os', kind: 'file-evidence', executionId: 'fixture-agent-7',
       eventRef: 'evt-fixture-2', title: 'src/fixture/output.ts', taskId: 'T100', evidenceRefs: [],
     }],
-    tasks: [{
-      taskId: 'T100', projectId: 'fixture-os', label: 'Fixture · implement flow', source: 'fixture-tasks',
-      sourceRef: 'fixture:tasks.md#T100', observedAt: NOW, verification: 'VERIFIED', currentness: 'CURRENT',
-      taskState: 'active', workId: '100-fixture-flow', evidenceRefs: [],
-    }],
+    tasks: [
+      {
+        taskId: 'T100', projectId: 'fixture-os', label: 'Fixture · implement flow', source: 'fixture-tasks',
+        sourceRef: 'fixture:tasks.md#T100', observedAt: NOW, verification: 'VERIFIED', currentness: 'CURRENT',
+        taskState: 'active', workId: '100-fixture-flow', evidenceRefs: [],
+      },
+      {
+        taskId: 'T200', projectId: 'fixture-os', label: 'Fixture · verify release', source: 'fixture-tasks',
+        sourceRef: 'fixture:tasks.md#T200', observedAt: NOW, verification: 'VERIFIED', currentness: 'CURRENT',
+        taskState: 'standby', workId: '200-fixture-review', evidenceRefs: [],
+      },
+    ],
     evidenceItems: [{
       evidenceId: 'evt-fixture-1', projectId: 'fixture-os', label: 'Fixture tool receipt', evidenceType: 'tool-evidence',
       source: 'protocol', sourceRef: 'protocol:fixture:tool/1', observedAt: NOW, verification: 'OBSERVED',
