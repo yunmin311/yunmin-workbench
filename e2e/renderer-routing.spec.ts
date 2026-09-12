@@ -14,7 +14,7 @@ test('WB_RENDERER_VNEXT=1 loads the real WorkGraphRevision over preload IPC', as
   const { app, win } = await launchWorkbench(stateDir, fixture.overlayRoot, { WB_RENDERER_VNEXT: '1' });
   try {
     await expect(win.locator('.vnext-app')).toBeVisible();
-    await expect(win.locator('.workgraph-node').first()).toBeVisible();
+    await expect(win.locator('.wb-node').first()).toBeVisible();
     await expect(win.getByRole('button', { name: 'Fit', exact: true })).toBeVisible();
     await expect(win.getByRole('button', { name: 'Focus project', exact: true })).toBeVisible();
     await expect(win.getByRole('button', { name: 'Refresh', exact: true })).toBeVisible();
@@ -37,7 +37,7 @@ test('WB_RENDERER_VNEXT=1 loads the real WorkGraphRevision over preload IPC', as
     console.log(`[vnext-real-graph] ${JSON.stringify(graphReport)}`);
     expect(graphReport).not.toHaveProperty('error');
     await win.screenshot({ path: join(screenshotDir, '01-workgraph-overview.png') });
-    await win.locator('.workgraph-node').first().click();
+    await win.locator('.wb-node').first().click();
     await expect(win.getByRole('complementary', { name: 'Focus Detail' })).toBeVisible();
     await win.screenshot({ path: join(screenshotDir, '02-workgraph-focus.png') });
   } finally {
@@ -76,7 +76,7 @@ test('real attention facts enable the Attention control (TEST FIXTURE screenshot
   const { app, win } = await launchWorkbench(stateDir, fixture.overlayRoot, { WB_RENDERER_VNEXT: '1' });
   try {
     await expect(win.getByRole('button', { name: 'Attention', exact: true })).toBeVisible();
-    await expect(win.locator('.workgraph-node[data-kind="gate"]')).toBeVisible();
+    await expect(win.locator('.wb-node[data-family="gate"]')).toBeVisible();
     await win.locator('body').evaluate((body) => {
       const label = document.createElement('div');
       label.className = 'test-fixture-label';

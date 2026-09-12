@@ -103,7 +103,7 @@ test('headed real canonical Task prepares an explicit dispatch and stops before 
     // Canonical manifest declares no lifecycle: the honest state is UNKNOWN.
     await expect(focusDetail).toContainText('unknown');
 
-    await win.getByRole('button', { name: 'Dispatch', exact: true }).click();
+    await win.getByRole('button', { name: 'Prepare', exact: true }).click();
     const surface = win.getByRole('region', { name: 'Dispatch' });
     await expect(surface).toBeVisible();
     // Exact lineage entered the draft — never re-inferred.

@@ -307,7 +307,7 @@ export function WorkGraphCanvas({ revision, onRefresh, navigateRequest, onNaviga
             </button>
             <button type="button" className="wb-tool" onClick={() => void onRefresh()}>Refresh</button>
             {attentionNodes.length > 0 && (
-              <button type="button" className="wb-tool is-attention" onClick={() => void instance?.fitView({ nodes: attentionNodes, padding: 0.9, duration: 280 })}>
+              <button type="button" className="wb-tool is-attention" aria-label="Attention" onClick={() => void instance?.fitView({ nodes: attentionNodes, padding: 0.9, duration: 280 })}>
                 ⚑ {attentionNodes.length}
               </button>
             )}

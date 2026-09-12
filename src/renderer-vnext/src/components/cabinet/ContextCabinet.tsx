@@ -590,10 +590,8 @@ export function ContextCabinet({ projectId, selection, onClose }: {
           })}
           {items.length === 0 && !error && <p className="cabinet-empty">No context candidates from the bound sources.</p>}
         </div>
+        {selected && (
         <aside className="cabinet-detail" aria-label="Context detail">
-          {!selected && <p className="cabinet-empty" style={{ opacity: 0.55 }}>Select a context to inspect its identity and source.</p>}
-          {selected && (
-            <>
               <h3>{selected.title}</h3>
               <dl>
                 <dt>Identity</dt><dd>{selected.id}</dd>
@@ -640,9 +638,8 @@ export function ContextCabinet({ projectId, selection, onClose }: {
               {!selected.id.startsWith('memory:') && selected.body && (
                 <pre className="cabinet-preview">{selected.body.slice(0, BODY_PREVIEW_CHARS)}</pre>
               )}
-            </>
-          )}
         </aside>
+        )}
       </div>
       {(packet || packetError) && (
         <footer className="cabinet-packet" role="status" aria-label="Compiled packet">

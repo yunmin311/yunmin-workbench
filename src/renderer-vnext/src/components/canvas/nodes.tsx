@@ -34,7 +34,7 @@ function useCommon(node: NodeProps) {
 const ProjectNode = memo((props: NodeProps) => {
   const { data, selected } = useCommon(props);
   return (
-    <div className={`wb-node wb-node-project${selected ? ' is-focused' : ''}`} data-id={data.semantic.id}>
+    <div className={`wb-node wb-node-project${selected ? ' is-focused' : ''}`} data-id={data.semantic.id} data-family={data.family}>
       <Handle type="target" position={Position.Left} isConnectable={false} className="wb-handle" />
       <div className="wb-project-sigil" aria-hidden="true">◎</div>
       <div className="wb-project-body">
@@ -52,7 +52,7 @@ const TaskNode = memo((props: NodeProps) => {
   const semantic = data.semantic as Extract<WorkGraphNodeData['semantic'], { kind: 'task' }>;
   const stateTone = semantic.taskState === 'active' ? 'is-green' : 'is-muted';
   return (
-    <div className={`wb-node wb-node-task${selected ? ' is-focused' : ''}`} data-id={data.semantic.id}>
+    <div className={`wb-node wb-node-task${selected ? ' is-focused' : ''}`} data-id={data.semantic.id} data-family={data.family}>
       <Handle type="target" position={Position.Left} isConnectable={false} className="wb-handle" />
       <div className="wb-task-head">
         <span className="wb-task-sigil" aria-hidden="true">◈</span>
@@ -97,7 +97,7 @@ function makeChipNode(displayName: string, toneClass: string, sigil: string, ext
   const Component = memo((props: NodeProps) => {
     const { data, selected } = useCommon(props);
     return (
-      <div className={`wb-node wb-chip-node ${toneClass}${selected ? ' is-focused' : ''}`} data-id={data.semantic.id}>
+      <div className={`wb-node wb-chip-node ${toneClass}${selected ? ' is-focused' : ''}`} data-id={data.semantic.id} data-family={data.family}>
         <Handle type="target" position={Position.Left} isConnectable={false} className="wb-handle" />
         <span className="wb-chip-sigil" aria-hidden="true">{sigil}</span>
         <span className="wb-node-label" title={data.label}>{data.label}</span>
@@ -128,7 +128,7 @@ const ConversationNode = memo((props: NodeProps) => {
   // is the human-meaningful part; platform becomes the small prefix chip.
   const role = data.label.includes('::') ? data.label.split('::').pop()! : data.label;
   return (
-    <div className={`wb-node wb-chip-node wb-tone-conversation${selected ? ' is-focused' : ''}`} data-id={data.semantic.id}>
+    <div className={`wb-node wb-chip-node wb-tone-conversation${selected ? ' is-focused' : ''}`} data-id={data.semantic.id} data-family={data.family}>
       <Handle type="target" position={Position.Left} isConnectable={false} className="wb-handle" />
       <span className="wb-chip-sigil" aria-hidden="true">◌</span>
       <span className="wb-node-label" title={data.label}>{role}</span>
@@ -144,7 +144,7 @@ const ExecutionNode = memo((props: NodeProps) => {
   const { data, selected } = useCommon(props);
   const semantic = data.semantic as Extract<WorkGraphNodeData['semantic'], { kind: 'execution' }>;
   return (
-    <div className={`wb-node wb-node-execution${semantic.live ? ' is-live' : ''}${selected ? ' is-focused' : ''}`} data-id={data.semantic.id}>
+    <div className={`wb-node wb-node-execution${semantic.live ? ' is-live' : ''}${selected ? ' is-focused' : ''}`} data-id={data.semantic.id} data-family={data.family}>
       <Handle type="target" position={Position.Left} isConnectable={false} className="wb-handle" />
       <span className="wb-chip-sigil" aria-hidden="true">▶</span>
       <span className="wb-node-label">{semantic.provider} · {semantic.runtimeState}</span>
