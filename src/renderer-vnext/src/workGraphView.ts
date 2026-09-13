@@ -133,6 +133,10 @@ export function buildGraphElements(revision: WorkGraphRevision): { nodes: Canvas
       id: placed.id,
       type: `wb-${placed.family}`,
       position: { x: placed.x, y: placed.y },
+      // Project-scoped knowledge beside the anchor renders at full fidelity
+      // but carries a peripheral mark so the canvas can demote it visually.
+      // Never a semantic judgment — only a viewport/emphasis hint.
+      ...(placed.lane === 'knowledge' ? { className: 'is-peripheral' } : {}),
       ...(isGrouped ? { parentNode: placed.regionId!, extent: 'parent' as const } : {}),
       data: {
         semantic: placed.node,
@@ -174,6 +178,23 @@ export function buildRegionNavigation(nodes: CanvasNode[], selectedId: string | 
       taskCount: node.data.region!.taskCount,
       active: node.id === activeRegionId,
     }));
+}
+
+/**
+ * Viewport anchor ids for Work-first framing. Work regions (+ the project
+ * anchor) define the initial and post-switch viewport; the project-scoped
+ * knowledge column beside the anchor is deliberately excluded so a tall
+ * peripheral wall can never shrink the current Work into a corner.
+ * Presentation only — every semantic node stays rendered and pannable.
+ */
+export function workRegionFitIds(nodes: CanvasNode[]): string[] {
+  const ids: string[] = [];
+  for (const node of nodes) {
+    if (node.type === 'wb-region') ids.push(node.id);
+  }
+  const project = nodes.find((node) => node.data.kind === 'project');
+  if (project) ids.unshift(project.id);
+  return ids;
 }
 
 /** Collapse is a presentation projection only. Semantic nodes and edges stay

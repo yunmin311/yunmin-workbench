@@ -152,10 +152,38 @@ body,
 }
 .region-nav-kicker {
   grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   color: var(--wb-text-faint);
   font: 700 9px/1.2 inherit;
   letter-spacing: .1em;
   text-transform: uppercase;
+}
+.region-nav-toggle {
+  border: 0;
+  background: transparent;
+  color: var(--wb-text-faint);
+  font: 600 11px/1 inherit;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--wb-radius-sm);
+}
+.region-nav-toggle:hover { color: var(--wb-text); background: var(--wb-slate-dim); }
+
+/* Project-scoped knowledge beside the anchor is full-fidelity but visually
+   peripheral: it must never outshout the current Work. Focus mode still
+   overrides this when a peripheral node is the focus or a neighbor. */
+.react-flow__node.is-peripheral {
+  opacity: 0.72;
+  filter: saturate(0.55);
+}
+.react-flow__node.is-peripheral:hover,
+.react-flow__node.is-peripheral.is-neighbor {
+  opacity: 1;
+  filter: none;
 }
 .region-nav-project strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .region-nav-project select { max-width: 132px; border: 0; background: transparent; color: var(--wb-text-muted); font: 500 var(--wb-fs-xs)/1.2 inherit; text-align: right; }

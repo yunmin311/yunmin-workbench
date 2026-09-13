@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactFlow, {
   Background,
   BackgroundVariant,
@@ -20,6 +20,7 @@ import {
   focusNeighborhood,
   projectRegionVisibility,
   resolveCompactNavigate,
+  workRegionFitIds,
   type CanvasEdge,
   type FocusDetail,
   type WorkGraphNodeData,
@@ -177,6 +178,8 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
   const [preparationStage, setPreparationStage] = useState<'context' | 'preflight' | null>(null);
   const [preparedPacket, setPreparedPacket] = useState<{ conversationKey: string; packetId: string } | null>(null);
   const [collapsedRegions, setCollapsedRegions] = useState<Set<string>>(new Set());
+  const [navCollapsed, setNavCollapsed] = useState(false);
+  const fittedScopeRef = useRef<string | null>(null);
 
   useEffect(() => {
     setNodes(initial.nodes);
@@ -221,6 +224,39 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
     }
     onNavigated?.();
   }, [initial, instance, navigateRequest, nodes, onNavigated, onSelectProject, projectIds, revision]);
+
+  // Work-first viewport: switching projects frames the Work regions (+ the
+  // project anchor), never the project-scoped knowledge wall. A tall
+  // peripheral column in a 1-Work project used to shrink the current Work
+  // into a corner and leave 2-Work targets outside the viewport. The Compact
+  // handoff owns the viewport while its request is pending, and a repeated
+  // effect run for the same scope never refits (no fighting the user).
+  const scopeProjectId = revision.candidate.scope.projectId;
+  useEffect(() => {
+    if (!instance || navigateRequest) {
+      if (!instance) fittedScopeRef.current = null;
+      return;
+    }
+    if (fittedScopeRef.current === scopeProjectId) return;
+    fittedScopeRef.current = scopeProjectId;
+    const frame = window.setTimeout(() => {
+      const wanted = new Set(workRegionFitIds(initial.nodes));
+      const framed = initial.nodes.filter((node) => wanted.has(node.id));
+      if (framed.length > 0) {
+        void instance.fitView({ nodes: framed, padding: 0.2, duration: 320 });
+      }
+    }, 60);
+    return () => window.clearTimeout(frame);
+  }, [initial, instance, navigateRequest, scopeProjectId]);
+
+  // Explicit region-visibility gestures refit to what stays visible, so
+  // Keep current always lands on the current Work instead of empty canvas.
+  const fitVisibleRegions = useCallback((visibleRegionIds: readonly string[]) => {
+    if (!instance || visibleRegionIds.length === 0) return;
+    const framed = nodes.filter((node) => visibleRegionIds.includes(node.id));
+    if (framed.length === 0) return;
+    void instance.fitView({ nodes: framed, padding: 0.2, duration: 320 });
+  }, [instance, nodes]);
 
   const selectedNode = nodes.find((node) => node.id === selectedId && node.type !== 'wb-region') ?? null;
   const detail = selectedId && selectedNode ? buildFocusDetail(revision, selectedId) : null;
@@ -391,7 +427,19 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
       {(projectNode || projectIds.length > 0) && (
         <nav className="wb-region-nav wb-glass" aria-label="Work regions">
           <div className="region-nav-project">
-            <span className="region-nav-kicker">Current project</span>
+            <span className="region-nav-kicker">
+              <span>Current project</span>
+              <button
+                type="button"
+                className="region-nav-toggle"
+                aria-expanded={!navCollapsed}
+                aria-label={navCollapsed ? 'Expand work list' : 'Collapse work list'}
+                title={navCollapsed ? 'Expand work list' : 'Collapse work list'}
+                onClick={() => setNavCollapsed((collapsed) => !collapsed)}
+              >
+                {navCollapsed ? '▸' : '▾'}
+              </button>
+            </span>
             <strong>{projectNode?.data.label ?? revision.candidate.scope.projectId}</strong>
             <select
               aria-label="Switch project"
@@ -404,6 +452,7 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
               ))}
             </select>
           </div>
+          {!navCollapsed && (
           <div className="region-nav-list">
             {regionNavigation.length === 0 && <p className="region-nav-empty">No canonical Work in this project.</p>}
             {regionNavigation.map((region, index) => (
@@ -424,17 +473,28 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
               </div>
             ))}
           </div>
+          )}
+          {!navCollapsed && (
           <div className="region-nav-actions">
-            <button type="button" onClick={() => setCollapsedRegions(new Set())}>Show all</button>
+            <button
+              type="button"
+              onClick={() => {
+                setCollapsedRegions(new Set());
+                fitVisibleRegions(regionNavigation.map((region) => region.regionId));
+              }}
+            >Show all</button>
             <button
               type="button"
               disabled={!regionNavigation.some((region) => region.active)}
               onClick={() => {
                 const active = regionNavigation.find((region) => region.active);
-                if (active) setCollapsedRegions(new Set(regionNavigation.filter((region) => region.regionId !== active.regionId).map((region) => region.regionId)));
+                if (!active) return;
+                setCollapsedRegions(new Set(regionNavigation.filter((region) => region.regionId !== active.regionId).map((region) => region.regionId)));
+                fitVisibleRegions([active.regionId]);
               }}
             >Keep current</button>
           </div>
+          )}
         </nav>
       )}
 

@@ -14,6 +14,7 @@ import {
   projectRegionVisibility,
   projectIdsFromOverlay,
   resolveCompactNavigate,
+  workRegionFitIds,
 } from '../../src/renderer-vnext/src/workGraphView';
 
 const NOW = '2026-09-08T00:00:00.000Z';
@@ -104,6 +105,21 @@ describe('vNext renderer acceptance', () => {
     expect(projected.nodes.find((node) => node.id === 'task:p1:task-1')).toMatchObject({ hidden: true });
     expect(projected.edges.some((edge) => edge.hidden)).toBe(true);
     expect(rev.candidate.semanticFacts.nodes.find((node) => node.id === 'task:p1:task-1')).toBeTruthy();
+  });
+
+  it('frames Work regions and the project anchor, never the knowledge wall', async () => {
+    const graph = buildGraphElements(await revision());
+    const framed = workRegionFitIds(graph.nodes);
+    // The project anchor stays in frame; every Work region stays in frame.
+    expect(framed).toContain('project:p1');
+    const regionIds = graph.nodes.filter((node) => node.type === 'wb-region').map((node) => node.id);
+    expect(regionIds.length).toBeGreaterThan(0);
+    expect(framed).toEqual(expect.arrayContaining(regionIds));
+    // Project-scoped knowledge renders in full but never defines the viewport.
+    const peripheral = graph.nodes.filter((node) => node.className === 'is-peripheral');
+    expect(peripheral.length).toBeGreaterThan(0);
+    for (const node of peripheral) expect(framed).not.toContain(node.id);
+    expect(peripheral.every((node) => node.type !== 'wb-region')).toBe(true);
   });
 
   it('offers exact declared project ids without inventing a recent project', () => {

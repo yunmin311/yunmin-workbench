@@ -690,6 +690,10 @@ export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
               <option key={conversation.key} value={conversation.key}>{conversation.role} · {conversation.platform}</option>
             ))}
           </select>
+          {snapshot !== null
+            && (snapshot.conversations ?? []).filter((conversation) => conversation.project === projectId).length === 0 && (
+            <span className="cabinet-hint">No conversations bound to {projectId} — staging is kept, but freezing needs a conversation target.</span>
+          )}
         </label>
         <button
           type="button"
