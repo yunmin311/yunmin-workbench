@@ -14,7 +14,7 @@ import type { FrozenPacket, FrozenPacketSummary, HarnessCapabilities, OverlaySna
 
 /**
  * Explicit Dispatch Surface (PHASE 3D.1) —
- * "which Task, with which Frozen Packet, to which Conversation / executor".
+ * "which Task, with which snapshot, to which chat / runner".
  *
  * A temporary preparation surface, not a chat composer, scheduler, or
  * router. It only assembles an explicit dispatch; the Execution /
@@ -278,7 +278,7 @@ export function DispatchSurface({ projectId, selection, initialConversationKey, 
                 setReceipt(null);
               }}
             >
-              <option value="">— select a frozen packet —</option>
+              <option value="">— select a snapshot —</option>
               {frozenList.map((item) => (
                 <option key={item.packetId} value={item.packetId}>
                   v{item.version} · {item.packetId.slice(0, 8)}… · {item.frozenAt.slice(0, 16)} · ~{item.roughTokens} tok
@@ -328,7 +328,7 @@ export function DispatchSurface({ projectId, selection, initialConversationKey, 
               rows={3}
               value={draft.instruction}
               onChange={(event) => setDraft((current) => setDispatchInstruction(current, event.target.value))}
-              placeholder="What should this execution do? (visible and reviewable; sent verbatim above the packet)"
+              placeholder="What should this run do? (visible and reviewable; sent verbatim above the snapshot)"
             />
           </div>
         </div>

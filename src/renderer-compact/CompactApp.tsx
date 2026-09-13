@@ -88,7 +88,7 @@ export function CompactApp() {
         aria-level={1}
         aria-label="Workbench Compact"
       >
-        <span className="compact-title">Workbench</span>
+        <span className="compact-title">Yunmin Workbench</span>
         <span className="compact-drag-spacer" />
         <button
           type="button"
@@ -126,9 +126,11 @@ export function CompactApp() {
             {snapshot.task && (
               <span className="compact-task">
                 {snapshot.task.taskId} · {snapshot.task.label}
-                <em className={`compact-currentness is-${snapshot.task.taskState === 'unknown' ? 'unknown' : snapshot.task.taskState}`}>
-                  {snapshot.task.taskState}
-                </em>
+                {snapshot.task.taskState !== 'unknown' && (
+                  <em className={`compact-currentness is-${snapshot.task.taskState}`}>
+                    {snapshot.task.taskState}
+                  </em>
+                )}
               </span>
             )}
           </button>

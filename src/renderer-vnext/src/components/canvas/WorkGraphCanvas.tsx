@@ -182,7 +182,9 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
   const [preparationStage, setPreparationStage] = useState<'context' | 'preflight' | null>(null);
   const [preparedPacket, setPreparedPacket] = useState<{ conversationKey: string; packetId: string } | null>(null);
   const [collapsedRegions, setCollapsedRegions] = useState<Set<string>>(new Set());
-  const [navCollapsed, setNavCollapsed] = useState(false);
+  // Narrow windows start with the work list folded so the floating nav never
+  // buries the project anchor; the project switcher itself stays visible.
+  const [navCollapsed, setNavCollapsed] = useState(() => window.innerWidth < 1100);
   const [startDismissed, setStartDismissed] = useState(false);
   const fittedScopeRef = useRef<string | null>(null);
 
@@ -253,6 +255,29 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
     }, 60);
     return () => window.clearTimeout(frame);
   }, [initial, instance, navigateRequest, scopeProjectId]);
+
+  // Window resizes leave a fitted viewport behind (content drifts off-screen
+  // at narrow widths). While the user is just browsing — no selection, no
+  // preparation open — reframe the Work regions. An active focus is never
+  // yanked.
+  useEffect(() => {
+    if (!instance) return;
+    let timer: number | undefined;
+    const onResize = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        if (selectedId !== null || preparationStage !== null) return;
+        const wanted = new Set(workRegionFitIds(initial.nodes));
+        const framed = initial.nodes.filter((node) => wanted.has(node.id));
+        if (framed.length > 0) void instance.fitView({ nodes: framed, padding: 0.2, duration: 240 });
+      }, 250);
+    };
+    window.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.clearTimeout(timer);
+    };
+  }, [initial, instance, preparationStage, selectedId]);
 
   // Explicit region-visibility gestures refit to what stays visible, so
   // Keep current always lands on the current Work instead of empty canvas.
@@ -370,6 +395,24 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
     setPreparationStage('context');
   }, []);
 
+  // ESC walks one layer back: preparation surface, then selection. Typing in
+  // a field is never hijacked.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
+        || target.tagName === 'SELECT' || target.isContentEditable)) return;
+      if (preparationStage !== null) {
+        setPreparationStage(null);
+        return;
+      }
+      if (selectedId !== null) setSelectedId(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [preparationStage, selectedId]);
+
   const dimmed = selectedNode !== null;
 
   return (
@@ -408,7 +451,7 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
               className="wb-tool"
               aria-pressed={preparationStage !== null}
               onClick={openPreparation}
-              title={selectedNode && (selectedNode.data.kind === 'task' || selectedNode.data.kind === 'work') ? `Prepare · ${selectedNode.data.label}` : 'Pick a task first, then prepare it'}
+              title={selectedNode && (selectedNode.data.kind === 'task' || selectedNode.data.kind === 'work') ? `Prepare · ${selectedNode.data.label}` : 'Choose context, snapshot it, and send it'}
             >
               Prepare
             </button>
@@ -527,7 +570,7 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
         </nav>
       )}
 
-      {detail && (
+      {detail && preparationStage === null && (
         <FocusDetailPanel
           detail={detail}
           story={executionStory}

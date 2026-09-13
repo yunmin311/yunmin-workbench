@@ -76,11 +76,12 @@ test('headed real Compact edge surface mirrors canonical facts and hands off to 
     }).toPass({ timeout: 15_000 });
     const compactWindow = compact!;
 
-    // Canonical facts mirrored: project / Work / Task, honest UNKNOWN state.
+    // Canonical facts mirrored: project / Work / Task. Unproven state stays
+    // out of the chips entirely (same rule as the Full Workbench).
     await expect(compactWindow.locator('.compact-project')).toHaveText('creative-os');
     await expect(compactWindow.locator('.compact-work')).toContainText('灵感采集');
     await expect(compactWindow.locator('.compact-task')).toContainText('T006');
-    await expect(compactWindow.locator('.compact-task')).toContainText('unknown');
+    await expect(compactWindow.locator('.compact-task')).not.toContainText('unknown');
     // No real execution exists -> no Running module. No attention instance -> none.
     await expect(compactWindow.locator('.compact-running')).toHaveCount(0);
     await expect(compactWindow.locator('.compact-attention')).toHaveCount(0);

@@ -651,7 +651,7 @@ export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
                         className={`cabinet-pin${item.pinned ? ' is-on' : ''}`}
                         disabled={item.state !== 'included'}
                         aria-label={item.pinned ? `Unpin ${item.title}` : `Pin ${item.title}`}
-                        title={item.state === 'included' ? 'Pin into packet head' : 'Pinning requires included'}
+                        title={item.state === 'included' ? 'Pin to the top of the snapshot' : 'Only selected items can be pinned'}
                         onClick={() => togglePin(item.id)}
                       >
                         {item.pinned ? '★' : '☆'}
@@ -666,6 +666,7 @@ export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
         </div>
         {selected && (
         <aside className="cabinet-detail" aria-label="Context detail">
+              <button type="button" className="cabinet-detail-close" aria-label="Close context detail" onClick={() => setSelectedId(null)}>×</button>
               <h3>{selected.title}</h3>
               <dl>
                 <dt>Identity</dt><dd>{selected.id}</dd>
@@ -749,7 +750,7 @@ export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
         </button>
       </footer>
       {(packet || packetError) && (
-        <footer className="cabinet-packet" role="status" aria-label="Compiled packet">
+        <footer className="cabinet-packet" role="status" aria-label="Compiled snapshot">
           {packetError && <p className="cabinet-error">{packetError}</p>}
           {packet && (
             <dl>

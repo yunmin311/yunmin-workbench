@@ -4,6 +4,10 @@
    Canvas is the absolute主体; chrome is a floating glass toolbar.
    ============================================================ */
 
+:root {
+  color-scheme: dark;
+}
+
 html,
 body,
 #root {
@@ -15,6 +19,18 @@ body,
   color: var(--wb-text);
   font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, sans-serif;
   font-size: var(--wb-fs-md);
+}
+
+/* Visible keyboard focus everywhere: native controls are all reachable by
+   Tab, so the focus ring must never be invisible. */
+:focus-visible {
+  outline: 1.5px solid var(--wb-accent);
+  outline-offset: 2px;
+}
+.react-flow__node:focus-visible { outline: none; }
+.react-flow__node:focus-visible .wb-node {
+  border-color: var(--wb-accent);
+  box-shadow: 0 0 0 1.5px rgba(127, 181, 192, 0.45), var(--wb-shadow-2);
 }
 
 .vnext-app {
@@ -94,7 +110,9 @@ body,
 .wb-canvas-toolbar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
+  max-width: calc(100vw - 28px);
   padding: 6px 10px;
   border-radius: var(--wb-radius);
   box-shadow: var(--wb-shadow-1);
@@ -124,7 +142,8 @@ body,
   border-radius: var(--wb-radius-sm);
   background: transparent;
   color: var(--wb-text-secondary);
-  padding: 5px 9px;
+  padding: 7px 11px;
+  min-height: 28px;
   font: 600 var(--wb-fs-sm)/1.2 inherit;
   font-family: inherit;
   cursor: pointer;
@@ -198,7 +217,13 @@ body,
 .region-nav-project strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .region-nav-project select { max-width: 132px; border: 0; background: transparent; color: var(--wb-text-muted); font: 500 var(--wb-fs-xs)/1.2 inherit; text-align: right; }
 .region-nav-project select:disabled { opacity: 1; }
-.region-nav-list { display: grid; padding: 5px; gap: 3px; }
+.region-nav-list {
+  display: grid;
+  padding: 5px;
+  gap: 3px;
+  max-height: min(46vh, 420px);
+  overflow-y: auto;
+}
 .region-nav-empty { margin: 0; padding: 8px 7px; color: var(--wb-text-faint); font-size: var(--wb-fs-xs); line-height: 1.4; }
 .region-nav-row { display: grid; grid-template-columns: minmax(0, 1fr) 28px; border-radius: var(--wb-radius); }
 .region-nav-row.is-active { background: var(--wb-accent-dim); box-shadow: inset 2px 0 var(--wb-accent); }
@@ -311,7 +336,13 @@ body,
   border-color: rgba(127, 181, 192, 0.45);
 }
 
-/* Clickable affordance: every canvas node invites interaction on hover. */
+/* Region containers are layout, not actions: no pointer promise. */
+.react-flow__node-wb-region,
+.react-flow__node-wb-region .wb-region {
+  cursor: default;
+}
+
+/* Clickable affordance: interactive canvas nodes invite touch on hover. */
 .react-flow__node:not(.react-flow__node-wb-region):hover .wb-node {
   border-color: var(--wb-accent);
   box-shadow: 0 0 0 1px rgba(127, 181, 192, 0.35), var(--wb-shadow-1);
@@ -910,7 +941,8 @@ body,
   background: transparent;
   color: var(--wb-text-faint);
   font: 600 9px/1.2 inherit;
-  padding: 4px 6px;
+  padding: 7px 8px;
+  min-height: 26px;
   cursor: pointer;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -986,12 +1018,25 @@ body,
   padding: 10px 14px 14px;
 }
 .cabinet-detail h3 {
-  margin: 2px 0 10px;
+  margin: 2px 26px 10px 0;
   font-size: var(--wb-fs-md);
   font-weight: 650;
   color: var(--wb-text);
   overflow-wrap: anywhere;
 }
+.cabinet-detail-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--wb-text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 7px;
+  border-radius: var(--wb-radius-sm);
+}
+.cabinet-detail-close:hover { color: var(--wb-text); background: var(--wb-slate-dim); }
 .cabinet-detail dl {
   display: grid;
   grid-template-columns: 88px minmax(0, 1fr);
@@ -1034,6 +1079,16 @@ body,
   padding: 10px 14px;
   border-top: 1px solid var(--wb-border);
   background: rgba(15, 18, 23, .72);
+}
+@media (max-width: 1100px) {
+  .wb-canvas-toolbar .wb-tally { display: none; }
+  .wb-region-nav { width: 270px; }
+  .preparation-footer {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .preparation-meaning { grid-column: 1 / -1; }
+  .dispatch-surface .dispatch-body { grid-template-columns: minmax(0, 1fr); }
+  .dispatch-surface .dispatch-preflight { border-left: 0; border-top: 1px solid var(--wb-border); }
 }
 .preparation-meaning { display: flex; flex-direction: column; gap: 2px; }
 .preparation-meaning strong { color: var(--wb-teal); font-size: var(--wb-fs-md); }
@@ -1294,7 +1349,11 @@ body,
 .react-flow__edge-textbg { fill: rgba(16, 19, 24, 0.92); }
 .react-flow__edge-text { fill: var(--wb-text-secondary); font-size: 9px; }
 
-/* scrollbars — quiet */
+/* scrollbars — quiet, and themed for Firefox too */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.28) transparent;
+}
 ::-webkit-scrollbar { width: 9px; height: 9px; }
 ::-webkit-scrollbar-thumb {
   background: rgba(148, 163, 184, 0.2);
