@@ -75,18 +75,34 @@ export function cabinetStagingScope(projectId: string): CabinetStagingScopeV1 {
   return { kind: 'project-context-cabinet', projectId };
 }
 
+/**
+ * Persistence semantic: SPARSE OVERRIDES, never a resolved snapshot.
+ *
+ * `decisions` records only explicit user overrides on top of the
+ * inherited/source defaults that `buildCabinetItems` resolves fresh on every
+ * open. Untouched contexts leave no record, so a later source-default change
+ * flows through to every context the user never explicitly decided.
+ * Reverting an item to its inherited default deletes the override instead of
+ * persisting a decision that happens to equal the default.
+ *
+ * Callers pass the exact explicit-touch set (`explicitIds`). Omitting it
+ * keeps the legacy whole-collection serialization for migration-era callers
+ * only — new UI writes must always pass the explicit set.
+ */
 export function buildCabinetStaging(
   projectId: string,
   items: CabinetItem[],
   projectFiles: CabinetFileSelectionV1[],
   pinnedCanonicalFile: boolean,
   taskSummary = '',
+  explicitIds?: ReadonlySet<string>,
 ): CabinetStagingV1 {
+  const overridden = explicitIds ? items.filter((item) => explicitIds.has(item.id)) : items;
   return {
     schemaVersion: CABINET_STAGING_SCHEMA_VERSION,
     scope: cabinetStagingScope(projectId),
     taskSummary,
-    decisions: items.map((item, order) => ({
+    decisions: overridden.map((item, order) => ({
       contextId: item.id,
       state: item.state,
       pinned: item.state === 'included' ? item.pinned : false,
@@ -95,6 +111,36 @@ export function buildCabinetStaging(
     projectFiles,
     pinnedCanonicalFile,
   };
+}
+
+/** The inherited/source default an item resolved to when the Cabinet opened. */
+export interface CabinetSourceDefault {
+  state: ContextIncludeState;
+  pinned: boolean;
+}
+
+/**
+ * Pure maintenance for the explicit-touch set behind sparse persistence.
+ * Adds the item id when its current (state, pinned) differs from the
+ * inherited default captured at open; removes it when the user reverts to
+ * that default. Unknown ids (e.g. files added mid-session before their
+ * default is registered) fall back to the creation default
+ * available/unpinned. Never guesses beyond the supplied defaults.
+ */
+export function refreshExplicitDecision(args: {
+  baseDefaults: ReadonlyMap<string, CabinetSourceDefault>;
+  decided: ReadonlySet<string>;
+  item: { id: string; state: ContextIncludeState; pinned: boolean };
+}): Set<string> {
+  const fallback: CabinetSourceDefault = { state: 'available', pinned: false };
+  const def = args.baseDefaults.get(args.item.id) ?? fallback;
+  const next = new Set(args.decided);
+  if (args.item.state === def.state && args.item.pinned === def.pinned) {
+    next.delete(args.item.id);
+  } else {
+    next.add(args.item.id);
+  }
+  return next;
 }
 
 export interface LegacyCabinetDraftLike {

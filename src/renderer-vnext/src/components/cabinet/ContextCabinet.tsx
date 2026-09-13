@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   applyCabinetPin,
   applyCabinetState,
@@ -14,7 +14,9 @@ import {
 } from '../../../../core/project/cabinet';
 import {
   buildCabinetStaging,
+  refreshExplicitDecision,
   type CabinetFileSelectionV1,
+  type CabinetSourceDefault,
   type CabinetStagingV1,
 } from '../../../../core/project/cabinetStaging';
 import { checkPacketValidity, compilePacket } from '../../../../core/project/packet';
@@ -130,6 +132,12 @@ export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
   const [pickerError, setPickerError] = useState('');
   const [conversationKey, setConversationKey] = useState(selection?.conversationKey ?? '');
   const [expandedGroups, setExpandedGroups] = useState<Set<CabinetSourceGroup>>(new Set());
+  // Sparse-override bookkeeping. baseDefaultsRef captures the inherited/source
+  // defaults the Cabinet resolved at open (before stored overrides apply);
+  // decidedRef mirrors userDecidedIds for synchronous persist calls. Only ids
+  // in this set may enter persisted decisions — untouched contexts stay out.
+  const baseDefaultsRef = useRef(new Map<string, CabinetSourceDefault>());
+  const decidedRef = useRef(new Set<string>());
 
   useEffect(() => {
     let alive = true;
@@ -155,7 +163,12 @@ export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
         const staging = stored.staging;
         setFileSelections(staging?.projectFiles ?? []);
         setPinnedSelected(staging?.pinnedCanonicalFile ?? false);
-        setUserDecidedIds(new Set(staging?.decisions.map((decision) => decision.contextId) ?? []));
+        // Stored decisions ARE the explicit overrides under sparse persistence:
+        // untouched contexts leave no record, so this set is exact for new
+        // writes. Bloated stores from the pre-sparse era keep their records
+        // untouched here — they are reported, never silently rewritten.
+        decidedRef.current = new Set(staging?.decisions.map((decision) => decision.contextId) ?? []);
+        setUserDecidedIds(new Set(decidedRef.current));
 
         // Explicit file selections resolve fresh from disk every open.
         const freshFiles: ContextItem[] = [];
@@ -188,6 +201,11 @@ export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
           ...freshFiles.map((file) => asCabinetItem(file, freshFingerprints)),
           ...(pinnedItem ? [asCabinetItem(pinnedItem, freshFingerprints)] : []),
         ];
+        // Inherited defaults snapshot: pre-override states. Reverting an item
+        // to these values deletes its override instead of persisting it.
+        baseDefaultsRef.current = new Map(
+          withFiles.map((item) => [item.id, { state: item.state, pinned: item.pinned }]),
+        );
         const decisions = new Map((staging?.decisions ?? []).map((decision) => [decision.contextId, decision]));
         const hydratedItems = withFiles.map((item) => {
           const decision = decisions.get(item.id);
@@ -211,35 +229,54 @@ export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
   );
 
   // Persist through the dedicated cabinet-staging seam (formal scope kind).
-  const persist = useCallback((next: CabinetItem[], files: CabinetFileSelectionV1[], pinned: boolean) => {
+  // Only the explicit-touch set enters decisions — the resolved collection
+  // itself is never serialized, so one action can no longer materialize the
+  // whole Cabinet as apparent "user decisions".
+  const persist = useCallback((
+    next: CabinetItem[],
+    files: CabinetFileSelectionV1[],
+    pinned: boolean,
+    decided: ReadonlySet<string>,
+  ) => {
     void (async () => {
       try {
-        await window.wb.saveCabinetStaging(buildCabinetStaging(projectId, next, files, pinned));
+        await window.wb.saveCabinetStaging(buildCabinetStaging(projectId, next, files, pinned, '', decided));
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       }
     })();
   }, [projectId]);
 
+  const trackDecision = useCallback((next: CabinetItem[], id: string): Set<string> => {
+    const item = next.find((candidate) => candidate.id === id);
+    if (!item) return new Set(decidedRef.current);
+    const decided = refreshExplicitDecision({
+      baseDefaults: baseDefaultsRef.current,
+      decided: decidedRef.current,
+      item: { id: item.id, state: item.state, pinned: item.pinned },
+    });
+    decidedRef.current = decided;
+    setUserDecidedIds(decided);
+    return decided;
+  }, []);
+
   const decideState = useCallback((id: string, state: CabinetItem['state']) => {
     setItems((current) => {
       const next = applyCabinetState(current, id, state);
-      persist(next, fileSelections, pinnedSelected);
+      persist(next, fileSelections, pinnedSelected, trackDecision(next, id));
       return next;
     });
-    setUserDecidedIds((current) => new Set(current).add(id));
-  }, [fileSelections, persist, pinnedSelected]);
+  }, [fileSelections, persist, pinnedSelected, trackDecision]);
 
   const togglePin = useCallback((id: string) => {
     setItems((current) => {
       const item = current.find((candidate) => candidate.id === id);
       if (!item) return current;
       const next = applyCabinetPin(current, id, !item.pinned);
-      persist(next, fileSelections, pinnedSelected);
+      persist(next, fileSelections, pinnedSelected, trackDecision(next, id));
       return next;
     });
-    setUserDecidedIds((current) => new Set(current).add(id));
-  }, [fileSelections, persist, pinnedSelected]);
+  }, [fileSelections, persist, pinnedSelected, trackDecision]);
 
   const allFingerprinted = useMemo(
     () => new Set(currentFingerprints.map((fingerprint) => fingerprint.sourceRef)),
@@ -363,16 +400,20 @@ export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
             lastKnownSha256: entry.fingerprint.sha256,
           }];
         const mergedFingerprints = [...currentFingerprints, entry.fingerprint];
-        // Newly added files start Available: never auto-included.
+        // Newly added files start Available: never auto-included. Creation
+        // state is their inherited default, so merely adding one mints no
+        // decision — only a later explicit include/exclude does.
+        const added = { ...asCabinetItem(entry.item, mergedFingerprints), state: 'available' as const, pinned: false };
+        baseDefaultsRef.current.set(added.id, { state: added.state, pinned: added.pinned });
         const merged = [
           ...items.filter((item) => item.id !== entry.item.id),
-          { ...asCabinetItem(entry.item, mergedFingerprints), state: 'available' as const, pinned: false },
+          added,
         ];
         setFileFingerprints((current) => [...current, entry.fingerprint]);
         setFileSelections(nextFiles);
         setItems(merged);
         setExpandedGroups((current) => new Set(current).add('file'));
-        persist(merged, nextFiles, pinnedSelected);
+        persist(merged, nextFiles, pinnedSelected, decidedRef.current);
         setPickerOpen(false);
         setPickerQuery('');
         setPickerMatches([]);
@@ -392,15 +433,17 @@ export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
           return;
         }
         const mergedFingerprints = [...currentFingerprints, pinned.fingerprint];
+        const added = { ...asCabinetItem(pinned.item, mergedFingerprints), state: 'available' as const, pinned: false };
+        baseDefaultsRef.current.set(added.id, { state: added.state, pinned: added.pinned });
         const merged = [
           ...items.filter((item) => item.id !== pinned.item!.id),
-          { ...asCabinetItem(pinned.item, mergedFingerprints), state: 'available' as const, pinned: false },
+          added,
         ];
         setFileFingerprints((current) => [...current, pinned.fingerprint!]);
         setPinnedSelected(true);
         setItems(merged);
         setExpandedGroups((current) => new Set(current).add('file'));
-        persist(merged, fileSelections, true);
+        persist(merged, fileSelections, true, decidedRef.current);
         setPickerOpen(false);
       } catch (e) {
         setPickerError(e instanceof Error ? e.message : String(e));
