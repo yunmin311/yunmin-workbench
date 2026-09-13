@@ -38,6 +38,66 @@ export function projectIdsFromOverlay(snapshot: { projects: { projectId: string 
   return [...new Set(snapshot.projects.map((project) => project.projectId))].sort((a, b) => a.localeCompare(b));
 }
 
+export interface CompactNavigateRequest {
+  projectId: string;
+  workId?: string;
+  taskId?: string;
+  action?: 'continue' | 'prepare';
+}
+
+/**
+ * Current-selection write guard. An explicit Work/Task click bookmarks ONLY
+ * its own project: a stale node from another project (observable mid
+ * project-switch, before the selection resets) must never be re-scoped onto
+ * the newly displayed project. Returns null when nothing may be written.
+ */
+export function currentSelectionForNode(
+  node: WorkGraphNode,
+  scopeProjectId: string,
+): { projectId: string; workId?: string; taskId?: string } | null {
+  if (node.projectId !== scopeProjectId) return null;
+  if (node.kind === 'work') return { projectId: node.projectId, workId: node.workId };
+  if (node.kind === 'task') {
+    return {
+      projectId: node.projectId,
+      ...(node.workId !== undefined ? { workId: node.workId } : {}),
+      taskId: node.taskId,
+    };
+  }
+  return null;
+}
+
+export type CompactNavigateResolution =
+  | { resolution: 'switch-project'; projectId: string }
+  | { resolution: 'apply'; nodeId: string }
+  | { resolution: 'ignore' };
+
+/**
+ * Compact → Full handoff across projects. Exact node ids only: a request for
+ * another known project switches first and applies once that revision
+ * arrives — never silently dropped, never guessed. Unknown projects and
+ * unknown nodes resolve to ignore.
+ */
+export function resolveCompactNavigate(
+  request: CompactNavigateRequest,
+  scopeProjectId: string,
+  knownProjectIds: readonly string[],
+  nodeIds: ReadonlySet<string>,
+): CompactNavigateResolution {
+  if (request.projectId !== scopeProjectId) {
+    return knownProjectIds.includes(request.projectId)
+      ? { resolution: 'switch-project', projectId: request.projectId }
+      : { resolution: 'ignore' };
+  }
+  const candidates = [
+    request.taskId !== undefined ? `task:${request.projectId}:${request.taskId}` : null,
+    request.workId !== undefined ? `work:${request.projectId}:${request.workId}` : null,
+    `project:${request.projectId}`,
+  ].filter((id): id is string => id !== null);
+  const target = candidates.find((id) => nodeIds.has(id));
+  return target ? { resolution: 'apply', nodeId: target } : { resolution: 'ignore' };
+}
+
 /**
  * Workspace graph elements: semantic regions (Work containers) + tiered
  * node cards placed by the workspace layout. Node ids stay the semantic

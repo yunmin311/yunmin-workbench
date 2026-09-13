@@ -16,8 +16,10 @@ import {
   buildExecutionStory,
   buildGraphElements,
   buildRegionNavigation,
+  currentSelectionForNode,
   focusNeighborhood,
   projectRegionVisibility,
+  resolveCompactNavigate,
   type CanvasEdge,
   type FocusDetail,
   type WorkGraphNodeData,
@@ -186,23 +188,30 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
   }, [initial, setEdges, setNodes]);
 
   // Compact → Full handoff: apply the navigation identity to the canvas.
+  // A request for another known project switches first; the pending request
+  // survives the revision change and applies once that project arrives.
+  // Identity resolves against `initial` (always in sync with the revision);
+  // the live `nodes` state only supplies the viewport position, so a
+  // revision change can never clear the request on stale nodes.
   // Exact node ids only; unknown identities are ignored, never guessed.
   useEffect(() => {
     if (!navigateRequest || !instance) return;
     const projectId = revision.candidate.scope.projectId;
-    if (navigateRequest.projectId !== projectId) {
-      onNavigated?.();
+    const resolved = resolveCompactNavigate(
+      navigateRequest,
+      projectId,
+      projectIds,
+      new Set(initial.nodes.map((node) => node.id)),
+    );
+    if (resolved.resolution === 'switch-project') {
+      onSelectProject(resolved.projectId);
       return;
     }
-    const candidates = [
-      navigateRequest.taskId !== undefined ? `task:${projectId}:${navigateRequest.taskId}` : null,
-      navigateRequest.workId !== undefined ? `work:${projectId}:${navigateRequest.workId}` : null,
-      `project:${projectId}`,
-    ].filter((id): id is string => id !== null);
-    const target = candidates
-      .map((id) => nodes.find((node) => node.id === id))
-      .find((node) => node !== undefined);
-    if (target) {
+    if (resolved.resolution === 'apply') {
+      const target = nodes.find((node) => node.id === resolved.nodeId);
+      // Nodes state still syncing to the new revision: keep pending, retry
+      // when the synced nodes arrive instead of dropping the request.
+      if (!target) return;
       setSelectedId(target.id);
       void instance.setCenter(target.position.x + 80, target.position.y + 36, { zoom: Math.max(instance.getZoom(), 0.85), duration: 320 });
       if (navigateRequest.action === 'prepare') {
@@ -211,7 +220,7 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
       }
     }
     onNavigated?.();
-  }, [instance, navigateRequest, nodes, onNavigated, revision]);
+  }, [initial, instance, navigateRequest, nodes, onNavigated, onSelectProject, projectIds, revision]);
 
   const selectedNode = nodes.find((node) => node.id === selectedId && node.type !== 'wb-region') ?? null;
   const detail = selectedId && selectedNode ? buildFocusDetail(revision, selectedId) : null;
@@ -238,15 +247,14 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
 
   // Explicit Full-Workbench Work/Task selection updates the thin local
   // current-selection bookmark the Compact surface reads. Never written
-  // from recency/cwd/activity — only from this explicit click.
+  // from recency/cwd/activity — only from this explicit click — and never
+  // re-scoped onto another project by a stale node mid project-switch.
   useEffect(() => {
     const semantic = selectedNode?.data.semantic;
     if (!semantic || (semantic.kind !== 'work' && semantic.kind !== 'task')) return;
-    void window.wb.setCurrentSelection({
-      projectId: revision.candidate.scope.projectId,
-      ...(semantic.kind === 'work' ? { workId: semantic.workId } : {}),
-      ...(semantic.kind === 'task' ? { workId: semantic.workId, taskId: semantic.taskId } : {}),
-    }).catch(() => undefined);
+    const selection = currentSelectionForNode(semantic, revision.candidate.scope.projectId);
+    if (!selection) return;
+    void window.wb.setCurrentSelection(selection).catch(() => undefined);
   }, [selectedNode, revision]);
 
   const cabinetSelection: CabinetSelection | null = selectedNode

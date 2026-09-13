@@ -9,9 +9,11 @@ import {
   buildFocusDetail,
   buildGraphElements,
   buildRegionNavigation,
+  currentSelectionForNode,
   moveGraphNode,
   projectRegionVisibility,
   projectIdsFromOverlay,
+  resolveCompactNavigate,
 } from '../../src/renderer-vnext/src/workGraphView';
 
 const NOW = '2026-09-08T00:00:00.000Z';
@@ -119,6 +121,40 @@ describe('vNext renderer acceptance', () => {
       next: 'No next-step fact yet',
     });
     expect(JSON.stringify(story)).not.toContain('Available only');
+  });
+
+  it('bookmarks an explicit selection only inside its own project', async () => {
+    const rev = await revision();
+    const nodes = rev.candidate.semanticFacts.nodes;
+    const task = nodes.find((node) => node.kind === 'task');
+    const work = nodes.find((node) => node.kind === 'work');
+    expect(task && work).toBeTruthy();
+    expect(currentSelectionForNode(task!, 'p1')).toEqual({ projectId: 'p1', workId: 'w1', taskId: 'task-1' });
+    expect(currentSelectionForNode(work!, 'p1')).toEqual({ projectId: 'p1', workId: 'w1' });
+    // A stale node from another project must never be re-scoped (dual-project
+    // regression: switching projects used to mint a cross-project chimera).
+    expect(currentSelectionForNode({ ...task!, projectId: 'p2' }, 'p1')).toBeNull();
+    expect(currentSelectionForNode({ ...work!, projectId: 'p2' }, 'p1')).toBeNull();
+    const conversation = nodes.find((node) => node.kind === 'conversation');
+    if (conversation) expect(currentSelectionForNode(conversation, 'p1')).toBeNull();
+  });
+
+  it('resolves compact navigation across projects without guessing', async () => {
+    const rev = await revision();
+    const nodeIds = new Set(buildGraphElements(rev).nodes.map((node) => node.id));
+    expect(resolveCompactNavigate(
+      { projectId: 'p1', workId: 'w1', taskId: 'task-1', action: 'prepare' }, 'p1', ['p1', 'p2'], nodeIds,
+    )).toEqual({ resolution: 'apply', nodeId: 'task:p1:task-1' });
+    // Another known project switches first instead of being dropped.
+    expect(resolveCompactNavigate(
+      { projectId: 'p2', workId: 'w1', taskId: 'task-1', action: 'continue' }, 'p1', ['p1', 'p2'], nodeIds,
+    )).toEqual({ resolution: 'switch-project', projectId: 'p2' });
+    // Unknown projects and unknown nodes stay ignored, never guessed.
+    expect(resolveCompactNavigate({ projectId: 'p9' }, 'p1', ['p1', 'p2'], nodeIds))
+      .toEqual({ resolution: 'ignore' });
+    expect(resolveCompactNavigate(
+      { projectId: 'p1', workId: 'w9', taskId: 'missing', action: 'continue' }, 'p1', ['p1', 'p2'], nodeIds,
+    )).toEqual({ resolution: 'apply', nodeId: 'project:p1' });
   });
 });
 
