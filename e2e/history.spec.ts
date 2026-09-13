@@ -33,6 +33,7 @@ test('Command Palette opens read-only History search and a provenance-backed det
   const before = [hash(claudeFile), hash(badFile), hash(codexFile)];
 
   const launched = await launchWorkbench(stateDir, overlay.overlayRoot, {
+    WB_RENDERER_LEGACY: '1',
     WB_CLAUDE_HISTORY_ROOT: claudeRoot,
     WB_CODEX_HISTORY_ROOT: codexRoot,
     WB_CODEX_ARCHIVED_HISTORY_ROOT: codexArchive,

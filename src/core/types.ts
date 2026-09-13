@@ -122,6 +122,13 @@ export interface ProjectAdapter {
     commit?: string;
     verification?: string;
   };
+  /** Discovery-only locators for project-owned facts; never facts themselves. */
+  canonicalFactSources?: {
+    kind: string;
+    sourceRef: string;
+    format: string;
+    verification: string;
+  }[];
   roles: { name: string; responsibility: string }[];
   gates: Record<string, string>;
   trust: TrustLevel;
@@ -315,6 +322,10 @@ export interface HarnessDispatchRequest {
   environment: ExecutionEnvironment;
   groupId: string;
   parentSourceRef?: string;
+  /** Optional canonical lineage from the dispatching Work/Task/Packet. Exact identity only; never inferred. */
+  workId?: string;
+  taskId?: string;
+  packetId?: string;
 }
 
 export type ActivityKind =
@@ -368,6 +379,10 @@ export interface ActivityEvent {
   /** Only explicit source events may request review; normal completion is silent. */
   attentionKind?: ExplicitAttentionKind;
   attentionStatus?: 'active' | 'resolved';
+  /** Canonical lineage from dispatch. Exact identity only; never inferred from cwd/title/time. */
+  workId?: string;
+  taskId?: string;
+  packetId?: string;
   observed: Observation;
 }
 

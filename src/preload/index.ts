@@ -1,12 +1,15 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import type { ActivityEvent, AttentionLocalState, ContextItem, ExecutionEnvironment, FrozenPacket, FrozenPacketSummary, GitFacts, HandoffReceipt, HarnessCapabilities, HarnessDispatchRequest, OverlaySnapshot, SourceFingerprint, TaskPacket } from '../core/types';
 import type { WorkbenchDraftV1 } from '../core/project/draft';
+import type { CabinetStagingV1 } from '../core/project/cabinetStaging';
 import type { WorkspaceSessionV1 } from '../core/project/workspaceSession';
 import type { HistoryCatalogResult, HistoryQuery, HistorySearchResult, HistorySessionDetail } from '../core/history/types';
 import type { ProfileImportPreview } from '../core/portability/bundle';
 import type { ProjectRootBindingsV1 } from '../main/projectRootBindings';
 import type { MemoryEvidenceExpansion, MemorySearchQuery, MemorySearchResult, MemoryUseStateV1 } from '../core/memory/types';
 import type { DoctorReport } from '../main/doctor';
+import type { WorkbenchContract } from './contract';
+import type { WorkGraphRevision } from '../core/workgraph/revision';
 
 const api = {
   loadOverlay: (opts?: { refresh?: boolean }): Promise<OverlaySnapshot> =>
@@ -60,6 +63,36 @@ const api = {
     ipcRenderer.invoke('draft:save', draft),
   clearDraft: (projectId: string, conversationKey: string): Promise<void> =>
     ipcRenderer.invoke('draft:clear', { projectId, conversationKey }),
+  loadCabinetStaging: (
+    projectId: string,
+  ): Promise<{ staging: CabinetStagingV1 | null; problem?: string; migrated?: boolean }> =>
+    ipcRenderer.invoke('cabinet-staging:load', { projectId }),
+  saveCabinetStaging: (staging: CabinetStagingV1): Promise<{ path: string }> =>
+    ipcRenderer.invoke('cabinet-staging:save', staging),
+  getCurrentSelection: (): Promise<unknown> =>
+    ipcRenderer.invoke('selection:get'),
+  setCurrentSelection: (selection: { projectId: string; workId?: string; taskId?: string }): Promise<void> =>
+    ipcRenderer.invoke('selection:set', selection),
+  toggleCompactWindow: (): Promise<{ visible: boolean }> =>
+    ipcRenderer.invoke('compact:toggle'),
+  setCompactExpanded: (expanded: boolean): Promise<{ expanded: boolean }> =>
+    ipcRenderer.invoke('compact:set-expanded', { expanded }),
+  openWorkbenchFromCompact: (identity: { projectId: string; workId?: string; taskId?: string; action?: 'continue' | 'prepare' }): Promise<{ focused: boolean }> =>
+    ipcRenderer.invoke('compact:open-workbench', identity),
+  onCompactNavigate: (cb: (identity: { projectId: string; workId?: string; taskId?: string; action?: 'continue' | 'prepare' }) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, identity: { projectId: string; workId?: string; taskId?: string; action?: 'continue' | 'prepare' }) => cb(identity);
+    ipcRenderer.on('compact:navigate', listener);
+    return () => ipcRenderer.removeListener('compact:navigate', listener);
+  },
+  searchProjectFiles: (
+    projectId: string,
+    query: string,
+  ): Promise<{ matches: string[]; errors: string[] }> =>
+    ipcRenderer.invoke('project-file:search', { projectId, query }),
+  readPinnedProjectFile: (
+    projectId: string,
+  ): Promise<{ item?: ContextItem; fingerprint?: SourceFingerprint; error?: string }> =>
+    ipcRenderer.invoke('project-file:pinned', { projectId }),
   loadWorkspaceSession: (): Promise<{ session: WorkspaceSessionV1 | null; problem?: string }> =>
     ipcRenderer.invoke('workspace:load'),
   saveWorkspaceSession: (session: WorkspaceSessionV1): Promise<{ path: string }> =>
@@ -161,13 +194,26 @@ const api = {
   getMaterialCapability: (): Promise<{ supportsGlass: boolean; supportsFrost: boolean; supportsPure: boolean; reason: string | null; isWindows: boolean; reducedTransparency: boolean }> =>
     ipcRenderer.invoke('material:capability'),
   runDoctor: (): Promise<DoctorReport> => ipcRenderer.invoke('doctor:run'),
+  getWorkGraphRevision: (projectId?: string): Promise<{ revision: WorkGraphRevision | null; error?: string }> =>
+    ipcRenderer.invoke('workgraph:get', projectId),
+  getFixtureWorkGraph: (): Promise<{ revision: WorkGraphRevision | null; error?: string }> =>
+    ipcRenderer.invoke('workgraph:fixture'),
   onMaterialChanged: (cb: (pref: { material: string }) => void): (() => void) => {
     const listener = (_e: IpcRendererEvent, pref: unknown) => cb(pref as { material: string });
     ipcRenderer.on('material:changed', listener);
     return () => ipcRenderer.removeListener('material:changed', listener);
   },
-};
+} satisfies WorkbenchContract;
 
 export type WorkbenchApi = typeof api;
 
-contextBridge.exposeInMainWorld('wb', api);
+/**
+ * Internal — listed for the contract test to keep `preload/index.ts`
+ * implementation and `src/preload/contract.ts` in lockstep. Not exposed
+ * to the renderer via `contextBridge`.
+ */
+export const __workbenchApiKeys: ReadonlyArray<string> = Object.keys(api);
+
+if (contextBridge && typeof contextBridge.exposeInMainWorld === 'function') {
+  contextBridge.exposeInMainWorld('wb', api);
+}

@@ -25,7 +25,10 @@ import {
   writeOverlayRootBinding,
 } from './adapters/overlaySource';
 import { readGitFacts } from './adapters/gitFacts';
+import { lastGoodForCanonicalRead, readPinnedCanonicalFacts } from './adapters/canonicalFacts';
 import { createProjectFileContext, fingerprintFileAtRoot, fingerprintProjectFile } from './adapters/projectFiles';
+import { readPinnedProjectFile, searchProjectFiles } from './adapters/projectFileSources';
+import { readCabinetStagingState, saveCabinetStagingState } from './cabinetStagingPersistence';
 import { CodexAppServerAdapter } from './adapters/codexAppServer';
 import { appendActivity, clearActivity, readActivityPage } from './activityPersistence';
 import { dismissAttention, readAttentionLocalState } from './attentionPersistence';
@@ -72,6 +75,23 @@ import { buildDoctorReport } from './doctor';
 import { RecoverableSerialQueue } from './recoverableSerialQueue';
 import { allowlistedVersionToken } from './adapters/evidenceBounds';
 import { codexAgentContent, eventEvidence, packetTaskSummary, protocolText } from './activityEvidence';
+import { compileWorkGraph } from '../core/workgraph/compiler';
+import type { WorkGraphCompileOptions, WorkGraphGovernanceFact, WorkGraphRevision } from '../core/workgraph/revision';
+import { buildCanonicalWorkGraphFacts } from '../core/workgraph/sourceFacts';
+import { compactToggleShortcut, isCompactWindowEnabled, rendererEntryForEnvironment } from './featureFlags';
+import {
+  closeCompactForQuit,
+  createCompactWindow,
+  registerCompactShortcut,
+  setCompactExpanded,
+  toggleCompactWindow,
+} from './compactWindow';
+import {
+  readCurrentSelection,
+  writeCurrentSelectionAtomic,
+} from './currentSelectionPersistence';
+import { currentSelectionFromUser } from '../core/compact/snapshot';
+import { applyAttentionLocalState, reduceAttention } from '../core/attention/reducer';
 
 // test hook: Playwright E2E redirects Workbench-owned state to a temp dir
 if (process.env.WB_STATE_DIR) app.setPath('userData', process.env.WB_STATE_DIR);
@@ -149,6 +169,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
   let refreshing: Promise<OverlaySnapshot> | null = null;
   const activityWrites = new RecoverableSerialQueue();
   const liveExecutions = new LiveExecutionRegistry();
+  const lastGoodWorkGraphs = new Map<string, WorkGraphRevision>();
   const runtimeContexts = new RuntimeContextRegistry<{
     projectId: string;
     conversationKey: string;
@@ -157,6 +178,9 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     intentId?: string;
     groupId?: string;
     parentSourceRef?: string;
+    workId?: string;
+    taskId?: string;
+    packetId?: string;
   }>();
   const pendingClaudeContexts = new Map<string, {
     projectId: string;
@@ -166,6 +190,9 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     intentId: string;
     groupId: string;
     parentSourceRef?: string;
+    workId?: string;
+    taskId?: string;
+    packetId?: string;
   }>();
   const reviewWorthyTurns = new Set<string>();
   const history = new HistoryService({ stateDir: stateDir(), roots: defaultHistoryRoots() });
@@ -246,6 +273,9 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       intentId: context.intentId,
       groupId: context.groupId,
       parentSourceRef: context.parentSourceRef,
+      workId: context.workId,
+      taskId: context.taskId,
+      packetId: context.packetId,
       observed: observed(`codex-app-server:${event.method}`),
     };
     if (event.method === 'adapter/error') {
@@ -361,6 +391,9 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       intentId: context.intentId,
       groupId: context.groupId,
       parentSourceRef: context.parentSourceRef,
+      workId: context.workId,
+      taskId: context.taskId,
+      packetId: context.packetId,
       observed: {
         source: 'protocol' as const,
         sourceRef: event.sourceRef,
@@ -632,6 +665,41 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
   });
 
   const DraftScopeSchema = z.object({ projectId: KeySchema, conversationKey: KeySchema });
+
+  // Compact / Edge Panel + current-selection seam (PHASE 4A).
+  const CompactExpandSchema = z.object({ expanded: z.boolean() });
+  const SelectionSchema = z.object({
+    projectId: KeySchema,
+    workId: z.string().min(1).max(1_024).optional(),
+    taskId: z.string().min(1).max(1_024).optional(),
+  });
+  const CompactNavigationSchema = SelectionSchema.extend({
+    action: z.enum(['continue', 'prepare']).optional(),
+  });
+  ipcMain.handle('selection:get', () => withProfileStateLock(() => readCurrentSelection(stateDir())));
+  ipcMain.handle('selection:set', async (_event, raw: unknown) => {
+    const parsed = SelectionSchema.parse(raw);
+    await withProfileStateLock(() => writeCurrentSelectionAtomic(stateDir(), currentSelectionFromUser(parsed)));
+  });
+  ipcMain.handle('compact:toggle', () => toggleCompactWindow(stateDir()));
+  ipcMain.handle('compact:set-expanded', async (_event, raw: unknown) => {
+    const parsed = CompactExpandSchema.parse(raw);
+    return setCompactExpanded(stateDir(), parsed.expanded);
+  });
+  // Expand handoff: focus the existing main window (create when gone) and
+  // forward ONLY navigation identity. Compact never ships graph/context state.
+  ipcMain.handle('compact:open-workbench', async (_event, raw: unknown) => {
+    const identity = CompactNavigationSchema.parse(raw);
+    let mainWindow = BrowserWindow.getAllWindows().find((candidate) => windowRoles.get(candidate)?.role === 'main');
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      mainWindow = await createWindow(refresh);
+    }
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+    mainWindow.webContents.send('compact:navigate', identity);
+    return { focused: true };
+  });
   ipcMain.handle('draft:load', (_event, rawScope: unknown) => {
     const scope = DraftScopeSchema.parse(rawScope);
     return withProfileStateLock(() => readWorkbenchDraft(stateDir(), scope.projectId, scope.conversationKey));
@@ -643,6 +711,40 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
   ipcMain.handle('draft:clear', async (_event, rawScope: unknown) => {
     const scope = DraftScopeSchema.parse(rawScope);
     await withProfileStateLock(() => clearWorkbenchDraft(stateDir(), scope.projectId, scope.conversationKey));
+  });
+
+  ipcMain.handle('cabinet-staging:load', (_event, rawScope: unknown) => {
+    const scope = z.object({ projectId: KeySchema }).parse(rawScope);
+    return withProfileStateLock(() => readCabinetStagingState(stateDir(), scope.projectId));
+  });
+  ipcMain.handle('cabinet-staging:save', async (_event, rawStaging: unknown) => {
+    z.object({ projectId: KeySchema }).parse((rawStaging as { scope?: { projectId?: unknown } })?.scope);
+    return withProfileStateLock(() => saveCabinetStagingState(stateDir(), rawStaging));
+  });
+
+  const ProjectFileSearchSchema = z.object({
+    projectId: KeySchema,
+    query: z.string().max(512),
+  });
+  ipcMain.handle('project-file:search', async (_event, rawRequest: unknown) => {
+    const request = ProjectFileSearchSchema.parse(rawRequest);
+    const snap = cache?.snapshot ?? (await refresh());
+    const boundRoot = await projectRoot(snap, request.projectId);
+    if (!boundRoot) return { matches: [], errors: [`no local root binding for project ${request.projectId}`] };
+    return searchProjectFiles(boundRoot, request.query);
+  });
+
+  ipcMain.handle('project-file:pinned', async (_event, rawScope: unknown) => {
+    const scope = z.object({ projectId: KeySchema }).parse(rawScope);
+    const snap = cache?.snapshot ?? (await refresh());
+    const adapter = snap.projects.find((project) => project.projectId === scope.projectId);
+    if (!adapter) return { error: `no project adapter for ${scope.projectId}` };
+    const boundRoot = await projectRoot(snap, scope.projectId);
+    if (!boundRoot) return { error: `no local root binding for project ${scope.projectId}` };
+    const result = await readPinnedProjectFile(adapter, boundRoot);
+    return result.ok
+      ? { item: result.item, fingerprint: result.fingerprint }
+      : { error: result.error };
   });
 
   ipcMain.handle('workspace:load', () => withProfileStateLock(() => readWorkspaceSession(stateDir())));
@@ -847,6 +949,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
            kind: 'handoff-failed', summary: receipt.message,
            attentionKey: request.intentId,
            intentId: request.intentId, groupId: request.groupId, parentSourceRef: request.parentSourceRef,
+           workId: request.workId, taskId: request.taskId, packetId: request.packetId,
           observed: {
             source: 'process', sourceRef: `workbench-intent:${request.intentId}`,
             observedAt: receipt.at, verification: 'VERIFIED',
@@ -871,6 +974,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
            kind: 'handoff-failed', summary: receipt.message,
            attentionKey: request.intentId,
            intentId: request.intentId, groupId: request.groupId, parentSourceRef: request.parentSourceRef,
+           workId: request.workId, taskId: request.taskId, packetId: request.packetId,
            simulated,
           observed: {
             source: 'process', sourceRef: `workbench-intent:${request.intentId}`,
@@ -886,6 +990,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
          content: packetTaskSummary(request.packetText),
          attentionKey: request.intentId,
          intentId: request.intentId, groupId: request.groupId, parentSourceRef: request.parentSourceRef,
+         workId: request.workId, taskId: request.taskId, packetId: request.packetId,
          simulated,
         observed: {
           source: 'process', sourceRef: `workbench-intent:${request.intentId}`,
@@ -896,15 +1001,18 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       let receipt: HandoffReceipt;
       try {
         const dispatchText = request.packetText;
-        const rememberRuntime = (threadId: string) => {
+const rememberRuntime = (threadId: string) => {
           runtimeContexts.set(harness, threadId, {
             projectId: request.projectId,
             conversationKey: request.conversationKey,
-           machine,
-           cwd,
-           intentId: request.intentId,
-           groupId: request.groupId,
-           parentSourceRef: request.parentSourceRef,
+            machine,
+            cwd,
+            intentId: request.intentId,
+            groupId: request.groupId,
+            parentSourceRef: request.parentSourceRef,
+            workId: request.workId,
+            taskId: request.taskId,
+            packetId: request.packetId,
           });
           liveExecutions.add(harness, threadId, new Date().toISOString(), harness === 'claude', request.intentId);
         };
@@ -916,6 +1024,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
             kind: 'session-started', summary: `${harness} session created`, runtimeRef: threadId,
             runtimeState: 'unknown',
             intentId: request.intentId, groupId: request.groupId, parentSourceRef: request.parentSourceRef,
+            workId: request.workId, taskId: request.taskId, packetId: request.packetId,
             binding: {
               harness, machine, cwd, externalSessionRef: threadId,
             },
@@ -940,6 +1049,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
               void recordActivity({
                 ...base, kind: 'session-started', capability: 'externalSessionRef',
                 summary: `${harness} demo session created`, runtimeState: 'unknown',
+                workId: request.workId, taskId: request.taskId, packetId: request.packetId,
                 binding: { harness, machine, cwd, externalSessionRef: runtimeRef },
               });
             } else if (event.method === 'turn/started') {
@@ -968,6 +1078,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
           pendingClaudeContexts.set(request.intentId, {
             projectId: request.projectId, conversationKey: request.conversationKey, machine, cwd,
             intentId: request.intentId, groupId: request.groupId, parentSourceRef: request.parentSourceRef,
+            workId: request.workId, taskId: request.taskId, packetId: request.packetId,
           });
           try {
             const claudeReceipt = await (adapter as typeof claudeAdapter).dispatch(request.intentId, cwd, dispatchText, rememberRuntime);
@@ -980,7 +1091,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
           receipt = await (adapter as typeof deepseekAdapter).dispatch(request.intentId, cwd, dispatchText);
           // deepseek currently has no thread callback; if it later provides runtimeRef, ensure context
           if (receipt.runtimeRef) {
-            runtimeContexts.set('deepseek', receipt.runtimeRef, { projectId: request.projectId, conversationKey: request.conversationKey, machine, cwd });
+            runtimeContexts.set('deepseek', receipt.runtimeRef, { projectId: request.projectId, conversationKey: request.conversationKey, machine, cwd, workId: request.workId, taskId: request.taskId, packetId: request.packetId });
           }
         } else {
           receipt = await (adapter as typeof codexAdapter).dispatch(request.intentId, cwd, dispatchText, onCodexThread);
@@ -992,6 +1103,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
          kind: 'harness-error', summary: `${harness} harness error: ${String(error)}`,
          attentionKey: request.intentId,
          intentId: request.intentId, groupId: request.groupId, parentSourceRef: request.parentSourceRef,
+         workId: request.workId, taskId: request.taskId, packetId: request.packetId,
          simulated,
           observed: {
             source: 'process', sourceRef: `workbench-intent:${request.intentId}`,
@@ -1010,6 +1122,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
          attentionKey: request.intentId,
          runtimeRef: receipt.runtimeRef, turnRef: receipt.turnRef,
          intentId: request.intentId, groupId: request.groupId, parentSourceRef: request.parentSourceRef,
+         workId: request.workId, taskId: request.taskId, packetId: request.packetId,
          simulated,
         observed: observed(`${harness}:${receipt.protocolEvidence}`),
       });
@@ -1258,6 +1371,115 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     });
   });
 
+  ipcMain.handle('workgraph:fixture', async () => {
+    // TEST FIXTURE scene only (explicit renderer flag): compiled through the
+    // real WorkGraph compiler so every visual is semantically legal.
+    const { buildFixtureRevision } = await import('../core/workgraph/fixtureScene');
+    try {
+      return { revision: await buildFixtureRevision() };
+    } catch (e) {
+      return { error: String(e) };
+    }
+  });
+
+  ipcMain.handle('workgraph:get', async (_e, rawProjectId?: unknown) => {
+    try {
+      const snapshot = cache?.snapshot ?? await refresh();
+      const selectedProjectId = rawProjectId ?? snapshot.projects[0]?.projectId;
+      if (!selectedProjectId) return { revision: null, error: 'No project selected' };
+      const projectId = KeySchema.parse(selectedProjectId);
+      const [rootBindings, activityPage, attentionLocal] = await Promise.all([
+        readProjectRootBindings(stateDir()),
+        readActivityPage(stateDir(), { limit: 1_000 }),
+        readAttentionLocalState(stateDir()),
+      ]);
+      const attentionItems = applyAttentionLocalState(
+        reduceAttention({ activity: activityPage.events, limit: 200 }),
+        attentionLocal,
+      ).filter((item) => item.projectId === projectId);
+      const governanceBindings: WorkGraphGovernanceFact[] = Object.entries(rootBindings.bindings).map(([boundProjectId, binding]) => ({
+              projectId: boundProjectId,
+              workId: undefined,
+              binding: {
+                projectId: boundProjectId,
+                root: binding.root,
+                canonicalPath: binding.canonicalPath,
+                observedAt: binding.verifiedAt,
+                verification: binding.verification,
+              },
+            }));
+      const graphProblems: OverlaySnapshot['problems'] = [];
+      const localRoot = rootBindings.bindings[projectId]?.root ?? snapshot.machine?.projectRoots[projectId];
+      const projectAdapter = snapshot.projects.find((project) => project.projectId === projectId);
+      const hasCanonicalLocators = Boolean(projectAdapter?.canonicalFactSources?.length);
+      const canonicalFacts = projectAdapter && localRoot
+        ? await readPinnedCanonicalFacts(projectAdapter, localRoot).catch((error) => ({
+          ok: false,
+          governanceBindings: [],
+          tasks: [],
+          artifacts: [],
+          sourceFingerprints: [],
+          problems: [{ source: `canonical-facts:${projectId}`, message: String(error) }],
+        }))
+        : {
+          ok: !hasCanonicalLocators,
+          governanceBindings: [],
+          tasks: [],
+          artifacts: [],
+          sourceFingerprints: [],
+          problems: hasCanonicalLocators
+            ? [{ source: `canonical-facts:${projectId}`, message: 'bound project root is unavailable' }]
+            : [],
+        };
+      const gitFacts = localRoot
+        ? await readGitFacts(projectId, localRoot).catch((error) => {
+          graphProblems.push({ source: `git:${projectId}`, message: String(error) });
+          return null;
+        })
+        : null;
+      const facts = buildCanonicalWorkGraphFacts({
+        projectId,
+        snapshot: graphProblems.length > 0
+          ? { ...snapshot, problems: [...snapshot.problems, ...graphProblems] }
+          : snapshot,
+        activity: activityPage.events,
+        liveExecutionIds: liveExecutions.list().map((execution) => execution.executionId),
+        gitFacts,
+        governanceBindings,
+        canonicalFacts,
+        attentionItems: attentionItems.map((item) => ({
+          id: item.id,
+          kind: item.kind,
+          level: item.level,
+          title: item.title,
+          summary: item.summary,
+          projectId,
+          sourceId: item.conversationKey ?? item.sessionRef,
+          sourceRef: item.sourceRef,
+          evidenceRefs: item.eventRef ? [item.eventRef] : [],
+          observedAt: item.observedAt,
+          verification: item.verification,
+        })),
+      });
+      const previousRevision = lastGoodWorkGraphs.get(projectId);
+      const retainedRevision = lastGoodForCanonicalRead(canonicalFacts, previousRevision);
+      if (retainedRevision) {
+        console.warn(`[workgraph] canonical facts unavailable; retained ${retainedRevision.revisionId}: ${canonicalFacts.problems.map((p) => p.message).join('; ')}`);
+        return { revision: retainedRevision };
+      }
+      const { revision } = await compileWorkGraph({
+        projectId,
+        sourceDigest: 'live',
+        facts,
+        ...(previousRevision ? { previousRevision } : {}),
+      });
+      if (revision) lastGoodWorkGraphs.set(projectId, revision);
+      return { revision };
+    } catch (e) {
+      return { error: String(e) };
+    }
+  });
+
   return { refresh };
 }
 
@@ -1343,6 +1565,10 @@ async function createWindow(refresh: () => Promise<OverlaySnapshot>): Promise<Br
   win.on('unmaximize', saveWindow);
   win.on('closed', () => {
     closeIsland();
+    // The hidden Compact window must not outlive the main window: otherwise
+    // window-all-closed never fires and the process lingers with no visible
+    // surface and no tray (donor-audit finding, PHASE 4A.1).
+    closeCompactForQuit();
   });
   // Pending debounced renderer saves (composer drafts, workspace session)
   // must not die with the window: a user who closes Workbench right after a
@@ -1369,7 +1595,7 @@ async function createWindow(refresh: () => Promise<OverlaySnapshot>): Promise<Br
   if (process.env.ELECTRON_RENDERER_URL) {
     void win.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {
-    void win.loadFile(join(__dirname, '../renderer/index.html'));
+    void win.loadFile(join(__dirname, rendererEntryForEnvironment(process.env)));
   }
   windowRoles.set(win, { role: 'main' });
   return win;
@@ -1383,6 +1609,7 @@ app.on('before-quit', () => {
   codexAdapter.close();
   claudeAdapter.close();
   deepseekAdapter.close();
+  closeCompactForQuit();
 });
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -1400,6 +1627,14 @@ if (!gotSingleInstanceLock) {
   app.whenReady().then(() => {
     const { refresh } = registerIpc();
     void createWindow(refresh);
+    // Compact / Edge Panel: separate explicit dev/migration seam (PHASE 4A).
+    if (isCompactWindowEnabled()) {
+      void createCompactWindow(stateDir());
+    }
+    // The toggle shortcut is always available: the Compact overview is a
+    // product surface now, and users must be able to discover and open it
+    // without knowing a launch flag. The window itself still opens on demand.
+    registerCompactShortcut(stateDir(), compactToggleShortcut());
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) void createWindow(refresh);
     });

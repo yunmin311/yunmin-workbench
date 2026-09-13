@@ -20,7 +20,7 @@ test.describe('Reasonix harness renderer prototype (GOV_OVERLAY fixture, isolate
     const screenshotDir = join(process.cwd(), 'screenshots', 'reasonix-harness-prototype');
     mkdirSync(screenshotDir, { recursive: true });
 
-    const { app, win } = await launchWorkbench(stateDir, OVERLAY);
+    const { app, win } = await launchWorkbench(stateDir, OVERLAY, { WB_RENDERER_LEGACY: '1' });
 
     await expect(win.locator('.session-welcome h1')).toContainText('Start from a session');
     await expect(win.locator('.inspector-pane')).toHaveCount(0);

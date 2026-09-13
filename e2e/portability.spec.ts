@@ -20,7 +20,7 @@ test('Command Palette previews import before writing and keeps external truth re
   writeFileSync(bundlePath, JSON.stringify(bundle, null, 2), 'utf8');
   const overlayFile = join(overlay.overlayRoot, 'INBOX.md');
   const before = hash(overlayFile);
-  const launched = await launchWorkbench(stateDir, overlay.overlayRoot);
+  const launched = await launchWorkbench(stateDir, overlay.overlayRoot, { WB_RENDERER_LEGACY: '1' });
   await launched.app.evaluate(({ dialog }, chosen) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [chosen] });
   }, bundlePath);
@@ -62,7 +62,7 @@ test('successful import reloads and restores Manual Context without touching ext
   writeFileSync(bundlePath, JSON.stringify(bundle, null, 2), 'utf8');
   const externalFile = join(overlay.overlayRoot, 'memory', 'MEMORY.md');
   const before = hash(externalFile);
-  const launched = await launchWorkbench(stateDir, overlay.overlayRoot);
+  const launched = await launchWorkbench(stateDir, overlay.overlayRoot, { WB_RENDERER_LEGACY: '1' });
   await launched.app.evaluate(({ dialog }, chosen) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [chosen] });
   }, bundlePath);

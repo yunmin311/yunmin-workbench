@@ -58,7 +58,7 @@ test.describe('real Runtime adapter → Activity → Inspector smoke', () => {
     const { app, win } = await launchWorkbench(
       mkdtempSync(join(tmpdir(), 'wb-real-codex-')),
       overlay.overlayRoot,
-      { WB_CODEX_EPHEMERAL_DISPATCH: '1' },
+      { WB_RENDERER_LEGACY: '1', WB_CODEX_EPHEMERAL_DISPATCH: '1' },
     );
     try {
       const receipt = await win.evaluate(async ({ intentId, conversation }) => window.wb.dispatchToHarness({
@@ -91,7 +91,7 @@ test.describe('real Runtime adapter → Activity → Inspector smoke', () => {
     test.setTimeout(180_000);
     const sourcesBefore = externalSourceState();
     const claudeBefore = claudeState();
-    const { app, win } = await launchWorkbench(mkdtempSync(join(tmpdir(), 'wb-real-claude-')), overlay.overlayRoot);
+    const { app, win } = await launchWorkbench(mkdtempSync(join(tmpdir(), 'wb-real-claude-')), overlay.overlayRoot, { WB_RENDERER_LEGACY: '1' });
     try {
       await selectFixtureSession(win);
       await win.locator('.agent-selector').click();
@@ -118,7 +118,7 @@ test.describe('real Runtime adapter → Activity → Inspector smoke', () => {
     test.setTimeout(180_000);
     const sourcesBefore = externalSourceState();
     const claudeBefore = claudeState();
-    const { app, win } = await launchWorkbench(mkdtempSync(join(tmpdir(), 'wb-real-claude-cancel-')), overlay.overlayRoot);
+    const { app, win } = await launchWorkbench(mkdtempSync(join(tmpdir(), 'wb-real-claude-cancel-')), overlay.overlayRoot, { WB_RENDERER_LEGACY: '1' });
     try {
       await selectFixtureSession(win);
       await win.evaluate(({ intentId, conversation }) => {

@@ -22,7 +22,7 @@ test.describe('Yunmin Workbench vertical slice (GOV_OVERLAY fixture, read-only)'
     const projectCanonicalBefore = hash(PROJECT_CANONICAL);
 
     const stateDir = mkdtempSync(join(tmpdir(), 'wb-e2e-'));
-    const first = await launchWorkbench(stateDir, OVERLAY);
+    const first = await launchWorkbench(stateDir, OVERLAY, { WB_RENDERER_LEGACY: '1' });
     let app = first.app;
     const win = first.win;
     // Workspace shell
@@ -126,7 +126,7 @@ test.describe('Yunmin Workbench vertical slice (GOV_OVERLAY fixture, read-only)'
     expect(savedWindow.height).toBeGreaterThanOrEqual(740);
     await win.close();
     await app.close();
-    const relaunched = await launchWorkbench(stateDir, OVERLAY);
+    const relaunched = await launchWorkbench(stateDir, OVERLAY, { WB_RENDERER_LEGACY: '1' });
     app = relaunched.app;
     const resumed = relaunched.win;
     // Workspace continuity restores the exact project (and view) after fresh truth loads.

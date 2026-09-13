@@ -70,6 +70,9 @@ export async function launchWorkbench(
     env: workbenchEnv({ ...extraEnv, GOV_OVERLAY: overlayRoot, WB_STATE_DIR: stateDir }),
   });
   const win = await app.firstWindow();
-  await expect(win.locator('.prototype-chrome')).toBeVisible();
+  // Mirrors the product default: vNext unless the caller explicitly opts
+  // into the legacy rollback fallback.
+  const rendererRoot = extraEnv.WB_RENDERER_LEGACY === '1' ? '.prototype-chrome' : '.vnext-app';
+  await expect(win.locator(rendererRoot)).toBeVisible();
   return { app, win };
 }

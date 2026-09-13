@@ -95,7 +95,7 @@ test.describe('frozen corruption containment', () => {
       writeFileSync(join(convDir, 'v3-fake.json'), JSON.stringify({ version: 3, hash: 'zz', taskSummary: 'fake' }), 'utf8');
     });
 
-    const { app, win } = await launchWorkbench(stateDir, OVERLAY);
+    const { app, win } = await launchWorkbench(stateDir, OVERLAY, { WB_RENDERER_LEGACY: '1' });
 
     await openSessionPacket(win, FIXTURE_PROJECT_DISPLAY_NAME);
 
@@ -118,7 +118,7 @@ test.describe('frozen corruption containment', () => {
       writeFileSync(join(convDir, 'v9-corrupt.json'), '{not json', 'utf8');
     });
 
-    const { app, win } = await launchWorkbench(stateDir, OVERLAY);
+    const { app, win } = await launchWorkbench(stateDir, OVERLAY, { WB_RENDERER_LEGACY: '1' });
 
     await openSessionPacket(win, FIXTURE_PROJECT_DISPLAY_NAME);
 

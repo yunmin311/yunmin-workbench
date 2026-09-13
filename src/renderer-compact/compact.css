@@ -1,0 +1,215 @@
+/* Workbench Compact — the compressed state of the same product.
+   Shares src/design/tokens.css with the Full Workbench: same glass,
+   typography scale, accent, and status language. The top strip is the
+   drag region; everything else stays clickable. */
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#compact-root {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--wb-surface-glass);
+  backdrop-filter: blur(16px) saturate(1.15);
+  -webkit-backdrop-filter: blur(16px) saturate(1.15);
+  font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  color: var(--wb-text);
+  border: 1px solid var(--wb-border-strong);
+  border-radius: var(--wb-radius-lg);
+  box-sizing: border-box;
+  box-shadow: var(--wb-shadow-2);
+}
+
+.compact {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 0;
+}
+
+.compact-drag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  -webkit-app-region: drag;
+  border-bottom: 1px solid var(--wb-border);
+  user-select: none;
+}
+
+.compact-title {
+  font-size: var(--wb-fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--wb-accent-strong);
+}
+
+.compact-drag-spacer { flex: 1; }
+
+.compact-btn {
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--wb-border-strong);
+  border-radius: var(--wb-radius-sm);
+  background: var(--wb-surface-raised);
+  color: var(--wb-text-secondary);
+  padding: 2px 8px;
+  font: 600 var(--wb-fs-xs)/1.4 inherit;
+  cursor: pointer;
+}
+
+.compact-btn:hover { border-color: var(--wb-accent); color: var(--wb-text); }
+
+.compact-empty {
+  margin: 10px 12px;
+  font-size: var(--wb-fs-sm);
+  color: var(--wb-text-muted);
+  line-height: 1.55;
+}
+
+.compact-error {
+  margin: 8px 12px 0;
+  font-size: var(--wb-fs-xs);
+  color: var(--wb-red);
+}
+
+.compact-body {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 8px 12px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.compact-scope {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border: none;
+  background: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.compact-project {
+  font-size: var(--wb-fs-lg);
+  font-weight: 700;
+  color: var(--wb-text);
+  letter-spacing: -0.01em;
+}
+
+.compact-work {
+  font-size: var(--wb-fs-sm);
+  color: var(--wb-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-task {
+  font-size: var(--wb-fs-sm);
+  color: var(--wb-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-currentness {
+  font-style: normal;
+  margin-left: 6px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--wb-text-faint);
+}
+
+.compact-currentness.is-current { color: var(--wb-green); }
+.compact-currentness.is-stale { color: var(--wb-amber); }
+.compact-currentness.is-invalid { color: var(--wb-red); }
+
+.compact-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.compact-fact-label {
+  display: block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--wb-text-muted);
+  margin-bottom: 2px;
+}
+
+.compact-running { font-size: var(--wb-fs-sm); color: var(--wb-green); }
+
+.run-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--wb-execution);
+  margin-right: 4px;
+  animation: compact-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes compact-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.compact-run-row { display: block; padding: 1px 0; }
+
+.compact-attention-row {
+  display: block;
+  font-size: var(--wb-fs-sm);
+  padding: 3px 7px;
+  border-left: 2px solid var(--wb-amber);
+  color: var(--wb-amber);
+  margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-attention-row.is-alert { border-left-color: var(--wb-red); color: var(--wb-red); }
+
+.compact-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+
+.compact-expand-btn {
+  border: 1px solid rgba(127, 181, 192, 0.4);
+  border-radius: var(--wb-radius);
+  background: var(--wb-accent-dim);
+  color: var(--wb-accent-strong);
+  padding: 7px 10px;
+  font: 600 var(--wb-fs-sm)/1 inherit;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background var(--wb-motion-fast), border-color var(--wb-motion-fast);
+}
+
+.compact-expand-btn:hover { background: rgba(127, 181, 192, 0.24); border-color: var(--wb-accent); color: #fff; }
+.compact-expand-btn.is-prepare {
+  border-color: rgba(167, 163, 224, .34);
+  background: var(--wb-violet-dim);
+  color: var(--wb-violet);
+}
+.compact-expand-btn.is-prepare:hover { border-color: var(--wb-violet); background: rgba(167,163,224,.2); color: #fff; }
+
+.compact-footnote {
+  margin: 0;
+  font-size: 9.5px;
+  color: var(--wb-text-faint);
+  line-height: 1.5;
+}

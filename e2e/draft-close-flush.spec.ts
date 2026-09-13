@@ -19,7 +19,7 @@ const DRAFT_TEXT = 'Draft must survive an immediate close';
 test('closing while a draft save is pending flushes it; the draft survives relaunch', async () => {
   const temp = mkdtempSync(join(tmpdir(), 'wb-close-flush-'));
   const stateDir = join(temp, 'user-data');
-  let launched = await launchWorkbench(stateDir, overlay.overlayRoot);
+  let launched = await launchWorkbench(stateDir, overlay.overlayRoot, { WB_RENDERER_LEGACY: '1' });
   const { win } = launched;
 
   await win.keyboard.press('Control+K');
@@ -39,7 +39,7 @@ test('closing while a draft save is pending flushes it; the draft survives relau
   // window close event entirely and is NOT the product surface.
   await launched.app.close();
   // Relaunch: the same workspace resumes and the draft must be on disk.
-  launched = await launchWorkbench(stateDir, overlay.overlayRoot);
+  launched = await launchWorkbench(stateDir, overlay.overlayRoot, { WB_RENDERER_LEGACY: '1' });
   const resumed = launched.win;
   await expect(resumed.locator('.session-header')).toBeVisible({ timeout: 30_000 });
   await expect(resumed.locator('.session-composer textarea')).toHaveValue(DRAFT_TEXT, { timeout: 15_000 });

@@ -13,7 +13,7 @@ test('Session workspace keeps Context, Packet, evidence and low-frequency tools 
   const inboxBefore = createHash('sha256').update(readFileSync(join(OVERLAY, 'INBOX.md'))).digest('hex');
   const memoryBefore = createHash('sha256').update(readFileSync(join(OVERLAY, 'memory', 'MEMORY.md'))).digest('hex');
   const canonicalBefore = createHash('sha256').update(readFileSync(overlay.projectCanonicalPath)).digest('hex');
-  const { app, win } = await launchWorkbench(mkdtempSync(join(tmpdir(), 'wb-e2e-product-')), OVERLAY);
+  const { app, win } = await launchWorkbench(mkdtempSync(join(tmpdir(), 'wb-e2e-product-')), OVERLAY, { WB_RENDERER_LEGACY: '1' });
   try {
     await win.keyboard.press('Control+K');
     await win.locator('[cmdk-input]').fill(`Open Workspace ${FIXTURE_PROJECT_DISPLAY_NAME}`);

@@ -292,4 +292,107 @@ describe('runtime observation history', () => {
     const next = await readActivityPage(root, { limit: 10, beforeByte: page.nextBeforeByte });
     expect(next.nextBeforeByte === undefined || next.nextBeforeByte < (page.nextBeforeByte ?? 0)).toBe(true);
   });
+
+  describe('canonical lineage persistence (PHASE 3B.4)', () => {
+    it('preserves workId/taskId/packetId through append/read round-trip', async () => {
+      const root = await mkdtemp(join(tmpdir(), 'wb-lineage-persist-'));
+      const now = '2026-09-11T00:00:00.000Z';
+      const evt: ActivityEvent = {
+        id: 'evt-lineage-1',
+        projectId: 'creative-os',
+        conversationKey: 'creative-os:codex:main',
+        kind: 'handoff-dispatched',
+        summary: 'Packet dispatched to codex',
+        harness: 'codex',
+        adapter: 'codex-app-server',
+        capability: 'dispatch',
+        runtimeRef: 'thread-1',
+        intentId: 'intent-123',
+        groupId: 'group-456',
+        workId: 'w1',
+        taskId: 'T006',
+        packetId: 'pkt-789',
+        observed: {
+          source: 'process', sourceRef: 'workbench-intent:intent-123',
+          observedAt: now, verification: 'OBSERVED',
+        },
+      };
+      await appendActivity(root, evt);
+      const { events } = await readActivity(root);
+      expect(events).toHaveLength(1);
+      const readEvt = events[0];
+      expect(readEvt.workId).toBe('w1');
+      expect(readEvt.taskId).toBe('T006');
+      expect(readEvt.packetId).toBe('pkt-789');
+      expect(readEvt.intentId).toBe('intent-123');
+      expect(readEvt.groupId).toBe('group-456');
+    });
+
+    it('missing lineage remains missing after round-trip (no heuristic fill-in)', async () => {
+      const root = await mkdtemp(join(tmpdir(), 'wb-lineage-missing-'));
+      const now = '2026-09-11T00:00:00.000Z';
+      const evt: ActivityEvent = {
+        id: 'evt-lineage-2',
+        projectId: 'creative-os',
+        conversationKey: 'creative-os:codex:main',
+        kind: 'agent-response',
+        summary: 'Agent response',
+        harness: 'codex',
+        adapter: 'codex-app-server',
+        capability: 'observe',
+        runtimeRef: 'thread-1',
+        intentId: 'intent-456',
+        // No workId, taskId, packetId provided
+        observed: {
+          source: 'protocol', sourceRef: 'codex-app-server:agent-response',
+          observedAt: now, verification: 'OBSERVED',
+        },
+      };
+      await appendActivity(root, evt);
+      const { events } = await readActivity(root);
+      expect(events).toHaveLength(1);
+      const readEvt = events[0];
+      expect(readEvt.workId).toBeUndefined();
+      expect(readEvt.taskId).toBeUndefined();
+      expect(readEvt.packetId).toBeUndefined();
+      expect(readEvt.intentId).toBe('intent-456');
+    });
+
+    it('handoff events preserve parentSourceRef and lineage through round-trip', async () => {
+      const root = await mkdtemp(join(tmpdir(), 'wb-lineage-handoff-'));
+      const now = '2026-09-11T00:00:00.000Z';
+      const parentRef = 'harness-result:codex::execution:intent-123:evt-result';
+      const evt: ActivityEvent = {
+        id: 'evt-lineage-3',
+        projectId: 'creative-os',
+        conversationKey: 'creative-os:codex:main',
+        kind: 'handoff-accepted',
+        summary: 'Handoff accepted',
+        harness: 'claude',
+        adapter: 'claude-code-stream-json',
+        capability: 'receipt',
+        runtimeRef: 'thread-2',
+        intentId: 'intent-789',
+        groupId: 'group-123',
+        parentSourceRef: parentRef,
+        workId: 'w1',
+        taskId: 'T007',
+        packetId: 'pkt-999',
+        observed: {
+          source: 'protocol', sourceRef: 'claude-code-stream-json:handoff-accepted',
+          observedAt: now, verification: 'OBSERVED',
+        },
+      };
+      await appendActivity(root, evt);
+      const { events } = await readActivity(root);
+      expect(events).toHaveLength(1);
+      const readEvt = events[0];
+      expect(readEvt.parentSourceRef).toBe(parentRef);
+      expect(readEvt.workId).toBe('w1');
+      expect(readEvt.taskId).toBe('T007');
+      expect(readEvt.packetId).toBe('pkt-999');
+      expect(readEvt.intentId).toBe('intent-789');
+      expect(readEvt.groupId).toBe('group-123');
+    });
+  });
 });

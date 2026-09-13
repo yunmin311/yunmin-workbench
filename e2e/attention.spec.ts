@@ -29,7 +29,7 @@ test('Attention stays local, opens the exact Session, and restores dismissal aft
   const activityBefore = hash(activityPath);
   const overlayBefore = hash(overlay.projectCanonicalPath);
 
-  let launched = await launchWorkbench(stateDir, overlay.overlayRoot);
+  let launched = await launchWorkbench(stateDir, overlay.overlayRoot, { WB_RENDERER_LEGACY: '1' });
   await expect(launched.win.getByRole('button', { name: 'Attention, 1 active item' })).toBeVisible();
   await launched.win.getByRole('button', { name: 'Attention, 1 active item' }).click();
   const panel = launched.win.getByRole('dialog', { name: 'Attention requiring review' });
@@ -47,7 +47,7 @@ test('Attention stays local, opens the exact Session, and restores dismissal aft
   expect(hash(overlay.projectCanonicalPath)).toBe(overlayBefore);
   await launched.app.close();
 
-  launched = await launchWorkbench(stateDir, overlay.overlayRoot);
+  launched = await launchWorkbench(stateDir, overlay.overlayRoot, { WB_RENDERER_LEGACY: '1' });
   await expect(launched.win.getByRole('button', { name: 'Attention, 0 active items' })).toBeVisible();
   await launched.win.getByRole('button', { name: 'Attention, 0 active items' }).click();
   await expect(launched.win.getByRole('dialog', { name: 'Attention requiring review' })).toContainText('Nothing needs review right now');

@@ -10,7 +10,7 @@ const hash = (path: string) => createHash('sha256').update(readFileSync(path)).d
 
 test('Doctor is bounded, read-only, honest, and available on demand', async () => {
   const canonicalBefore = hash(overlay.projectCanonicalPath);
-  const { app, win } = await launchWorkbench(mkdtempSync(join(tmpdir(), 'wb-doctor-e2e-')), overlay.overlayRoot);
+  const { app, win } = await launchWorkbench(mkdtempSync(join(tmpdir(), 'wb-doctor-e2e-')), overlay.overlayRoot, { WB_RENDERER_LEGACY: '1' });
   try {
     await win.getByRole('button', { name: 'Open command palette' }).click();
     await win.getByText('Workbench Doctor', { exact: true }).click();

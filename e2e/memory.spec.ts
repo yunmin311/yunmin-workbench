@@ -33,6 +33,7 @@ test('Memory search expands source and explicitly adds a source-backed reference
   ];
   const externalBefore = externalFiles.map(hash);
   const env = {
+    WB_RENDERER_LEGACY: '1',
     WB_CLAUDE_HISTORY_ROOT: claudeRoot, WB_CODEX_HISTORY_ROOT: codexRoot, WB_CODEX_ARCHIVED_HISTORY_ROOT: archiveRoot,
   };
   let launched = await launchWorkbench(stateDir, overlay.overlayRoot, env);
