@@ -68,6 +68,18 @@ test('workspace visual acceptance (real facts + badged fixture)', async () => {
     await expect(cabinet).toBeVisible();
     await expect(cabinet).toContainText('Available is not used');
     await expect(cabinet).toContainText('Will use');
+    const governanceGroup = cabinet.locator('.cabinet-group', { hasText: 'Governance' });
+    const unboundMemoryGroup = cabinet.locator('.cabinet-group', { hasText: 'Memory · unbound' });
+    await expect(governanceGroup.getByRole('button', { name: /Governance/ })).toHaveAttribute('aria-expanded', 'true');
+    const memoryDisclosure = unboundMemoryGroup.getByRole('button', { name: /Memory · unbound/ });
+    await expect(memoryDisclosure).toContainText('0 will use');
+    await expect(memoryDisclosure).toHaveAttribute('aria-expanded', 'false');
+    await expect(unboundMemoryGroup.locator('ul')).toBeHidden();
+    await memoryDisclosure.click();
+    await expect(memoryDisclosure).toHaveAttribute('aria-expanded', 'true');
+    await expect(unboundMemoryGroup.locator('.cabinet-row').first()).toBeVisible();
+    await memoryDisclosure.click();
+    await expect(unboundMemoryGroup.locator('ul')).toBeHidden();
     await win.screenshot({ path: join(outDir, '42-context-cabinet-real.png') });
     await cabinet.locator('#prepare-conversation').selectOption('creative-os::claude::CO 主对话');
     await cabinet.getByRole('button', { name: 'Freeze and review preflight' }).click();

@@ -129,6 +129,7 @@ export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
   const [pickerBusy, setPickerBusy] = useState(false);
   const [pickerError, setPickerError] = useState('');
   const [conversationKey, setConversationKey] = useState(selection?.conversationKey ?? '');
+  const [expandedGroups, setExpandedGroups] = useState<Set<CabinetSourceGroup>>(new Set());
 
   useEffect(() => {
     let alive = true;
@@ -141,6 +142,7 @@ export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
     setPickerOpen(false);
     setPickerQuery('');
     setPickerMatches([]);
+    setExpandedGroups(new Set());
     void (async () => {
       try {
         const loaded = await window.wb.loadOverlay();
@@ -187,12 +189,15 @@ export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
           ...(pinnedItem ? [asCabinetItem(pinnedItem, freshFingerprints)] : []),
         ];
         const decisions = new Map((staging?.decisions ?? []).map((decision) => [decision.contextId, decision]));
-        setItems(withFiles.map((item) => {
+        const hydratedItems = withFiles.map((item) => {
           const decision = decisions.get(item.id);
           return decision
             ? { ...item, state: decision.state, pinned: decision.state === 'included' ? decision.pinned : false }
             : item;
-        }));
+        });
+        setItems(hydratedItems);
+        setExpandedGroups(new Set(GROUP_ORDER.filter((group) =>
+          hydratedItems.some((item) => item.group === group && item.state !== 'available'))));
       } catch (e) {
         if (alive) setError(e instanceof Error ? e.message : String(e));
       }
@@ -366,6 +371,7 @@ export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
         setFileFingerprints((current) => [...current, entry.fingerprint]);
         setFileSelections(nextFiles);
         setItems(merged);
+        setExpandedGroups((current) => new Set(current).add('file'));
         persist(merged, nextFiles, pinnedSelected);
         setPickerOpen(false);
         setPickerQuery('');
@@ -393,6 +399,7 @@ export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
         setFileFingerprints((current) => [...current, pinned.fingerprint!]);
         setPinnedSelected(true);
         setItems(merged);
+        setExpandedGroups((current) => new Set(current).add('file'));
         persist(merged, fileSelections, true);
         setPickerOpen(false);
       } catch (e) {
@@ -555,10 +562,35 @@ export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
           {GROUP_ORDER.map((group) => {
             const groupItems = items.filter((item) => item.group === group);
             if (groupItems.length === 0) return null;
+            const expanded = expandedGroups.has(group);
+            const included = groupItems.filter((item) => item.state === 'included').length;
+            const available = groupItems.filter((item) => item.state === 'available').length;
+            const excluded = groupItems.length - included - available;
+            const listId = `cabinet-group-${group}`;
             return (
               <section className="cabinet-group" key={group}>
-                <h3>{GROUP_LABELS[group]} <span className="group-count">{groupItems.length}</span></h3>
-                <ul>
+                <h3>
+                  <button
+                    type="button"
+                    className="cabinet-group-toggle"
+                    aria-expanded={expanded}
+                    aria-controls={listId}
+                    onClick={() => setExpandedGroups((current) => {
+                      const next = new Set(current);
+                      if (next.has(group)) next.delete(group); else next.add(group);
+                      return next;
+                    })}
+                  >
+                    <span className="cabinet-group-title">{GROUP_LABELS[group]} <span className="group-count">{groupItems.length}</span></span>
+                    <span className="cabinet-group-summary">
+                      <b>{included} will use</b>
+                      <span>{available} available</span>
+                      {excluded > 0 && <span>{excluded} excluded</span>}
+                    </span>
+                    <span className="cabinet-group-marker" aria-hidden="true">{expanded ? '−' : '+'}</span>
+                  </button>
+                </h3>
+                <ul id={listId} hidden={!expanded}>
                   {groupItems.map((item) => (
                     <li key={item.id} className={`cabinet-row is-${item.state}${item.pinned ? ' is-pinned' : ''}`}>
                       <div className="cabinet-states" role="group" aria-label={`Staging state for ${item.title}`}>
