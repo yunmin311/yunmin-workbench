@@ -1,38 +1,39 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { isVNextRendererEnabled, rendererEntryForEnvironment } from '../../src/main/featureFlags';
+import { isLegacyRendererEnabled, rendererEntryForEnvironment } from '../../src/main/featureFlags';
 
-describe('isVNextRendererEnabled', () => {
-  const original = process.env.WB_RENDERER_VNEXT;
+describe('renderer rollout (vNext default, legacy opt-in)', () => {
+  const original = process.env.WB_RENDERER_LEGACY;
 
   const clear = () => {
-    delete process.env.WB_RENDERER_VNEXT;
+    delete process.env.WB_RENDERER_LEGACY;
   };
 
   afterEach(() => {
     if (original === undefined) clear();
-    else process.env.WB_RENDERER_VNEXT = original;
+    else process.env.WB_RENDERER_LEGACY = original;
   });
 
-  it('returns false when the flag is unset (legacy default)', () => {
+  it('opens vNext when nothing is set (normal launch default)', () => {
     clear();
-    expect(isVNextRendererEnabled()).toBe(false);
+    expect(isLegacyRendererEnabled()).toBe(false);
   });
 
-  it('returns true only when the flag is the literal "1"', () => {
-    process.env.WB_RENDERER_VNEXT = '1';
-    expect(isVNextRendererEnabled()).toBe(true);
+  it('opts into the legacy fallback only for the literal "1"', () => {
+    process.env.WB_RENDERER_LEGACY = '1';
+    expect(isLegacyRendererEnabled()).toBe(true);
   });
 
   it('rejects truthy-looking values that are not the literal "1"', () => {
     for (const value of ['true', 'yes', 'on', 'enabled', '0', '2', ' ']) {
-      process.env.WB_RENDERER_VNEXT = value;
-      expect(isVNextRendererEnabled(), `value=${JSON.stringify(value)}`).toBe(false);
+      process.env.WB_RENDERER_LEGACY = value;
+      expect(isLegacyRendererEnabled(), `value=${JSON.stringify(value)}`).toBe(false);
     }
   });
 
-  it('routes the main window to vNext only for the literal flag', () => {
-    expect(rendererEntryForEnvironment({ WB_RENDERER_VNEXT: '1' })).toBe('../renderer-vnext/index.html');
-    expect(rendererEntryForEnvironment({})).toBe('../renderer/index.html');
-    expect(rendererEntryForEnvironment({ WB_RENDERER_VNEXT: 'true' })).toBe('../renderer/index.html');
+  it('ignores the retired WB_RENDERER_VNEXT flag: only legacy opt-in matters', () => {
+    expect(rendererEntryForEnvironment({ WB_RENDERER_VNEXT: '1' } as never)).toBe('../renderer-vnext/index.html');
+    expect(rendererEntryForEnvironment({})).toBe('../renderer-vnext/index.html');
+    expect(rendererEntryForEnvironment({ WB_RENDERER_VNEXT: 'true' } as never)).toBe('../renderer-vnext/index.html');
+    expect(rendererEntryForEnvironment({ WB_RENDERER_LEGACY: '1' })).toBe('../renderer/index.html');
   });
 });

@@ -40,7 +40,7 @@ test('headed real canonical Task prepares an explicit dispatch and stops before 
   await mkdir(screenshotDir, { recursive: true });
   const app = await _electron.launch({
     args: [...electronArgs(), 'out/main/index.js'],
-    env: workbenchEnv({ GOV_OVERLAY: overlayExport, WB_STATE_DIR: stateDir, WB_RENDERER_VNEXT: '1' }),
+    env: workbenchEnv({ GOV_OVERLAY: overlayExport, WB_STATE_DIR: stateDir }),
   });
   const win = await app.firstWindow();
   try {

@@ -39,7 +39,7 @@ test('workspace visual acceptance (real facts + badged fixture)', async () => {
     args: [...electronArgs(), 'out/main/index.js'],
     env: workbenchEnv({
       GOV_OVERLAY: overlayExport, WB_STATE_DIR: stateDir,
-      WB_RENDERER_VNEXT: '1', WB_COMPACT_WINDOW: '1',
+      WB_COMPACT_WINDOW: '1',
     }),
   });
   await expect.poll(() => app.windows().length).toBeGreaterThanOrEqual(2);

@@ -7,11 +7,11 @@ import { launchWorkbench, useOverlayFixture } from './prototype-shell';
 
 const screenshotDir = resolve('screenshots/workbench-vnext-20260907');
 
-test('WB_RENDERER_VNEXT=1 loads the real WorkGraphRevision over preload IPC', async () => {
+test('default launch loads vNext with the real WorkGraphRevision over preload IPC', async () => {
   const fixture = await useOverlayFixture();
   const stateDir = mkdtempSync(join(tmpdir(), 'wb-vnext-e2e-'));
   await mkdir(screenshotDir, { recursive: true });
-  const { app, win } = await launchWorkbench(stateDir, fixture.overlayRoot, { WB_RENDERER_VNEXT: '1' });
+  const { app, win } = await launchWorkbench(stateDir, fixture.overlayRoot);
   try {
     await expect(win.locator('.vnext-app')).toBeVisible();
     await expect(win.locator('.wb-node').first()).toBeVisible();
@@ -47,10 +47,10 @@ test('WB_RENDERER_VNEXT=1 loads the real WorkGraphRevision over preload IPC', as
   }
 });
 
-test('flag off keeps the legacy renderer', async () => {
+test('explicit legacy opt-in keeps the rollback renderer', async () => {
   const fixture = await useOverlayFixture();
   const stateDir = mkdtempSync(join(tmpdir(), 'wb-legacy-e2e-'));
-  const { app, win } = await launchWorkbench(stateDir, fixture.overlayRoot);
+  const { app, win } = await launchWorkbench(stateDir, fixture.overlayRoot, { WB_RENDERER_LEGACY: '1' });
   try {
     await expect(win.locator('.prototype-chrome')).toBeVisible();
     await expect(win.locator('.vnext-app')).toHaveCount(0);
@@ -73,7 +73,7 @@ test('real attention facts enable the Attention control (TEST FIXTURE screenshot
     observed: { source: 'protocol', sourceRef: 'protocol:test-fixture:phase-3b', observedAt: '2026-09-08T00:00:00.000Z', verification: 'OBSERVED' },
   };
   writeFileSync(join(activityDir, 'history.jsonl'), `${JSON.stringify({ schemaVersion: 1, event })}\n`, 'utf8');
-  const { app, win } = await launchWorkbench(stateDir, fixture.overlayRoot, { WB_RENDERER_VNEXT: '1' });
+  const { app, win } = await launchWorkbench(stateDir, fixture.overlayRoot);
   try {
     await expect(win.getByRole('button', { name: 'Attention', exact: true })).toBeVisible();
     await expect(win.locator('.wb-node[data-family="gate"]')).toBeVisible();

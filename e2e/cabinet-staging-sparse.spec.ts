@@ -150,7 +150,7 @@ test('hermetic cabinet staging persists sparse overrides, never resolved snapsho
 
   const app = await _electron.launch({
     args: [...electronArgs(), 'out/main/index.js'],
-    env: workbenchEnv({ GOV_OVERLAY: overlayRoot, WB_STATE_DIR: stateDir, WB_RENDERER_VNEXT: '1' }),
+    env: workbenchEnv({ GOV_OVERLAY: overlayRoot, WB_STATE_DIR: stateDir }),
   });
   try {
     const win = await app.firstWindow();

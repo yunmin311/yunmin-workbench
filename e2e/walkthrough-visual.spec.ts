@@ -11,7 +11,7 @@ function emptySearchRoot(): string {
 }
 
 async function launchDemo(): Promise<{ app: ElectronApplication; win: Page }> {
-  const env = workbenchEnv({ WB_OVERLAY_SEARCH_ROOT: emptySearchRoot(), WB_STATE_DIR: mkdtempSync(join(tmpdir(), 'wb-visual-')) });
+  const env = workbenchEnv({ WB_RENDERER_LEGACY: '1', WB_OVERLAY_SEARCH_ROOT: emptySearchRoot(), WB_STATE_DIR: mkdtempSync(join(tmpdir(), 'wb-visual-')) });
   delete env.GOV_OVERLAY;
   const app = await _electron.launch({ args: [...electronArgs(), 'out/main/index.js'], env });
   const win = await app.firstWindow();
@@ -43,7 +43,7 @@ function assertInsideViewport(box: { x: number; y: number; width: number; height
 
 // ─── 0. First-Run Screen ───────────────────────────────────────────────
 test('WALK-01: first-run screen renders correctly', async () => {
-  const env = workbenchEnv({ WB_OVERLAY_SEARCH_ROOT: emptySearchRoot(), WB_STATE_DIR: mkdtempSync(join(tmpdir(), 'wb-walk-fr-')) });
+  const env = workbenchEnv({ WB_RENDERER_LEGACY: '1', WB_OVERLAY_SEARCH_ROOT: emptySearchRoot(), WB_STATE_DIR: mkdtempSync(join(tmpdir(), 'wb-walk-fr-')) });
   delete env.GOV_OVERLAY;
   const app = await _electron.launch({ args: [...electronArgs(), 'out/main/index.js'], env });
   const win = await app.firstWindow();

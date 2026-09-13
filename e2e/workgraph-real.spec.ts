@@ -44,7 +44,7 @@ test('headed real overlay renders enriched WorkGraph facts', async () => {
   const overlayExport = exportGovernanceState(realOverlay!);
   const app = await _electron.launch({
     args: [...electronArgs(), 'out/main/index.js'],
-    env: workbenchEnv({ GOV_OVERLAY: overlayExport, WB_STATE_DIR: stateDir, WB_RENDERER_VNEXT: '1' }),
+    env: workbenchEnv({ GOV_OVERLAY: overlayExport, WB_STATE_DIR: stateDir }),
   });
   const win = await app.firstWindow();
   try {
@@ -103,6 +103,8 @@ test('headed real overlay renders enriched WorkGraph facts', async () => {
     await focusNode.click();
     const detail = win.getByRole('complementary', { name: 'Focus Detail' });
     await expect(detail).toBeVisible();
+    // Provenance lives one click down in "Where this comes from".
+    await detail.getByText('Where this comes from', { exact: true }).click();
     await expect(detail.getByText('Source ref', { exact: true })).toBeVisible();
     const [nodeBox, detailBox] = await Promise.all([focusNode.boundingBox(), detail.boundingBox()]);
     expect(nodeBox && detailBox && (

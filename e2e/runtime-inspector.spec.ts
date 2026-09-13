@@ -75,7 +75,7 @@ test('Runtime Inspector keeps exact execution identity, navigation, state, contr
   const inboxBefore = hash(join(overlay.overlayRoot, 'INBOX.md'));
   const memoryBefore = hash(join(overlay.overlayRoot, 'memory', 'MEMORY.md'));
 
-  const { app, win } = await launchWorkbench(stateDir, overlay.overlayRoot);
+  const { app, win } = await launchWorkbench(stateDir, overlay.overlayRoot, { WB_RENDERER_LEGACY: '1' });
   await win.getByRole('button', { name: 'Open workspace and session switcher' }).click();
   const projectOption = win.locator('.project-switcher option').filter({ hasText: 'Creative OS' });
   await win.locator('.project-switcher select').selectOption((await projectOption.getAttribute('value'))!);

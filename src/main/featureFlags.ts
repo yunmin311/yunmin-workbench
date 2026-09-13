@@ -1,19 +1,21 @@
 /**
- * Workbench dev/migration flag.
+ * Renderer rollout (activation complete).
  *
- * Selects which renderer family the Workbench main window loads:
- *   WB_RENDERER_VNEXT=1   -> vNext renderer
- *   unset / any other     -> legacy renderer (default)
+ * vNext is the default product: a normal launch always opens the vNext
+ * Workbench. The legacy prototype chrome remains ONLY as an explicit
+ * rollback/debug fallback, never as default and never as a user-facing
+ * edition picker:
+ *   WB_RENDERER_LEGACY=1 -> legacy renderer (../renderer/index.html)
+ *   unset / anything else -> vNext renderer (../renderer-vnext/index.html)
  *
- * Scope (PHASE 0): main / full window only. Compact/Edge Panel joins this flag
- * after the vNext renderer entry exists; until then it stays on whatever path
- * its own host owns.
+ * The retired WB_RENDERER_VNEXT flag is ignored: anything that is not an
+ * explicit legacy opt-in opens vNext.
  *
  * NOT a product fact. Never read from Overlay/Governance/ambient schema.
  * Never used to gate domain logic. Never persisted.
  */
-export function isVNextRendererEnabled(): boolean {
-  return process.env.WB_RENDERER_VNEXT === '1';
+export function isLegacyRendererEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.WB_RENDERER_LEGACY === '1';
 }
 
 /**
@@ -31,9 +33,9 @@ export function compactToggleShortcut(): string {
 }
 
 export function rendererEntryForEnvironment(
-  env: { WB_RENDERER_VNEXT?: string },
+  env: { WB_RENDERER_LEGACY?: string },
 ): '../renderer-vnext/index.html' | '../renderer/index.html' {
-  return env.WB_RENDERER_VNEXT === '1'
-    ? '../renderer-vnext/index.html'
-    : '../renderer/index.html';
+  return env.WB_RENDERER_LEGACY === '1'
+    ? '../renderer/index.html'
+    : '../renderer-vnext/index.html';
 }

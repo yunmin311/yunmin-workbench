@@ -34,7 +34,7 @@ test('measures a 5,000-event Session and Runtime Inspector timeline', async () =
   writeFileSync(join(activityDir, 'history.jsonl'), `${events.map((line) => JSON.stringify(line)).join('\n')}\n`);
 
   const launchStarted = performance.now();
-  const { app, win } = await launchWorkbench(stateDir, overlay.overlayRoot);
+  const { app, win } = await launchWorkbench(stateDir, overlay.overlayRoot, { WB_RENDERER_LEGACY: '1' });
   const launchMs = performance.now() - launchStarted;
   try {
     const sessionStarted = performance.now();

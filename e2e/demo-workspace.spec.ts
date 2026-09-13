@@ -9,7 +9,7 @@ function emptySearchRoot(): string {
 }
 
 async function launchEmpty(): Promise<{ app: ElectronApplication; win: Page }> {
-  const env = workbenchEnv({ WB_OVERLAY_SEARCH_ROOT: emptySearchRoot(), WB_STATE_DIR: mkdtempSync(join(tmpdir(), 'wb-fr-')) });
+  const env = workbenchEnv({ WB_RENDERER_LEGACY: '1', WB_OVERLAY_SEARCH_ROOT: emptySearchRoot(), WB_STATE_DIR: mkdtempSync(join(tmpdir(), 'wb-fr-')) });
   delete env.GOV_OVERLAY;
   const app = await _electron.launch({ args: [...electronArgs(), 'out/main/index.js'], env });
   return { app, win: await app.firstWindow() };

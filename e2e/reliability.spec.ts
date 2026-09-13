@@ -14,7 +14,7 @@ test.describe('reliability gate (P0 containment)', () => {
     const stateDir = mkdtempSync(join(tmpdir(), 'wb-e2e-nocodex-'));
     const emptyPath = join(stateDir, 'empty-path');
     mkdirSync(emptyPath);
-    const { app, win } = await launchWorkbench(stateDir, OVERLAY, { PATH: emptyPath });
+    const { app, win } = await launchWorkbench(stateDir, OVERLAY, { WB_RENDERER_LEGACY: '1', PATH: emptyPath });
 
     await openSessionPacket(win, FIXTURE_PROJECT_DISPLAY_NAME);
 
@@ -34,7 +34,7 @@ test.describe('reliability gate (P0 containment)', () => {
 
   test('second app instance exits and never steals the Workbench state', async () => {
     const stateDir = mkdtempSync(join(tmpdir(), 'wb-e2e-single-'));
-    const { app, win } = await launchWorkbench(stateDir, OVERLAY);
+    const { app, win } = await launchWorkbench(stateDir, OVERLAY, { WB_RENDERER_LEGACY: '1' });
     const electronBinary = require('electron') as unknown as string;
     const second = spawn(electronBinary, [...electronArgs(), 'out/main/index.js'], {
       env: workbenchEnv({ GOV_OVERLAY: OVERLAY, WB_STATE_DIR: stateDir }),

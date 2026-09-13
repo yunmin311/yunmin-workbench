@@ -202,7 +202,7 @@ test('hermetic dual projects: discovery, switch, selection, compact handoff, sta
     args: [...electronArgs(), 'out/main/index.js'],
     env: workbenchEnv({
       GOV_OVERLAY: overlayRoot, WB_STATE_DIR: stateDir,
-      WB_RENDERER_VNEXT: '1', WB_COMPACT_WINDOW: '1',
+      WB_COMPACT_WINDOW: '1',
     }),
   });
   try {

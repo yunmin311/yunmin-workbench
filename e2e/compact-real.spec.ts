@@ -53,7 +53,6 @@ test('headed real Compact edge surface mirrors canonical facts and hands off to 
     env: workbenchEnv({
       GOV_OVERLAY: overlayExport,
       WB_STATE_DIR: stateDir,
-      WB_RENDERER_VNEXT: '1',
       WB_COMPACT_WINDOW: '1',
     }),
   });

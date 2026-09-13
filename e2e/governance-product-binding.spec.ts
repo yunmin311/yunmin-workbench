@@ -28,7 +28,7 @@ async function readBox(locator: Locator) {
 
 test('governance binding renders a compact strip in real and demo workspaces', async () => {
   const stateDir = mkdtempSync(join(tmpdir(), 'wb-govbind-real-'));
-  const { app, win } = await launchWorkbench(stateDir, overlay.overlayRoot);
+  const { app, win } = await launchWorkbench(stateDir, overlay.overlayRoot, { WB_RENDERER_LEGACY: '1' });
   try {
     await win.keyboard.press('Control+K');
     await win.locator('[cmdk-input]').fill(`Open Workspace ${FIXTURE_PROJECT_DISPLAY_NAME}`);
@@ -65,7 +65,7 @@ test('governance binding renders a compact strip in real and demo workspaces', a
   }
 
   const emptyDir = mkdtempSync(join(tmpdir(), 'wb-govbind-empty-'));
-  const env = workbenchEnv({ WB_OVERLAY_SEARCH_ROOT: emptyDir, WB_STATE_DIR: emptyDir });
+  const env = workbenchEnv({ WB_RENDERER_LEGACY: '1', WB_OVERLAY_SEARCH_ROOT: emptyDir, WB_STATE_DIR: emptyDir });
   delete env.GOV_OVERLAY;
   const demoApp = await _electron.launch({ args: [...electronArgs(), 'out/main/index.js'], env });
   const demoWin = await demoApp.firstWindow();
