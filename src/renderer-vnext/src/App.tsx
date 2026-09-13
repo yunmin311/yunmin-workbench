@@ -13,6 +13,8 @@ function App() {
   const [isFixture, setIsFixture] = useState(false);
   const [navigateRequest, setNavigateRequest] = useState<{ projectId: string; workId?: string; taskId?: string; action?: 'continue' | 'prepare' } | null>(null);
   const [projectIds, setProjectIds] = useState<string[]>([]);
+  const [overlayEmpty, setOverlayEmpty] = useState(false);
+  const [hasBinding, setHasBinding] = useState(false);
 
   const load = useCallback(async (projectId?: string) => {
     setError(null);
@@ -32,13 +34,21 @@ function App() {
       return;
     }
     try {
-      const [response, overlay] = await Promise.all([
+      const [response, overlay, binding] = await Promise.all([
         window.wb.getWorkGraphRevision(projectId),
         window.wb.loadOverlay(),
+        window.wb.loadOverlayBinding().catch(() => null),
       ]);
-      if (response.error) throw new Error(response.error);
-      setRevision(response.revision);
+      setRevision(response.revision ?? null);
       setProjectIds(projectIdsFromOverlay(overlay));
+      setOverlayEmpty(overlay.projects.length === 0);
+      setHasBinding(binding !== null);
+      // The main process reports exactly 'No project selected' when the
+      // overlay exposes zero projects: that is the welcome state, not a
+      // failure. Anything else with no revision is a real error.
+      if (response.error && !(response.error === 'No project selected' && overlay.projects.length === 0)) {
+        throw new Error(response.error);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -52,7 +62,21 @@ function App() {
     return window.wb.onCompactNavigate((identity) => {
       setNavigateRequest(identity);
     });
-  }, []);
+  }, [load]);
+
+  const chooseFolder = useCallback(async () => {
+    setError(null);
+    try {
+      const chosen = await window.wb.chooseOverlay();
+      if (chosen.error) {
+        setError(chosen.error);
+        return;
+      }
+      if (!chosen.canceled) await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, [load]);
 
   if (loading) {
     return (
@@ -67,17 +91,38 @@ function App() {
     return (
       <div className="wb-boot is-error">
         <h2>Workspace unavailable</h2>
+        <p className="wb-boot-hint">Your files are untouched. Point at the right folder and retry.</p>
         <pre>{error}</pre>
-        <button type="button" className="wb-btn is-accent" onClick={() => void load()}>Retry</button>
+        <div className="wb-boot-actions">
+          <button type="button" className="wb-btn is-accent" onClick={() => void load()}>Retry</button>
+          <button type="button" className="wb-btn" onClick={() => void chooseFolder()}>Choose folder…</button>
+        </div>
       </div>
     );
   }
 
   if (!revision) {
+    if (!hasBinding || overlayEmpty) {
+      return (
+        <div className="wb-boot">
+          <div className="wb-boot-mark" aria-hidden="true">◎</div>
+          <h2>Welcome to Workbench</h2>
+          <p className="wb-boot-hint">Choose the folder that holds your work registry to begin —<br />your projects, tasks and chats will appear here.</p>
+          <div className="wb-boot-actions">
+            <button type="button" className="wb-btn is-accent" onClick={() => void chooseFolder()}>Choose folder…</button>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="wb-boot">
-        <h2>No workspace yet</h2>
-        <p>Open an overlay or bind a project to begin.</p>
+        <div className="wb-boot-mark" aria-hidden="true">◎</div>
+        <h2>Nothing to show yet</h2>
+        <p className="wb-boot-hint">This folder doesn&apos;t expose any work yet.</p>
+        <div className="wb-boot-actions">
+          <button type="button" className="wb-btn is-accent" onClick={() => void load()}>Retry</button>
+          <button type="button" className="wb-btn" onClick={() => void chooseFolder()}>Choose folder…</button>
+        </div>
       </div>
     );
   }

@@ -15,8 +15,8 @@ test('WB_RENDERER_VNEXT=1 loads the real WorkGraphRevision over preload IPC', as
   try {
     await expect(win.locator('.vnext-app')).toBeVisible();
     await expect(win.locator('.wb-node').first()).toBeVisible();
-    await expect(win.getByRole('button', { name: 'Fit', exact: true })).toBeVisible();
-    await expect(win.getByRole('button', { name: 'Focus project', exact: true })).toBeVisible();
+    await expect(win.getByRole('button', { name: 'Fit view', exact: true })).toBeVisible();
+    await expect(win.getByRole('button', { name: 'Locate', exact: true })).toBeVisible();
     await expect(win.getByRole('button', { name: 'Refresh', exact: true })).toBeVisible();
     await expect(win.getByRole('button', { name: 'Attention', exact: true })).toHaveCount(0);
     const graphReport = await win.evaluate(async () => {

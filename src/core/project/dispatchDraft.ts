@@ -132,56 +132,56 @@ export function preflightDispatch(
   const checks: PreflightCheck[] = [];
 
   if (draft.provider === null || draft.backend === null) {
-    checks.push({ id: 'executor', label: 'Executor', status: 'BLOCK', detail: 'no executor selected' });
+    checks.push({ id: 'executor', label: 'Runner', status: 'BLOCK', detail: 'no runner picked yet — choose one above' });
   } else {
     const capabilities = input.capabilities[draft.provider];
     if (!capabilities) {
-      checks.push({ id: 'executor', label: 'Executor', status: 'BLOCK', detail: `provider ${draft.provider} has no capability truth` });
+      checks.push({ id: 'executor', label: 'Runner', status: 'BLOCK', detail: `no capability truth for provider ${draft.provider}` });
     } else if (!capabilities.canDispatch || capabilities.support.dispatch !== 'YES') {
       checks.push({
         id: 'executor',
-        label: 'Executor',
+        label: 'Runner',
         status: 'BLOCK',
-        detail: `${draft.backend}:${draft.provider} dispatch unavailable — ${capabilities.evidence}`,
+        detail: `${draft.provider} unavailable — ${capabilities.evidence}`,
       });
     } else {
-      checks.push({ id: 'executor', label: 'Executor', status: 'PASS', detail: `${draft.backend}:${draft.provider} — ${capabilities.evidence}` });
+      checks.push({ id: 'executor', label: 'Runner', status: 'PASS', detail: `${draft.provider} · ready — ${capabilities.evidence}` });
     }
   }
 
   if (draft.packetId === undefined) {
-    checks.push({ id: 'packet', label: 'Frozen Packet', status: 'BLOCK', detail: 'no frozen packet selected' });
+    checks.push({ id: 'packet', label: 'Snapshot', status: 'BLOCK', detail: 'no snapshot picked yet' });
   } else if (input.packetId !== undefined && input.packetId !== draft.packetId) {
-    checks.push({ id: 'packet', label: 'Frozen Packet', status: 'BLOCK', detail: 'selected packet no longer matches the frozen identity' });
+    checks.push({ id: 'packet', label: 'Snapshot', status: 'BLOCK', detail: 'selected snapshot no longer matches the saved identity' });
   } else if (input.packetValidity === 'CURRENT') {
-    checks.push({ id: 'packet', label: 'Frozen Packet', status: 'PASS', detail: `${draft.packetId} · CURRENT` });
+    checks.push({ id: 'packet', label: 'Snapshot', status: 'PASS', detail: `${draft.packetId} · CURRENT` });
   } else if (input.packetValidity === 'STALE') {
-    checks.push({ id: 'packet', label: 'Frozen Packet', status: 'BLOCK', detail: `${draft.packetId} · STALE — return to the Cabinet and compile a new packet (new packetId)` });
+    checks.push({ id: 'packet', label: 'Snapshot', status: 'BLOCK', detail: `${draft.packetId} · STALE — go back and make a new snapshot (new packetId)` });
   } else {
-    checks.push({ id: 'packet', label: 'Frozen Packet', status: 'BLOCK', detail: `${draft.packetId} · INVALID — dispatch prohibited` });
+    checks.push({ id: 'packet', label: 'Snapshot', status: 'BLOCK', detail: `${draft.packetId} · INVALID — sending prohibited` });
   }
 
   if (draft.conversationKey === undefined) {
-    checks.push({ id: 'conversation', label: 'Conversation', status: 'BLOCK', detail: 'no explicit conversation target — pick one for this dispatch' });
+    checks.push({ id: 'conversation', label: 'Chat', status: 'BLOCK', detail: 'no chat picked — choose one for this run' });
   } else {
-    checks.push({ id: 'conversation', label: 'Conversation', status: 'PASS', detail: `${draft.conversationKey} (this dispatch only)` });
+    checks.push({ id: 'conversation', label: 'Chat', status: 'PASS', detail: `${draft.conversationKey} (this dispatch only)` });
   }
 
   if (isCanonicalTaskDispatch(draft)) {
-    checks.push({ id: 'lineage', label: 'Lineage', status: 'PASS', detail: `canonical Task ${draft.taskId} · Work ${draft.workId}` });
+    checks.push({ id: 'lineage', label: 'For', status: 'PASS', detail: `canonical Task ${draft.taskId} · Work ${draft.workId}` });
   } else if (draft.workId !== undefined || draft.taskId !== undefined) {
-    checks.push({ id: 'lineage', label: 'Lineage', status: 'BLOCK', detail: 'partial canonical lineage — select the Task (or enter as QUICK without lineage)' });
+    checks.push({ id: 'lineage', label: 'For', status: 'BLOCK', detail: 'needs a task — pick the Task, or send without one' });
   } else {
-    checks.push({ id: 'lineage', label: 'Lineage', status: 'PASS', detail: 'QUICK dispatch — not a canonical Task; no Work/Task identity is minted' });
+    checks.push({ id: 'lineage', label: 'For', status: 'PASS', detail: 'No task attached — no Work/Task identity is minted' });
   }
 
   checks.push({
     id: 'environment',
-    label: 'Environment',
+    label: 'Project files',
     status: draft.environment.kind === 'real' && input.projectRootBound ? 'PASS' : 'BLOCK',
     detail: draft.environment.kind !== 'real'
       ? `environment ${draft.environment.kind} requires an explicit session identity`
-      : input.projectRootBound ? 'real environment · project root bound' : 'no local project root binding',
+      : input.projectRootBound ? 'project files reachable' : 'project folder not linked — rebind it',
   });
 
   return { ok: checks.every((check) => check.status === 'PASS'), checks };

@@ -19,6 +19,7 @@ import {
   currentSelectionForNode,
   focusNeighborhood,
   projectRegionVisibility,
+  relationWord,
   resolveCompactNavigate,
   workRegionFitIds,
   type CanvasEdge,
@@ -70,7 +71,7 @@ function styledEdges(edges: CanvasEdge[], focusId: string | null, neighborhood: 
       type: 'smoothstep',
       animated: Boolean(base.flow) && touched,
       label: (edge.id === hoveredEdgeId || (focusId !== null && (edge.source === focusId || edge.target === focusId)))
-        ? edge.data?.kind
+        ? relationWord(edge.data?.kind ?? 'membership')
         : undefined,
       labelStyle: { fill: '#9aa4b2', fontSize: 9 },
       labelBgStyle: { fill: 'rgba(16,19,24,0.9)', fillOpacity: 0.92 },
@@ -100,7 +101,7 @@ function FocusDetailPanel({ detail, story, onClose, onPrepare }: {
   return (
     <aside className="focus-panel wb-glass" role="complementary" aria-label="Focus Detail">
       <button className="focus-close" type="button" aria-label="Close Focus Detail" onClick={onClose}>×</button>
-      <p className="wb-kicker">Focus · {detail.family}</p>
+      <p className="wb-kicker">Selected {detail.kind}</p>
       <h2 className="focus-title">{detail.label}</h2>
       <div className="focus-chips">
         <span className="wb-chip">{detail.verification}</span>
@@ -113,10 +114,6 @@ function FocusDetailPanel({ detail, story, onClose, onPrepare }: {
         {detail.runtimeState && <span className="wb-chip is-blue">{detail.runtimeState}</span>}
         {detail.attentionState && detail.attentionState !== 'none' && detail.attentionState !== 'unknown' && <span className="wb-chip is-amber">{detail.attentionState}</span>}
       </div>
-      <dl className="focus-meta">
-        <dt>Source</dt><dd className="wb-mono">{detail.source}</dd>
-        <dt>Source ref</dt><dd className="wb-mono">{detail.sourceRef || '—'}</dd>
-      </dl>
       <div className="focus-actions">
         {canPrepare && (
           <button type="button" className="wb-btn is-accent" onClick={onPrepare}>
@@ -124,6 +121,13 @@ function FocusDetailPanel({ detail, story, onClose, onPrepare }: {
           </button>
         )}
       </div>
+      <details className="focus-source">
+        <summary>Where this comes from</summary>
+        <dl className="focus-meta">
+          <dt>Source</dt><dd className="wb-mono">{detail.source}</dd>
+          <dt>Source ref</dt><dd className="wb-mono">{detail.sourceRef || '—'}</dd>
+        </dl>
+      </details>
       {story && (
         <section className="execution-story" aria-label="Execution story">
           <p className="wb-kicker">Running now</p>
@@ -140,11 +144,11 @@ function FocusDetailPanel({ detail, story, onClose, onPrepare }: {
           )}
         </section>
       )}
-      <h3 className="wb-kicker">Relations</h3>
-      {detail.relations.length === 0 && <p className="focus-empty">No direct relations.</p>}
+      <h3 className="wb-kicker">Connected to</h3>
+      {detail.relations.length === 0 && <p className="focus-empty">Nothing connected yet.</p>}
       {Object.entries(grouped).map(([kind, relations]) => (
         <div className="focus-relation-group" key={kind}>
-          <div className="focus-relation-kind">{kind}</div>
+          <div className="focus-relation-kind">{relationWord(kind as FocusDetail['relations'][number]['kind'])}</div>
           <ul>
             {relations.map((relation) => (
               <li key={relation.id}>
@@ -179,6 +183,7 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
   const [preparedPacket, setPreparedPacket] = useState<{ conversationKey: string; packetId: string } | null>(null);
   const [collapsedRegions, setCollapsedRegions] = useState<Set<string>>(new Set());
   const [navCollapsed, setNavCollapsed] = useState(false);
+  const [startDismissed, setStartDismissed] = useState(false);
   const fittedScopeRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -396,18 +401,27 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
           <Panel position="top-left" className="wb-canvas-toolbar wb-glass" aria-label="Graph controls">
             <span className="wb-toolbar-brand">Yunmin <em>Workbench</em></span>
             <span className="wb-toolbar-sep" aria-hidden="true" />
-            <button type="button" className="wb-tool" onClick={() => void instance?.fitView({ padding: 0.16, duration: 280 })}>Fit</button>
-            <button type="button" className="wb-tool" onClick={focusCurrentOrProject}>Focus {selectedId ? 'current' : 'project'}</button>
+            <button type="button" className="wb-tool" onClick={() => void instance?.fitView({ padding: 0.16, duration: 280 })}>Fit view</button>
+            <button type="button" className="wb-tool" onClick={focusCurrentOrProject}>Locate</button>
             <button
               type="button"
               className="wb-tool"
               aria-pressed={preparationStage !== null}
               onClick={openPreparation}
-              title={selectedNode && (selectedNode.data.kind === 'task' || selectedNode.data.kind === 'work') ? `Prepare · ${selectedNode.data.label}` : 'Prepare Work'}
+              title={selectedNode && (selectedNode.data.kind === 'task' || selectedNode.data.kind === 'work') ? `Prepare · ${selectedNode.data.label}` : 'Pick a task first, then prepare it'}
             >
-              Prepare work
+              Prepare
             </button>
             <button type="button" className="wb-tool" onClick={() => void onRefresh()}>Refresh</button>
+            <button
+              type="button"
+              className="wb-tool"
+              aria-label="Open Compact overview"
+              title="Open the Compact overview (Alt+Shift+B): your current work in a small always-on-top window"
+              onClick={() => void window.wb.toggleCompactWindow()}
+            >
+              Compact
+            </button>
             {attentionNodes.length > 0 && (
               <button type="button" className="wb-tool is-attention" aria-label="Attention" onClick={() => void instance?.fitView({ nodes: attentionNodes, padding: 0.9, duration: 280 })}>
                 ⚑ {attentionNodes.length}
@@ -418,7 +432,22 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
           </Panel>
           {workRegions.length === 0 && (
             <Panel position="bottom-center" className="wb-canvas-note">
-              No Work regions yet — Work appears when a canonical source declares it.
+              No work areas yet — they appear when the project declares work.
+            </Panel>
+          )}
+          {workRegions.length > 0 && !selectedNode && preparationStage === null && !startDismissed && (
+            <Panel position="bottom-left" className="wb-start-card wb-glass">
+              <section aria-label="Where to start">
+                <button type="button" className="start-dismiss" aria-label="Dismiss getting started" onClick={() => setStartDismissed(true)}>×</button>
+                <p className="start-title">Start here</p>
+                <p className="start-body">Pick a task on the canvas, then <strong>Prepare</strong>.</p>
+                <ol className="start-path" aria-label="The main path">
+                  <li>Task</li>
+                  <li>Context</li>
+                  <li>Snapshot</li>
+                  <li>Send</li>
+                </ol>
+              </section>
             </Panel>
           )}
         </ReactFlow>
@@ -454,7 +483,7 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
           </div>
           {!navCollapsed && (
           <div className="region-nav-list">
-            {regionNavigation.length === 0 && <p className="region-nav-empty">No canonical Work in this project.</p>}
+            {regionNavigation.length === 0 && <p className="region-nav-empty">No work in this project yet.</p>}
             {regionNavigation.map((region, index) => (
               <div className={`region-nav-row${region.active ? ' is-active' : ''}`} key={region.regionId}>
                 <button type="button" className="region-nav-focus" onClick={() => focusRegion(region.regionId)}>

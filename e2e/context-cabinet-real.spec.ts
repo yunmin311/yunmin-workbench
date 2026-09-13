@@ -65,7 +65,7 @@ test('headed real overlay stages Context in the vNext Context Cabinet', async ()
     expect(baselineHash).toBeTruthy();
 
     // Open the Cabinet from the Canvas and wait for real source groups.
-    await win.getByRole('button', { name: 'Prepare work', exact: true }).click();
+    await win.getByRole('button', { name: 'Prepare', exact: true }).click();
     const cabinet = win.getByRole('region', { name: 'Context Cabinet' });
     await expect(cabinet).toBeVisible();
     await expect(cabinet.locator('.cabinet-group h3', { hasText: 'Governance' })).toBeVisible();
@@ -178,7 +178,7 @@ test('headed real overlay stages Context in the vNext Context Cabinet', async ()
     const selectedConversationKey = await conversationSelect.locator('option').nth(1).getAttribute('value');
     expect(selectedConversationKey).toBeTruthy();
     await conversationSelect.selectOption(selectedConversationKey!);
-    await cabinet.getByRole('button', { name: 'Freeze and review preflight' }).click();
+    await cabinet.getByRole('button', { name: 'Snapshot and continue' }).click();
     const dispatch = win.getByRole('region', { name: 'Dispatch' });
     await expect(dispatch.locator('.dispatch-ready')).toBeVisible({ timeout: 15_000 });
     const preparedPacketId = await dispatch.locator('#dispatch-packet').inputValue();

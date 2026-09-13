@@ -234,6 +234,26 @@ export interface FocusRelation {
   direction: 'in' | 'out';
 }
 
+/**
+ * Product words for edge kinds. The canvas and Focus Detail speak these;
+ * the semantic kinds underneath stay exact for projection and tests.
+ */
+const RELATION_WORDS: Record<WorkGraphEdge['kind'], string> = {
+  membership: 'Part of',
+  'execution-of': 'Run of',
+  'uses-context': 'Uses',
+  produces: 'Makes',
+  handoff: 'Handoff',
+  'derived-from': 'Built from',
+  'blocked-by': 'Blocked by',
+  evidences: 'Backed by',
+  'depends-on': 'Needs',
+};
+
+export function relationWord(kind: WorkGraphEdge['kind']): string {
+  return RELATION_WORDS[kind] ?? kind;
+}
+
 export interface FocusDetail {
   label: string;
   kind: WorkGraphNode['kind'];

@@ -157,17 +157,29 @@ export function CompactApp() {
           )}
 
           <div className="compact-actions">
-            <button type="button" className="compact-expand-btn" onClick={() => openWorkbench('continue')} aria-label="Continue current work">
+            <button
+              type="button"
+              className="compact-expand-btn"
+              onClick={() => openWorkbench('continue')}
+              aria-label="Continue current work"
+              title="Jump back to this exact work in the main view"
+            >
               Continue
             </button>
-            <button type="button" className="compact-expand-btn is-prepare" onClick={() => openWorkbench('prepare')} aria-label="Prepare current work">
+            <button
+              type="button"
+              className="compact-expand-btn is-prepare"
+              onClick={() => openWorkbench('prepare')}
+              aria-label="Prepare current work"
+              title="Choose what this work can use, then send it"
+            >
               Prepare
             </button>
           </div>
           {expanded && (
             <>
               <p className="compact-footnote">
-                Continue returns to the exact Work or Task. Prepare opens its Context staging before preflight.
+                Continue jumps back to this exact work. Prepare chooses what it can use, then sends it.
               </p>
             </>
           )}

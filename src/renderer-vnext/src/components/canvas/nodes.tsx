@@ -81,7 +81,7 @@ const WorkRegionNode = memo((props: NodeProps) => {
         <span className="wb-region-label" title={region.label}>{region.label}</span>
         <CurrentnessChip currentness={region.currentness} />
         {region.taskCount > 0 && <span className="wb-chip is-violet">{region.taskCount} tasks</span>}
-        {region.verificationCount > 0 && <span className="wb-chip">⌐ {region.verificationCount}</span>}
+        {region.verificationCount > 0 && <span className="wb-chip">{region.verificationCount} checks</span>}
       </div>
 
     </div>

@@ -57,6 +57,16 @@ body,
   color: var(--wb-accent);
   animation: wb-breathe 2.4s ease-in-out infinite;
 }
+.wb-boot h2 { margin: 0; font-size: var(--wb-fs-xl); }
+.wb-boot-hint {
+  margin: 0;
+  max-width: 460px;
+  text-align: center;
+  color: var(--wb-text-secondary);
+  font-size: var(--wb-fs-md);
+  line-height: 1.6;
+}
+.wb-boot-actions { display: flex; gap: 10px; }
 @keyframes wb-breathe {
   0%, 100% { opacity: 0.45; transform: scale(0.97); }
   50% { opacity: 1; transform: scale(1.02); }
@@ -301,6 +311,64 @@ body,
   border-color: rgba(127, 181, 192, 0.45);
 }
 
+/* Clickable affordance: every canvas node invites interaction on hover. */
+.react-flow__node:not(.react-flow__node-wb-region):hover .wb-node {
+  border-color: var(--wb-accent);
+  box-shadow: 0 0 0 1px rgba(127, 181, 192, 0.35), var(--wb-shadow-1);
+}
+
+/* Start-here card: the main path in one glance, until the user is moving. */
+.wb-start-card {
+  width: 300px;
+  box-sizing: border-box;
+  padding: 12px 14px 13px;
+  border-radius: var(--wb-radius-lg);
+  box-shadow: var(--wb-shadow-2);
+}
+.start-dismiss {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--wb-text-faint);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 7px;
+  border-radius: var(--wb-radius-sm);
+}
+.start-dismiss:hover { color: var(--wb-text); background: var(--wb-slate-dim); }
+.start-title {
+  margin: 0 0 4px;
+  color: var(--wb-text-faint);
+  font: 700 9px/1.2 inherit;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.start-body { margin: 0 0 9px; font-size: var(--wb-fs-sm); color: var(--wb-text-secondary); line-height: 1.5; }
+.start-body strong { color: var(--wb-accent-strong); }
+.start-path {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+}
+.start-path li {
+  flex: 1;
+  text-align: center;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  color: var(--wb-accent-strong);
+  background: var(--wb-accent-dim);
+  border: 1px solid rgba(127, 181, 192, 0.25);
+  border-radius: 999px;
+  padding: 3px 2px;
+  white-space: nowrap;
+}
+
 /* Project anchor */
 .wb-node-project {
   flex-direction: row;
@@ -515,8 +583,19 @@ body,
 .focus-actions {
   display: flex;
   gap: 8px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
+.focus-actions .wb-btn { flex: 1; padding: 9px 12px; font-size: var(--wb-fs-md); }
+
+.focus-source { margin: 0 0 14px; }
+.focus-source summary {
+  cursor: pointer;
+  color: var(--wb-text-muted);
+  font-size: var(--wb-fs-xs);
+  font-weight: 600;
+}
+.focus-source summary:hover { color: var(--wb-text-secondary); }
+.focus-source .focus-meta { margin-top: 8px; }
 
 .wb-btn {
   border: 1px solid var(--wb-border-strong);
@@ -1168,18 +1247,24 @@ body,
 .preflight-label { color: var(--wb-text-secondary); }
 .preflight-detail { color: var(--wb-text-secondary); overflow-wrap: anywhere; }
 
+.dispatch-consequence {
+  margin: 2px 0 10px;
+  font-size: var(--wb-fs-sm);
+  line-height: 1.55;
+  color: var(--wb-text-secondary);
+}
 .dispatch-button {
-  border: 1px solid rgba(224, 138, 128, 0.45);
+  border: 1px solid rgba(127, 181, 192, 0.45);
   border-radius: var(--wb-radius);
-  background: var(--wb-red-dim);
-  color: var(--wb-red);
-  padding: 9px 12px;
+  background: var(--wb-accent-dim);
+  color: var(--wb-accent-strong);
+  padding: 10px 12px;
   font: 700 var(--wb-fs-md)/1 inherit;
   font-family: inherit;
   cursor: pointer;
   transition: background var(--wb-motion-fast), color var(--wb-motion-fast);
 }
-.dispatch-button:hover:not(:disabled) { background: rgba(224, 138, 128, 0.24); color: #fff; }
+.dispatch-button:hover:not(:disabled) { background: rgba(127, 181, 192, 0.26); color: #fff; }
 .dispatch-button:disabled { opacity: 0.4; cursor: default; }
 
 .dispatch-receipt {

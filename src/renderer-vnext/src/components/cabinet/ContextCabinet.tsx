@@ -466,7 +466,7 @@ export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
   const compilePacketAction = useCallback(() => {
     if (!snapshot || compiling) return;
     if (!compileTarget) {
-      setPacketError('Packet needs an explicit conversation target — select one on the Canvas.');
+      setPacketError('Pick which chat does this work first.');
       return;
     }
     setCompiling(true);
@@ -718,17 +718,17 @@ export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
       <footer className="preparation-footer">
         <div className="preparation-meaning">
           <strong>{summary.included} will be used</strong>
-          <span>Available is not used. Only “Will use” enters the next frozen packet.</span>
+          <span>Available is not used. Only “Will use” goes into the next snapshot.</span>
         </div>
         <label htmlFor="prepare-conversation">
-          <span>Continue in</span>
+          <span>Send to</span>
           <select
             id="prepare-conversation"
             className="dispatch-select"
             value={conversationKey}
             onChange={(event) => setConversationKey(event.target.value)}
           >
-            <option value="">Choose a conversation…</option>
+            <option value="">Choose a chat…</option>
             {(snapshot?.conversations ?? []).filter((conversation) => conversation.project === projectId).map((conversation) => (
               <option key={conversation.key} value={conversation.key}>{conversation.role} · {conversation.platform}</option>
             ))}
@@ -743,9 +743,9 @@ export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
           className="cabinet-compile"
           disabled={!snapshot || compiling || !compileTarget}
           onClick={compilePacketAction}
-          title={compileTarget ? 'Freeze the staged Context, then review executor preflight' : 'Choose an explicit conversation target'}
+          title={compileTarget ? 'Snapshot the selected Context, then review before sending' : 'Choose which chat does this work first'}
         >
-          {compiling ? 'Freezing…' : 'Freeze and review preflight'}
+          {compiling ? 'Snapshotting…' : 'Snapshot and continue'}
         </button>
       </footer>
       {(packet || packetError) && (
@@ -763,7 +763,7 @@ export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
               <dd>{packet.includedIds.length > 0 ? packet.includedIds.join(' · ') : '(none)'}</dd>
             </dl>
           )}
-          <p className="cabinet-hint">Frozen for the record — nothing is dispatched. uses-context only appears after a real dispatch consumes it.</p>
+          <p className="cabinet-hint">Saved for the record — nothing is sent yet. Usage appears after a real run uses it.</p>
         </footer>
       )}
     </section>

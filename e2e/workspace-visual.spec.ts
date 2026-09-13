@@ -82,7 +82,7 @@ test('workspace visual acceptance (real facts + badged fixture)', async () => {
     await expect(unboundMemoryGroup.locator('ul')).toBeHidden();
     await win.screenshot({ path: join(outDir, '42-context-cabinet-real.png') });
     await cabinet.locator('#prepare-conversation').selectOption('creative-os::claude::CO 主对话');
-    await cabinet.getByRole('button', { name: 'Freeze and review preflight' }).click();
+    await cabinet.getByRole('button', { name: 'Snapshot and continue' }).click();
     const dispatch = win.getByRole('region', { name: 'Dispatch' });
     await expect(dispatch).toBeVisible();
     await expect(dispatch.locator('.dispatch-ready')).toBeVisible();

@@ -13,6 +13,7 @@ import {
   moveGraphNode,
   projectRegionVisibility,
   projectIdsFromOverlay,
+  relationWord,
   resolveCompactNavigate,
   workRegionFitIds,
 } from '../../src/renderer-vnext/src/workGraphView';
@@ -120,6 +121,16 @@ describe('vNext renderer acceptance', () => {
     expect(peripheral.length).toBeGreaterThan(0);
     for (const node of peripheral) expect(framed).not.toContain(node.id);
     expect(peripheral.every((node) => node.type !== 'wb-region')).toBe(true);
+  });
+
+  it('speaks product words for edge kinds without changing their semantic identity', async () => {
+    expect(relationWord('membership')).toBe('Part of');
+    expect(relationWord('blocked-by')).toBe('Blocked by');
+    expect(relationWord('uses-context')).toBe('Uses');
+    const rev = await revision();
+    const kinds = new Set(rev.candidate.semanticFacts.edges.map((edge) => edge.kind));
+    for (const kind of kinds) expect(relationWord(kind)).toBeTruthy();
+    expect(rev.candidate.semanticFacts.edges.every((edge) => edge.kind === 'membership' || typeof edge.kind === 'string')).toBe(true);
   });
 
   it('offers exact declared project ids without inventing a recent project', () => {

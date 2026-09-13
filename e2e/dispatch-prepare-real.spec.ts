@@ -66,11 +66,11 @@ test('headed real canonical Task prepares an explicit dispatch and stops before 
     await expect(focusDetail).toContainText('定义主/渲染共享类型');
     await expect(focusDetail).not.toContainText('unknown');
 
-    await win.getByRole('button', { name: 'Prepare work', exact: true }).click();
+    await win.getByRole('button', { name: 'Prepare', exact: true }).click();
     const cabinet = win.getByRole('region', { name: 'Context Cabinet' });
     await expect(cabinet).toBeVisible();
     await cabinet.locator('#prepare-conversation').selectOption(CONVERSATION_KEY);
-    await cabinet.getByRole('button', { name: 'Freeze and review preflight' }).click();
+    await cabinet.getByRole('button', { name: 'Snapshot and continue' }).click();
     const surface = win.getByRole('region', { name: 'Dispatch' });
     await expect(surface).toBeVisible();
     await expect(surface.locator('.dispatch-ready')).toBeVisible();
@@ -99,7 +99,7 @@ test('headed real canonical Task prepares an explicit dispatch and stops before 
 
     // Preflight must show every check explicitly; UNKNOWN capability stays UNKNOWN.
     const preflight = await surface.getByRole('list', {}).locator('.preflight-check').allInnerTexts();
-    expect(preflight.join('\n')).toContain('Frozen Packet');
+    expect(preflight.join('\n')).toContain('Snapshot');
     expect(preflight.join('\n')).toContain(preparedPacketId);
     expect(preflight.join('\n')).toContain('this dispatch only');
     expect(preflight.join('\n')).toContain('canonical Task T006');

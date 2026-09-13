@@ -172,6 +172,9 @@ export function DispatchSurface({ projectId, selection, initialConversationKey, 
   }, []);
 
   const canDispatch = preflight.ok && packetDetail !== null && !dispatching;
+  const runChatShort = draft.conversationKey?.includes('::')
+    ? draft.conversationKey.split('::').pop()!
+    : (draft.conversationKey ?? '…');
   const setupReady = snapshot !== null
     && packetDetail !== null
     && packetValidity !== null
@@ -226,8 +229,8 @@ export function DispatchSurface({ projectId, selection, initialConversationKey, 
         {canonical
           ? <span className="dispatch-lineage is-canonical">Task {draft.taskId} · Work {draft.workId}</span>
           : (draft.workId !== undefined || draft.taskId !== undefined)
-            ? <span className="dispatch-lineage is-partial">partial lineage</span>
-            : <span className="dispatch-lineage is-quick">QUICK · not a canonical Task</span>}
+            ? <span className="dispatch-lineage is-partial">Needs a task</span>
+            : <span className="dispatch-lineage is-quick">No task attached</span>}
         <button type="button" className="cabinet-close" aria-label="Close Dispatch" onClick={onClose}>×</button>
       </header>
       {error && <p className="cabinet-error">{error}</p>}
@@ -237,13 +240,13 @@ export function DispatchSurface({ projectId, selection, initialConversationKey, 
             <span className="dispatch-label">Task</span>
             <div className="dispatch-value">
               {selection && (selection.kind === 'task' || selection.kind === 'work')
-                ? <>{selection.label}{selection.taskState && <> · state <span className={`currentness is-${selection.taskState.toLowerCase()}`}>{selection.taskState}</span></>}</>
-                : <span className="dispatch-muted">no canonical Work/Task selected — QUICK dispatch carries no lineage</span>}
+                ? <>{selection.label}{selection.taskState && selection.taskState !== 'unknown' && <> · state <span className={`currentness is-${selection.taskState.toLowerCase()}`}>{selection.taskState}</span></>}</>
+                : <span className="dispatch-muted">No task picked — this sends context only, not linked to a task.</span>}
             </div>
           </div>
 
           <div className="dispatch-field">
-            <label className="dispatch-label" htmlFor="dispatch-conversation">Conversation target</label>
+            <label className="dispatch-label" htmlFor="dispatch-conversation">Chat</label>
             <select
               id="dispatch-conversation"
               className="dispatch-select"
@@ -256,15 +259,15 @@ export function DispatchSurface({ projectId, selection, initialConversationKey, 
               )}
               {conversations.map((conversation) => (
                 <option key={conversation.key} value={conversation.key}>
-                  {conversation.key} · {conversation.role}
+                  {conversation.role} · {conversation.platform}
                 </option>
               ))}
             </select>
-            <p className="dispatch-hint">This selection belongs to this dispatch only; it never writes a canonical Task relation.</p>
+            <p className="dispatch-hint">Only for this run — it never changes the task itself.</p>
           </div>
 
           <div className="dispatch-field">
-            <label className="dispatch-label" htmlFor="dispatch-packet">Frozen Packet</label>
+            <label className="dispatch-label" htmlFor="dispatch-packet">Snapshot</label>
             <select
               id="dispatch-packet"
               className="dispatch-select"
@@ -291,11 +294,11 @@ export function DispatchSurface({ projectId, selection, initialConversationKey, 
                 {packetNote && <> · {packetNote}</>}
               </p>
             )}
-            <p className="dispatch-hint">To change Context, return to the Cabinet and compile — a new packet gets a new packetId; frozen packets are never mutated.</p>
+            <p className="dispatch-hint">To change what&apos;s included, go back — snapshots are immutable, a new one is made instead.</p>
           </div>
 
           <div className="dispatch-field">
-            <span className="dispatch-label">Executor</span>
+            <span className="dispatch-label">Run with</span>
             <div className="dispatch-executors" role="group" aria-label="Executor selection">
               {(Object.entries(capabilities) as [HarnessCapabilities['harness'], HarnessCapabilities][]).map(([harness, caps]) => (
                 <button
@@ -305,14 +308,14 @@ export function DispatchSurface({ projectId, selection, initialConversationKey, 
                   disabled={!caps.canDispatch}
                   aria-pressed={draft.provider === harness}
                   onClick={() => pickExecutor(harness)}
-                  title={caps.evidence}
+                  title={caps.canDispatch ? `Send this run to ${harness}` : `Unavailable: ${caps.evidence}`}
                 >
                   <span className="executor-provider">{harness}</span>
-                  <span className="executor-backend">{caps.canDispatch ? 'native' : 'native · no dispatch'}</span>
+                  <span className="executor-backend">{caps.canDispatch ? 'Ready' : 'Unavailable'}</span>
                 </button>
               ))}
-              <span className="executor-note" title="The Paseo executor adapter is not wired into the dispatch pipeline; its capability stays unproven here.">
-                paseo backend: not wired for dispatch
+              <span className="executor-note" title="The Paseo runner is not connected in this build.">
+                Paseo runner · not connected
               </span>
             </div>
           </div>
@@ -333,7 +336,7 @@ export function DispatchSurface({ projectId, selection, initialConversationKey, 
         <aside className="dispatch-preflight" aria-label="Dispatch preflight">
           <h3>Preflight</h3>
           {!setupReady ? (
-            <p className="dispatch-checking" role="status">Checking packet, project root and executors…</p>
+            <p className="dispatch-checking" role="status">Checking snapshot, project files and runners…</p>
           ) : (
             <ul className="dispatch-ready">
               {preflight.checks.map((check) => (
@@ -345,21 +348,26 @@ export function DispatchSurface({ projectId, selection, initialConversationKey, 
               ))}
             </ul>
           )}
+          <p className="dispatch-consequence" role="status">
+            {canDispatch && packetDetail
+              ? `Sends ${packetDetail.included.length + packetDetail.references.length} items and your instruction to ${draft.provider} in ${runChatShort}. Watch it under Running.`
+              : 'Pick a chat, a snapshot and a runner above — then send.'}
+          </p>
           <button
             type="button"
             className="dispatch-button"
             disabled={!canDispatch}
             onClick={dispatch}
-            title={canDispatch ? 'One click = one explicit dispatch intent' : 'Preflight must pass first'}
+            title={canDispatch ? 'Send the snapshot and instruction now' : 'Finish the checklist above first'}
           >
-            {dispatching ? 'Dispatching…' : 'Dispatch'}
+            {dispatching ? 'Sending…' : 'Send'}
           </button>
           {receipt && (
             <p className={`dispatch-receipt is-${receipt.status.toLowerCase()}`} role="status" aria-label="Dispatch receipt">
               {receipt.status} · {receipt.detail}
             </p>
           )}
-          <p className="dispatch-hint">Execution / uses-context / produces graph facts come from the runtime adapters after a real dispatch — never from this surface.</p>
+          <p className="dispatch-hint">Runs, used context and outputs appear here after a real run — this screen never invents them.</p>
         </aside>
       </div>
     </section>

@@ -1630,8 +1630,11 @@ if (!gotSingleInstanceLock) {
     // Compact / Edge Panel: separate explicit dev/migration seam (PHASE 4A).
     if (isCompactWindowEnabled()) {
       void createCompactWindow(stateDir());
-      registerCompactShortcut(stateDir(), compactToggleShortcut());
     }
+    // The toggle shortcut is always available: the Compact overview is a
+    // product surface now, and users must be able to discover and open it
+    // without knowing a launch flag. The window itself still opens on demand.
+    registerCompactShortcut(stateDir(), compactToggleShortcut());
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) void createWindow(refresh);
     });
