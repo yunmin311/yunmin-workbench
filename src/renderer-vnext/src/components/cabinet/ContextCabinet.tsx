@@ -545,12 +545,6 @@ export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
             <span className="cabinet-for">staging for · {selection.label}</span>
           )}
         </div>
-        <div className="cabinet-summary" aria-label="Staging summary">
-          <span className="sum-included">Will use {summary.included}</span>
-          <span className="sum-size">~{summary.roughTokens} tok</span>
-          <span className="sum-pinned">Pinned {summary.pinned}</span>
-          <span className="sum-available">Available {summary.available}</span>
-        </div>
         <div className="cabinet-actions">
           <button
             type="button"
@@ -564,6 +558,12 @@ export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
           <button type="button" className="cabinet-close" aria-label="Close Context Cabinet" onClick={onClose}>×</button>
         </div>
       </header>
+      <div className="cabinet-summary" aria-label="Staging summary">
+        <span className="sum-included">Will use {summary.included}</span>
+        <span className="sum-size">~{summary.roughTokens} tok</span>
+        <span className="sum-pinned">Pinned {summary.pinned}</span>
+        <span className="sum-available">Available {summary.available}</span>
+      </div>
       {(error || stagingProblem) && <p className="cabinet-error">{error || stagingProblem}</p>}
       {pickerOpen && (
         <div className="cabinet-picker" role="search" aria-label="Add project file">

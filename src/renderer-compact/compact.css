@@ -81,8 +81,8 @@ body,
 .compact-body {
   display: flex;
   flex-direction: column;
-  gap: 9px;
-  padding: 10px 12px;
+  gap: 7px;
+  padding: 8px 12px;
   overflow-y: auto;
   flex: 1;
 }

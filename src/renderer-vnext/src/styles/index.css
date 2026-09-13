@@ -748,10 +748,13 @@ body,
 
 .cabinet-summary {
   display: flex;
-  gap: 10px;
-  margin-left: auto;
+  align-items: baseline;
+  gap: 12px;
+  padding: 5px 14px 6px;
+  border-bottom: 1px solid var(--wb-border);
   font-size: var(--wb-fs-xs);
   white-space: nowrap;
+  overflow-x: auto;
 }
 .sum-included { color: var(--wb-teal); }
 .sum-size { color: var(--wb-text-secondary); }
@@ -775,8 +778,8 @@ body,
 .cabinet-recheck:hover { border-color: var(--wb-accent); color: var(--wb-text); }
 .cabinet-actions button { white-space: nowrap; }
 .cabinet-actions button:disabled { opacity: 0.45; cursor: default; }
-.cabinet-compile { border-color: rgba(134, 201, 154, 0.4); color: var(--wb-green); }
-.cabinet-compile:hover { border-color: var(--wb-green); color: var(--wb-green); }
+.cabinet-compile { border-color: rgba(127, 181, 192, 0.4); color: var(--wb-accent-strong); }
+.cabinet-compile:hover { border-color: var(--wb-accent); color: #fff; }
 .cabinet-add { border-color: rgba(127, 196, 178, 0.4); color: var(--wb-teal); }
 .cabinet-add[aria-expanded='true'] { border-color: var(--wb-teal); }
 .cabinet-add-pinned { border-color: rgba(226, 184, 115, 0.4); color: var(--wb-amber); }
@@ -1094,7 +1097,8 @@ body,
 .preparation-meaning strong { color: var(--wb-teal); font-size: var(--wb-fs-md); }
 .preparation-meaning span { color: var(--wb-text-muted); font-size: var(--wb-fs-xs); line-height: 1.4; }
 .preparation-footer label { display: flex; flex-direction: column; gap: 4px; color: var(--wb-text-muted); font: 700 var(--wb-fs-xs)/1.2 inherit; text-transform: uppercase; letter-spacing: .06em; }
-.preparation-footer .cabinet-compile { min-height: 34px; border: 1px solid rgba(134,201,154,.4); border-radius: var(--wb-radius); background: var(--wb-green-dim); padding: 7px 11px; font: 700 var(--wb-fs-sm)/1.2 inherit; cursor: pointer; }
+.preparation-footer .cabinet-compile { min-height: 34px; border: 1px solid rgba(127,181,192,.45); border-radius: var(--wb-radius); background: var(--wb-accent-dim); color: var(--wb-accent-strong); padding: 7px 11px; font: 700 var(--wb-fs-sm)/1.2 inherit; cursor: pointer; }
+.preparation-footer .cabinet-compile:hover:not(:disabled) { background: rgba(127,181,192,.26); color: #fff; }
 .preparation-footer .cabinet-compile:disabled { opacity: .38; cursor: default; }
 
 .currentness { font-weight: 600; }

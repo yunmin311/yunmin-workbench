@@ -27,7 +27,10 @@ import { z } from 'zod';
  */
 
 const COMPACT_DEFAULT_WIDTH = 380;
-const COMPACT_COLLAPSED_HEIGHT = 150;
+// Collapsed height fits the drag strip + project/work/task rows + both
+// action buttons with no scrolling: the two actions must never hide below
+// the fold in the resting state.
+const COMPACT_COLLAPSED_HEIGHT = 208;
 const COMPACT_EXPANDED_HEIGHT = 380;
 const EDGE_MARGIN = 12;
 
