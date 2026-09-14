@@ -87,7 +87,7 @@
 .approved-shell .wb-project-sub,.approved-shell .wb-task-sub{color:#717986}.approved-shell .wb-chip{border-color:#cad1dc;background:#edf1f6;color:#596474}.approved-shell .wb-origin-chip{color:#737d8d}
 .approved-shell .wb-node-execution,.approved-shell .wb-chip-node{background:#222b3b;border-color:#354055;color:var(--approved-text)}.approved-shell .wb-node-execution .wb-node-label,.approved-shell .wb-chip-node .wb-node-label{color:var(--approved-text)}
 .approved-shell .react-flow__node.is-peripheral{opacity:.72;filter:saturate(.55)}.approved-shell .react-flow__node.is-peripheral:hover,.approved-shell .react-flow__node.is-peripheral.is-neighbor{opacity:1;filter:none}
-.approved-shell.is-focus-mode .react-flow__node:not(.is-neighbor):not(:focus){opacity:.34}
+.approved-shell.is-focus-mode .react-flow__node:not(.is-neighbor):not(:focus){opacity:.76}
 .approved-shell .wb-start-card { width:auto;padding:0 0 0 21px;background:transparent;border:0;color:#818995;box-shadow:none;font-size:10px }.approved-shell .wb-start-card:before{content:'i';position:absolute;left:0;top:1px;width:13px;height:13px;display:grid;place-items:center;border:1px solid #a7aeba;border-radius:50%;font:9px Georgia,serif}.approved-shell .wb-start-card .start-title,.approved-shell .wb-start-card .start-dismiss{display:none}.approved-shell .wb-start-card .start-body{margin:0;color:#818995;font-size:10px}.approved-shell .wb-start-card .start-body strong{color:#6678a6}
 
 .approved-action-surface { flex:none;position:relative;z-index:100; }
@@ -115,4 +115,53 @@
   .approved-dock-head{grid-column:1;grid-row:1/3;height:auto;border-bottom:0;border-right:1px solid var(--approved-line-soft);align-items:flex-start;padding-top:16px}.approved-dock-scroll{grid-column:2;grid-row:1/3;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;overflow:hidden;padding:8px}.approved-session-group{min-width:0;padding:0}.approved-session-row{min-height:48px}.approved-dock-foot{display:none}.approved-dock-tabs{grid-column:2;grid-row:1}.approved-detail-scroll,.approved-send-review{grid-column:2;grid-row:2;display:block;overflow:auto;padding:8px}.approved-team-dock .focus-panel{display:grid;grid-template-columns:1fr 1fr;gap:8px}.approved-team-dock .focus-title,.approved-team-dock .focus-chips,.approved-team-dock .focus-actions{grid-column:1}.approved-team-dock .focus-source,.approved-team-dock .execution-story,.approved-team-dock .focus-relation-group{grid-column:2}.approved-plane-head{padding:14px 18px}.approved-plane-title{margin-top:10px}.approved-plane-title h1{font-size:18px}.approved-composer{width:calc(100% - 24px);margin-bottom:10px}.approved-composer textarea{height:34px;min-height:34px}.approved-composer footer{display:none}.approved-context-shelf>span:nth-child(3){display:none}.approved-action-surface.is-context{height:min(54vh,360px);padding:0 12px 10px}.approved-action-surface.is-preflight{height:min(42vh,250px);padding:0 12px 10px}
   .approved-action-surface .approved-dispatch-composer{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr) auto auto}.approved-dispatch-review,.approved-dispatch-shelf,.approved-dispatch-actions,.approved-dispatch-composer>.dispatch-consequence{grid-column:1}.approved-dispatch-controls{grid-column:1;grid-row:3;padding-right:0}.approved-dispatch-preflight{display:none}.approved-dispatch-shelf>span:nth-child(n+3){display:none}
   .approved-shell .wb-region-header{left:18px;top:48px;width:190px;min-height:176px}.approved-shell .wb-node-task{padding:12px 13px}
+}
+
+/* Fidelity correction: Send-ready remains the approved composer in its expanded
+   state. Real target facts stay visible as one meta strip; detailed evidence is
+   owned by the dock. */
+.approved-action-surface.is-preflight{height:min(24vh,210px);padding:0 16px 16px}
+.approved-action-surface .approved-dispatch-composer{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  grid-template-rows:auto auto auto minmax(42px,1fr) auto auto;
+  gap:0;
+  padding:0 14px 8px;
+  overflow:hidden;
+}
+.approved-dispatch-review,.approved-dispatch-shelf,.approved-target-meta-strip,.approved-instruction-surface,.approved-dispatch-actions,.approved-dispatch-composer>.dispatch-consequence{grid-column:1/3}
+.approved-dispatch-review{padding:9px 30px 6px 0}
+.approved-dispatch-shelf{padding-bottom:5px}
+.approved-dispatch-shelf>span{padding:3px 6px}
+.approved-target-meta-strip{display:grid;grid-template-columns:minmax(130px,1fr) minmax(130px,1fr) auto auto;align-items:end;gap:7px;min-width:0;padding-bottom:6px}
+.approved-target-meta-strip>label{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:6px;min-width:0;color:#737d8d;font-size:8px;font-weight:700;text-transform:uppercase}
+.approved-target-meta-strip .dispatch-select{width:100%;height:28px;min-height:28px;box-sizing:border-box;padding:4px 6px;font-size:9px}
+.approved-target-meta-strip .dispatch-executors{display:flex;align-items:center;gap:4px;min-width:0}
+.approved-target-meta-strip .dispatch-executor{height:28px;min-width:60px;padding:2px 6px}
+.approved-target-meta-strip .executor-provider{font-size:8px}.approved-target-meta-strip .executor-backend{font-size:7px}
+.approved-preflight-summary{height:28px;display:flex;align-items:center;gap:6px;box-sizing:border-box;padding:0 8px;border:1px solid #cad1dc;border-radius:7px;background:#edf1f6;color:#687281;white-space:nowrap}
+.approved-preflight-summary b{color:#52617f;font:700 9px Consolas,monospace}.approved-preflight-summary span{font-size:8px}.approved-preflight-summary.is-ready b{color:#526eb6}
+.approved-instruction-surface{display:grid;grid-template-columns:64px minmax(0,1fr);align-items:center;gap:6px;min-width:0;color:#737d8d;font-size:8px;font-weight:700;text-transform:uppercase}
+.approved-instruction-surface .dispatch-instruction{width:100%;height:100%;min-height:40px;max-height:54px;box-sizing:border-box;resize:none;padding:8px 9px;font-size:10px;line-height:1.35}
+.approved-dispatch-composer .approved-dispatch-preflight{position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden;display:block}
+.approved-dispatch-actions{padding-top:5px}.approved-dispatch-actions button{height:29px}.approved-dispatch-composer>.dispatch-consequence{margin-top:3px}
+
+/* Persistent presence is the dock's primary reading; runtime counts are a
+   truthful secondary fact, never a dashboard tile. */
+.approved-presence-group{padding-top:7px}
+.approved-session-attention{max-width:72px;padding:3px 5px;border:1px solid rgba(246,187,85,.24);border-radius:5px;color:var(--approved-amber);font-size:7px;font-style:normal;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.approved-runtime-summary{display:grid;grid-template-columns:auto auto minmax(0,1fr);align-items:center;gap:7px;margin:6px 8px 0;padding:9px 0 2px;border-top:1px solid var(--approved-line-soft);color:var(--approved-muted-2)}
+.approved-runtime-summary>span{font-size:8px;font-weight:700;letter-spacing:.1em}.approved-runtime-summary>b{color:var(--approved-muted);font:700 9px Consolas,monospace}.approved-runtime-summary>small{min-width:0;font-size:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.approved-check-list p{display:grid;grid-template-columns:auto minmax(0,1fr);gap:7px;align-items:start}.approved-check-list p b{font-weight:600;white-space:nowrap}.approved-check-list p span{color:var(--approved-muted-2);overflow-wrap:anywhere}.approved-check-list p.is-block{color:var(--approved-amber)}
+
+@media (max-width: 1099px) {
+  .approved-action-surface.is-preflight{height:min(27vh,190px);padding:0 12px 10px}
+  .approved-target-meta-strip{grid-template-columns:minmax(118px,1fr) minmax(118px,1fr) auto auto}
+  .approved-target-meta-strip>label{grid-template-columns:minmax(0,1fr)}
+  .approved-target-meta-strip>label>span{display:none}
+  .approved-target-meta-strip .dispatch-executor{min-width:54px}
+  .approved-preflight-summary span{display:none}
+  .approved-dispatch-review{padding-top:7px}.approved-dispatch-review .cabinet-scope{display:none}
+  .approved-session-group.approved-presence-group{grid-column:1/3;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 8px}.approved-presence-group>label{grid-column:1/3}
+  .approved-attention-group{grid-column:3}.approved-runtime-summary{grid-column:3;margin:0;padding:8px;border-top:0;align-self:end}
 }

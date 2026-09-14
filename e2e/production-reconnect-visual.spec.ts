@@ -9,7 +9,7 @@ import { exportPinnedRepository } from './pinnedRepoExport';
 const realOverlay = process.env.WB_REAL_OVERLAY;
 const creativeRoot = process.env.WB_REAL_CREATIVE_OS_ROOT ?? 'E:/1project/creative-os';
 const GOVERNANCE_PINNED_COMMIT = 'bdaa2e83229d3339a9d3830d9306f8991a442cf1';
-const outDir = resolve('screenshots/production-reconnect-20260914');
+const outDir = resolve('screenshots/production-fidelity-correction-20260914');
 
 async function setViewport(win: Page, width: number, height: number) {
   await win.setViewportSize({ width, height });
@@ -64,9 +64,6 @@ async function assertDockContract(win: Page) {
 async function shot(win: Page, name: string) {
   await assertDockContract(win);
   await win.screenshot({ path: join(outDir, `${name}.png`), animations: 'disabled' });
-  await win.locator('html').evaluate((element) => { element.style.filter = 'grayscale(1)'; });
-  await win.screenshot({ path: join(outDir, `${name}-gray.png`), animations: 'disabled' });
-  await win.locator('html').evaluate((element) => { element.style.filter = ''; });
 }
 
 test('approved blue prototype reconnect: real Full, Focus, Send-ready and Compact', async () => {
@@ -103,16 +100,16 @@ test('approved blue prototype reconnect: real Full, Focus, Send-ready and Compac
     await expect(win.locator('.wb-fixture-badge')).toHaveCount(0);
 
     await setViewport(win, 1440, 900);
-    await shot(win, '01-full-hero-production-1440x900');
+    await shot(win, '01-full-hero-corrected-1440x900');
     await setViewport(win, 900, 700);
-    await shot(win, '01-full-hero-production-900x700');
+    await assertDockContract(win);
 
     await setViewport(win, 1440, 900);
     await win.locator('.react-flow__node[data-id="task:creative-os:T006"]').click();
     await expect(win.getByRole('complementary', { name: 'Focus Detail' })).toBeVisible();
-    await shot(win, '02-focused-work-production-1440x900');
+    await shot(win, '02-focused-work-corrected-1440x900');
     await setViewport(win, 900, 700);
-    await shot(win, '02-focused-work-production-900x700');
+    await shot(win, '04-focused-work-corrected-900x700');
 
     await win.getByRole('complementary', { name: 'Focus Detail' }).getByRole('button', { name: 'Prepare Work', exact: true }).click();
     const cabinet = win.getByRole('region', { name: 'Context Cabinet' });
@@ -127,16 +124,14 @@ test('approved blue prototype reconnect: real Full, Focus, Send-ready and Compac
     await expect(availableExecutor).toBeVisible();
     await availableExecutor.click();
     await expect(dispatch.locator('.dispatch-button')).toBeEnabled();
-    await shot(win, '03-send-ready-production-1440x900');
+    await shot(win, '03-send-ready-corrected-1440x900');
     await setViewport(win, 900, 700);
-    await shot(win, '03-send-ready-production-900x700');
+    await shot(win, '05-send-ready-corrected-900x700');
 
     const compactWin = app.windows().find((candidate) => candidate !== win && candidate.url().includes('renderer-compact'));
     expect(compactWin).toBeTruthy();
     await expect(compactWin!.locator('.approved-compact-window')).toBeVisible();
-    await compactWin!.screenshot({ path: join(outDir, '04-compact-production.png'), animations: 'disabled' });
-    await compactWin!.locator('html').evaluate((element) => { element.style.filter = 'grayscale(1)'; });
-    await compactWin!.screenshot({ path: join(outDir, '04-compact-production-gray.png'), animations: 'disabled' });
+    await compactWin!.screenshot({ path: join(outDir, '06-compact-corrected.png'), animations: 'disabled' });
   } finally {
     await app.close();
     rmSync(stateDir, { recursive: true, force: true });

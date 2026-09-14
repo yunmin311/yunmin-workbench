@@ -10,7 +10,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import type { WorkGraphRevision } from '../../types';
 import { ContextCabinet, type CabinetSelection } from '../cabinet/ContextCabinet';
-import { DispatchSurface, type DispatchSelection } from '../dispatch/DispatchSurface';
+import { DispatchSurface, type DispatchPreflightState, type DispatchSelection } from '../dispatch/DispatchSurface';
 import {
   buildFocusDetail,
   buildExecutionStory,
@@ -79,7 +79,7 @@ function styledEdges(edges: CanvasEdge[], focusId: string | null, neighborhood: 
         stroke: base.stroke,
         strokeWidth: touched ? base.width + 0.4 : base.width,
         strokeDasharray: base.dash,
-        opacity: focusId === null || touched ? 1 : 0.16,
+        opacity: focusId === null || touched ? 1 : 0.55,
       },
       ...(neighborhood ? {} : {}),
     };
@@ -182,6 +182,7 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
   const [preparationStage, setPreparationStage] = useState<'context' | 'preflight' | null>(null);
   const [preparedPacket, setPreparedPacket] = useState<{ conversationKey: string; packetId: string } | null>(null);
   const [dispatchReady, setDispatchReady] = useState(false);
+  const [dispatchPreflight, setDispatchPreflight] = useState<DispatchPreflightState | null>(null);
   const [collapsedRegions, setCollapsedRegions] = useState<Set<string>>(new Set());
   // Narrow windows start with the work list folded so the floating nav never
   // buries the project anchor; the project switcher itself stays visible.
@@ -442,6 +443,7 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
   const openPreparation = useCallback(() => {
     setPreparedPacket(null);
     setDispatchReady(false);
+    setDispatchPreflight(null);
     setPreparationStage('context');
   }, []);
 
@@ -475,6 +477,7 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
     ? 'Prepare & send'
     : detail?.label ?? semanticWork?.label ?? semanticProject?.label ?? revision.candidate.scope.projectId;
   const mainKicker = preparationStage === 'preflight' ? 'SEND / READY' : detail ? 'TASK / CONTEXT' : 'WORK / ACTIVE';
+  const passedPreflightChecks = dispatchPreflight?.checks.filter((check) => check.status === 'PASS').length ?? 0;
 
   return (
     <div className={`workgraph-canvas-container approved-shell${dimmed ? ' is-focus-mode' : ''}`} data-stage={preparationStage ?? (detail ? 'focus' : 'hero')}>
@@ -551,7 +554,7 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
           </section>
           <div className={`approved-action-surface${preparationStage ? ` is-${preparationStage}` : ''}`}>
             {preparationStage === 'preflight' && preparedPacket ? (
-              <DispatchSurface projectId={revision.candidate.scope.projectId} selection={dispatchSelection} initialConversationKey={preparedPacket.conversationKey} initialPacketId={preparedPacket.packetId} onEditContext={() => setPreparationStage('context')} onClose={() => setPreparationStage(null)} onReadinessChange={setDispatchReady} />
+              <DispatchSurface projectId={revision.candidate.scope.projectId} selection={dispatchSelection} initialConversationKey={preparedPacket.conversationKey} initialPacketId={preparedPacket.packetId} onEditContext={() => setPreparationStage('context')} onClose={() => setPreparationStage(null)} onReadinessChange={setDispatchReady} onPreflightChange={setDispatchPreflight} />
             ) : preparationStage === 'context' ? (
               <ContextCabinet projectId={revision.candidate.scope.projectId} selection={cabinetSelection} onPrepared={(packet) => { setPreparedPacket(packet); setPreparationStage('preflight'); }} onClose={() => setPreparationStage(null)} />
             ) : (
@@ -567,16 +570,16 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
       </main>
 
       <aside className="approved-team-dock" aria-label="Team and runtime">
-        <header className="approved-dock-head"><div><span className="approved-kicker">TEAM / RUNTIME</span><h3>{preparationStage === 'preflight' ? 'Send review' : detail ? 'Task detail' : `${conversationRows.length} sessions`}</h3></div><button type="button" aria-label="Dock options">···</button></header>
+        <header className="approved-dock-head"><div><span className="approved-kicker">TEAM / RUNTIME</span><h3>{preparationStage === 'preflight' ? 'Send review' : detail ? 'Task detail' : 'Session presence'}</h3></div><button type="button" aria-label="Dock options">···</button></header>
         {detail && preparationStage === null ? (
           <><nav className="approved-dock-tabs"><button type="button" className="active">Context</button><button type="button">Activity</button><button type="button">Evidence</button></nav><div className="approved-dock-scroll approved-detail-scroll"><FocusDetailPanel detail={detail} story={executionStory} onClose={() => setSelectedId(null)} onPrepare={openPreparation}/></div></>
         ) : preparationStage === 'preflight' ? (
-          <><nav className="approved-dock-tabs"><button type="button" className="active">Preflight</button><button type="button">Packet</button><button type="button">Evidence</button></nav><div className="approved-dock-scroll approved-send-review"><section className="approved-readiness"><span>{dispatchReady ? '3/3' : preparedPacket ? '2/3' : '—'}</span><div><label>{dispatchReady ? 'READY TO SEND' : preparedPacket ? 'RUNNER REQUIRED' : 'CHECKING'}</label><h4>{mainTitle}</h4></div></section><div className="approved-check-list"><p>✓ Task scoped</p><p>✓ Context staged · {includedContext.length}</p><p>{dispatchReady ? '✓ Runner resolved' : '○ Choose a runner'}</p></div><section><span className="approved-kicker">PROVENANCE</span><p className="wb-mono">{preparedPacket?.packetId ?? 'No frozen packet'}</p></section></div></>
+          <><nav className="approved-dock-tabs"><button type="button" className="active">Preflight</button><button type="button">Packet</button><button type="button">Evidence</button></nav><div className="approved-dock-scroll approved-send-review"><section className="approved-readiness"><span>{dispatchPreflight?.checking ? '…' : `${passedPreflightChecks}/${dispatchPreflight?.checks.length ?? '—'}`}</span><div><label>{dispatchReady ? 'READY TO SEND' : dispatchPreflight?.checking ? 'CHECKING' : 'NEEDS REVIEW'}</label><h4>{mainTitle}</h4></div></section><div className="approved-check-list">{dispatchPreflight?.checks.map((check) => <p key={check.id} className={`is-${check.status.toLowerCase()}`}><b>{check.status === 'PASS' ? '✓' : '○'} {check.label}</b><span>{check.detail}</span></p>) ?? <p><b>○ Preflight</b><span>Checking real snapshot and runner facts…</span></p>}</div><section><span className="approved-kicker">PROVENANCE</span><p className="wb-mono">{preparedPacket?.packetId ?? 'No frozen packet'}</p></section></div></>
         ) : (
           <><div className="approved-dock-scroll">
-            {gateRows.length > 0 && <section className="approved-session-group"><label>NEEDS YOU <em>{gateRows.length}</em></label>{gateRows.map((node) => <button type="button" className="approved-session-row" key={node.id} onClick={() => setSelectedId(node.id)}><span className="approved-session-status attention"/><span><b>{node.label}</b><small>{node.gateKind} · {node.level}</small></span></button>)}</section>}
-            <section className="approved-session-group"><label>RUNNING <em>{executionRows.length}</em></label>{executionRows.length === 0 ? <p className="approved-runtime-empty">No running execution fact.</p> : executionRows.map((node) => <button type="button" className="approved-session-row" key={node.id} onClick={() => setSelectedId(node.id)}><span className={`approved-session-status ${node.live ? 'working' : 'idle'}`}/><span><b>{node.label}</b><small>{node.provider} · {node.runtimeState}</small></span></button>)}</section>
-            <section className="approved-session-group"><label>SESSIONS <em>{conversationRows.length}</em></label>{conversationRows.length === 0 ? <p className="approved-runtime-empty">No bound conversation fact.</p> : conversationRows.map((node) => <button type="button" className="approved-session-row" key={node.id} onClick={() => setSelectedId(node.id)}><span className="approved-session-status idle"/><span><b>{node.label}</b><small>{node.platform} · {node.runtimeState}</small></span></button>)}</section>
+            <section className="approved-session-group approved-presence-group"><label>PRESENCE <em>{conversationRows.length}</em></label>{conversationRows.length === 0 ? <p className="approved-runtime-empty">No bound conversation fact.</p> : conversationRows.map((node) => <button type="button" className="approved-session-row" key={node.id} onClick={() => setSelectedId(node.id)}><span className={`approved-session-status ${node.attentionState !== 'none' && node.attentionState !== 'unknown' ? 'attention' : node.runtimeState === 'working' ? 'working' : 'idle'}`}/><span><b>{node.label}</b><small>{node.platform} · {node.lifecycleState} · {node.runtimeState}</small></span>{node.attentionState !== 'none' && node.attentionState !== 'unknown' && <em className="approved-session-attention">{node.attentionState}</em>}</button>)}</section>
+            {gateRows.length > 0 && <section className="approved-session-group approved-attention-group"><label>NEEDS YOU <em>{gateRows.length}</em></label>{gateRows.map((node) => <button type="button" className="approved-session-row" key={node.id} onClick={() => setSelectedId(node.id)}><span className="approved-session-status attention"/><span><b>{node.label}</b><small>{node.gateKind} · {node.level}</small></span></button>)}</section>}
+            <section className="approved-runtime-summary" aria-label="Runtime summary"><span>RUNNING</span><b>{executionRows.length}</b><small>{executionRows.length === 0 ? 'No live execution fact.' : executionRows.map((node) => `${node.provider} · ${node.runtimeState}`).join(' / ')}</small></section>
           </div><footer className="approved-dock-foot"><span><i className="approved-presence live"/>{executionRows.filter((node) => node.live).length} working</span><span>{gateRows.length} needs you</span></footer></>
         )}
       </aside>

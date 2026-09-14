@@ -32,11 +32,17 @@ export interface DispatchSelection {
   conversationKey?: string;
 }
 
-interface PreflightView {
+export interface PreflightView {
   id: string;
   label: string;
   status: 'PASS' | 'BLOCK';
   detail: string;
+}
+
+export interface DispatchPreflightState {
+  ready: boolean;
+  checking: boolean;
+  checks: PreflightView[];
 }
 
 function mergeFingerprints(groups: { sourceRef: string; sha256: string }[][]): { sourceRef: string; sha256: string }[] {
@@ -47,7 +53,7 @@ function mergeFingerprints(groups: { sourceRef: string; sha256: string }[][]): {
   return [...merged].map(([sourceRef, sha256]) => ({ sourceRef, sha256 }));
 }
 
-export function DispatchSurface({ projectId, selection, initialConversationKey, initialPacketId, onEditContext, onClose, onReadinessChange }: {
+export function DispatchSurface({ projectId, selection, initialConversationKey, initialPacketId, onEditContext, onClose, onReadinessChange, onPreflightChange }: {
   projectId: string;
   selection: DispatchSelection | null;
   initialConversationKey?: string;
@@ -55,6 +61,7 @@ export function DispatchSurface({ projectId, selection, initialConversationKey, 
   onEditContext?: () => void;
   onClose: () => void;
   onReadinessChange?: (ready: boolean) => void;
+  onPreflightChange?: (state: DispatchPreflightState) => void;
 }) {
   const [snapshot, setSnapshot] = useState<OverlaySnapshot | null>(null);
   const [draft, setDraft] = useState<DispatchDraftV1>(() => {
@@ -185,6 +192,14 @@ export function DispatchSurface({ projectId, selection, initialConversationKey, 
     onReadinessChange?.(preflight.ok && packetDetail !== null);
   }, [onReadinessChange, packetDetail, preflight.ok]);
 
+  useEffect(() => {
+    onPreflightChange?.({
+      ready: preflight.ok && packetDetail !== null,
+      checking: !setupReady,
+      checks: preflight.checks,
+    });
+  }, [onPreflightChange, packetDetail, preflight.checks, preflight.ok, setupReady]);
+
   const dispatch = useCallback(() => {
     if (!canDispatch || !packetDetail) return;
     setDispatching(true);
@@ -220,6 +235,7 @@ export function DispatchSurface({ projectId, selection, initialConversationKey, 
   }, [canDispatch, draft, packetDetail, projectId]);
 
   const canonical = isCanonicalTaskDispatch(draft);
+  const passedChecks = preflight.checks.filter((check) => check.status === 'PASS').length;
 
   return (
     <section className="dispatch-surface approved-dispatch-composer" role="region" aria-label="Dispatch">
@@ -243,17 +259,21 @@ export function DispatchSurface({ projectId, selection, initialConversationKey, 
           <em>{packetDetail.included.length + packetDetail.references.length} sources · ~{packetDetail.roughTokens} tok</em>
         </div>
       )}
-      <div className="approved-dispatch-controls">
+      <div className="approved-target-meta-strip" aria-label="Dispatch target and metadata">
         <label htmlFor="dispatch-conversation"><span>Chat</span><select id="dispatch-conversation" className="dispatch-select" value={draft.conversationKey ?? ''} onChange={(event) => pickConversation(event.target.value || null)}><option value="">Choose chat…</option>{draft.conversationKey && !conversations.some((conversation) => conversation.key === draft.conversationKey) && <option value={draft.conversationKey}>Checking conversation…</option>}{conversations.map((conversation) => <option key={conversation.key} value={conversation.key}>{conversation.role} · {conversation.platform}</option>)}</select></label>
         <label htmlFor="dispatch-packet"><span>Snapshot</span><select id="dispatch-packet" className="dispatch-select" value={draft.packetId ?? ''} disabled={draft.conversationKey === undefined} onChange={(event) => { setDraft((current) => setDispatchPacket(current, event.target.value || null)); setReceipt(null); }}><option value="">Choose snapshot…</option>{frozenList.map((item) => <option key={item.packetId} value={item.packetId}>v{item.version} · {item.packetId.slice(0, 8)}… · ~{item.roughTokens} tok</option>)}</select></label>
         <div className="dispatch-executors" role="group" aria-label="Executor selection">
           {(Object.entries(capabilities) as [HarnessCapabilities['harness'], HarnessCapabilities][]).map(([harness, caps]) => <button key={harness} type="button" className={`dispatch-executor${draft.provider === harness ? ' is-active' : ''}`} disabled={!caps.canDispatch} aria-pressed={draft.provider === harness} onClick={() => pickExecutor(harness)} title={caps.canDispatch ? `Send this run to ${harness}` : `Unavailable: ${caps.evidence}`}><span className="executor-provider">{harness}</span><span className="executor-backend">{caps.canDispatch ? 'Ready' : 'Unavailable'}</span></button>)}
         </div>
-        <label className="approved-dispatch-instruction" htmlFor="dispatch-instruction"><span>Instruction</span><textarea id="dispatch-instruction" className="dispatch-instruction" rows={1} value={draft.instruction} onChange={(event) => setDraft((current) => setDispatchInstruction(current, event.target.value))} placeholder="What should this run do?" /></label>
+        <span className={`approved-preflight-summary ${setupReady ? 'dispatch-ready' : 'dispatch-checking'}${canDispatch ? ' is-ready' : ''}`} role="status">
+          <b>{setupReady ? `${passedChecks}/${preflight.checks.length}` : '…'}</b>
+          <span>{setupReady ? (preflight.ok ? 'Preflight ready' : 'Needs review') : 'Checking'}</span>
+        </span>
+        <ul className="dispatch-preflight approved-dispatch-preflight" aria-label="Dispatch preflight evidence">
+          {preflight.checks.map((check) => <li key={check.id} className={`preflight-check is-${check.status.toLowerCase()}`}><span className="preflight-status">{check.status}</span><span className="preflight-label">{check.label}</span><span className="preflight-detail">{check.detail}</span></li>)}
+        </ul>
       </div>
-      <aside className="dispatch-preflight approved-dispatch-preflight" aria-label="Dispatch preflight">
-        {!setupReady ? <p className="dispatch-checking" role="status">Checking snapshot, project files and runners…</p> : <ul className="dispatch-ready">{preflight.checks.map((check) => <li key={check.id} className={`preflight-check is-${check.status.toLowerCase()}`}><span className="preflight-status">{check.status}</span><span className="preflight-label">{check.label}</span><span className="preflight-detail">{check.detail}</span></li>)}</ul>}
-      </aside>
+      <label className="approved-instruction-surface approved-dispatch-instruction" htmlFor="dispatch-instruction"><span>Instruction</span><textarea id="dispatch-instruction" className="dispatch-instruction" rows={1} value={draft.instruction} onChange={(event) => setDraft((current) => setDispatchInstruction(current, event.target.value))} placeholder="What should this run do?" /></label>
       <footer className="approved-dispatch-actions">
         <span>{packetDetail ? <><b>{packetDetail.included.length + packetDetail.references.length}</b> sources · <b>1</b> target</> : 'Checking snapshot…'}</span>
         <button type="button" className="secondary-button" onClick={onEditContext} aria-label="Back to Context">Back to edit</button>

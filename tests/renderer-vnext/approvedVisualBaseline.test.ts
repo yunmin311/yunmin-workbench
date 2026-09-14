@@ -51,4 +51,31 @@ describe('approved blue donor-transplant production contract', () => {
     expect(css).toContain('border-radius: 14px');
     expect(css).toContain('--approved-accent: #7892f2');
   });
+
+  it('keeps Send-ready inside the compact composer action hierarchy', async () => {
+    const source = await read('src/renderer-vnext/src/components/dispatch/DispatchSurface.tsx');
+    const css = await read('src/renderer-vnext/src/styles/approved-blue.css');
+    expect(source).toContain('approved-target-meta-strip');
+    expect(source).toContain('approved-instruction-surface');
+    expect(source).toContain('approved-preflight-summary');
+    expect(source).toContain('onPreflightChange');
+    expect(css).toContain('.approved-action-surface.is-preflight{height:min(24vh,210px)');
+    expect(css).toContain('.approved-dispatch-composer .approved-dispatch-preflight{position:absolute;left:-10000px');
+  });
+
+  it('preserves spatial legibility while focus raises the selected object', async () => {
+    const source = await read('src/renderer-vnext/src/components/canvas/WorkGraphCanvas.tsx');
+    const css = await read('src/renderer-vnext/src/styles/approved-blue.css');
+    expect(source).toContain("opacity: focusId === null || touched ? 1 : 0.55");
+    expect(css).toContain(".approved-shell.is-focus-mode .react-flow__node:not(.is-neighbor):not(:focus){opacity:.76}");
+  });
+
+  it('makes persistent session presence primary and runtime counts secondary', async () => {
+    const source = await read('src/renderer-vnext/src/components/canvas/WorkGraphCanvas.tsx');
+    const presence = source.indexOf('approved-presence-group');
+    const runtime = source.indexOf('approved-runtime-summary');
+    expect(presence).toBeGreaterThan(-1);
+    expect(runtime).toBeGreaterThan(presence);
+    expect(source).toContain('node.platform} · {node.lifecycleState} · {node.runtimeState');
+  });
 });
