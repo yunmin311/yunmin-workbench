@@ -66,7 +66,7 @@ test('headed real canonical Task prepares an explicit dispatch and stops before 
     await expect(focusDetail).toContainText('定义主/渲染共享类型');
     await expect(focusDetail).not.toContainText('unknown');
 
-    await win.getByRole('button', { name: 'Prepare', exact: true }).click();
+    await focusDetail.getByRole('button', { name: 'Prepare Work', exact: true }).click();
     const cabinet = win.getByRole('region', { name: 'Context Cabinet' });
     await expect(cabinet).toBeVisible();
     await cabinet.locator('#prepare-conversation').selectOption(CONVERSATION_KEY);

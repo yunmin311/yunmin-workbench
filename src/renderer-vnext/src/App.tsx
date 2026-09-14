@@ -3,6 +3,7 @@ import { WorkGraphCanvas } from './components/canvas/WorkGraphCanvas';
 
 import '../../../src/design/tokens.css';
 import './styles/index.css';
+import './styles/approved-blue.css';
 import type { WorkGraphRevision } from './types';
 import { projectIdsFromOverlay } from './workGraphView';
 

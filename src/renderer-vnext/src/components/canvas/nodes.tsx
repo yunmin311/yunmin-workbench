@@ -55,15 +55,21 @@ const TaskNode = memo((props: NodeProps) => {
     <div className={`wb-node wb-node-task${selected ? ' is-focused' : ''}`} data-id={data.semantic.id} data-family={data.family}>
       <Handle type="target" position={Position.Left} isConnectable={false} className="wb-handle" />
       <div className="wb-task-head">
-        <span className="wb-task-sigil" aria-hidden="true">◈</span>
-        <span className="wb-node-label">{data.label}</span>
-        <CurrentnessChip currentness={'currentness' in semantic ? semantic.currentness : 'UNKNOWN'} />
+        <span className={`wb-state-dot ${semantic.taskState === 'active' ? 'is-working' : 'is-idle'}`} aria-hidden="true" />
+        <span className="wb-object-index">{semantic.taskState === 'active' ? 'IN FOCUS' : 'NEXT'}</span>
+        <span className="wb-id">{semantic.taskId}</span>
       </div>
+      <span className="wb-node-label">{data.label}</span>
+      <p className="wb-task-copy">{data.sourceRef || 'No declared source reference'}</p>
       {semantic.taskState !== 'unknown' && (
         <div className="wb-task-sub">
           <span className={`wb-chip ${stateTone}`}>{semantic.taskState}</span>
         </div>
       )}
+      <footer className="wb-object-footer">
+        <span>{'currentness' in semantic && semantic.currentness !== 'UNKNOWN' ? semantic.currentness.toLowerCase() : 'currentness unknown'}</span>
+        <span>{data.verification.toLowerCase()}</span>
+      </footer>
       <Handle type="source" position={Position.Right} isConnectable={false} className="wb-handle" />
     </div>
   );
@@ -77,11 +83,10 @@ const WorkRegionNode = memo((props: NodeProps) => {
   return (
     <div className="wb-region" data-region={region.id}>
       <div className="wb-region-header">
-        <span className="wb-region-sigil" aria-hidden="true">◫</span>
+        <span className="wb-object-index">WORK / {region.workId ?? 'UNKNOWN'}</span>
         <span className="wb-region-label" title={region.label}>{region.label}</span>
-        <CurrentnessChip currentness={region.currentness} />
-        {region.taskCount > 0 && <span className="wb-chip is-violet">{region.taskCount} tasks</span>}
-        {region.verificationCount > 0 && <span className="wb-chip">{region.verificationCount} checks</span>}
+        <p>Declared workspace scope and its current Tasks.</p>
+        <footer className="wb-object-footer"><span>{region.taskCount} tasks</span><span>{region.currentness.toLowerCase()}</span></footer>
       </div>
 
     </div>

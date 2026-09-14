@@ -65,7 +65,7 @@ test('headed real overlay stages Context in the vNext Context Cabinet', async ()
     expect(baselineHash).toBeTruthy();
 
     // Open the Cabinet from the Canvas and wait for real source groups.
-    await win.getByRole('button', { name: 'Prepare', exact: true }).click();
+    await win.locator('.approved-composer').getByRole('button', { name: 'Prepare Work', exact: true }).click();
     const cabinet = win.getByRole('region', { name: 'Context Cabinet' });
     await expect(cabinet).toBeVisible();
     await expect(cabinet.locator('.cabinet-group h3', { hasText: 'Governance' })).toBeVisible();

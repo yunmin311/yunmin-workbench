@@ -181,11 +181,13 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
   const [instance, setInstance] = useState<ReactFlowInstance | null>(null);
   const [preparationStage, setPreparationStage] = useState<'context' | 'preflight' | null>(null);
   const [preparedPacket, setPreparedPacket] = useState<{ conversationKey: string; packetId: string } | null>(null);
+  const [dispatchReady, setDispatchReady] = useState(false);
   const [collapsedRegions, setCollapsedRegions] = useState<Set<string>>(new Set());
   // Narrow windows start with the work list folded so the floating nav never
   // buries the project anchor; the project switcher itself stays visible.
   const [navCollapsed, setNavCollapsed] = useState(() => window.innerWidth < 1100);
   const [startDismissed, setStartDismissed] = useState(false);
+  const [narrowViewport, setNarrowViewport] = useState(() => window.innerWidth < 1100);
   const fittedScopeRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -194,8 +196,15 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
     setSelectedId((current) => current && initial.nodes.some((node) => node.id === current) ? current : null);
     setCollapsedRegions(new Set());
     setPreparedPacket(null);
+    setDispatchReady(false);
     setPreparationStage(null);
   }, [initial, setEdges, setNodes]);
+
+  useEffect(() => {
+    const update = () => setNarrowViewport(window.innerWidth < 1100);
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
 
   // Compact → Full handoff: apply the navigation identity to the canvas.
   // A request for another known project switches first; the pending request
@@ -266,7 +275,18 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
     const onResize = () => {
       window.clearTimeout(timer);
       timer = window.setTimeout(() => {
-        if (selectedId !== null || preparationStage !== null) return;
+        if (preparationStage !== null) {
+          const regions = nodes.filter((node) => node.type === 'wb-region');
+          if (regions.length > 0) void instance.fitView({ nodes: regions, padding: 0.12, duration: 240 });
+          return;
+        }
+        if (selectedId !== null) {
+          const selected = nodes.find((node) => node.id === selectedId);
+          const regions = nodes.filter((node) => node.type === 'wb-region');
+          const framed = window.innerWidth < 1100 && regions.length > 0 ? regions : (selected ? [selected] : []);
+          if (framed.length > 0) void instance.fitView({ nodes: framed, padding: window.innerWidth < 1100 ? 0.12 : 0.8, duration: 240 });
+          return;
+        }
         const wanted = new Set(workRegionFitIds(initial.nodes));
         const framed = initial.nodes.filter((node) => wanted.has(node.id));
         if (framed.length > 0) void instance.fitView({ nodes: framed, padding: 0.2, duration: 240 });
@@ -299,17 +319,46 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
     () => projectRegionVisibility(nodes, edges, collapsedRegions),
     [collapsedRegions, edges, nodes],
   );
-  const visibleEdges = useMemo(
-    () => styledEdges(visibility.edges, selectedNode ? selectedId : null, neighborhood, hoveredEdgeId),
-    [visibility.edges, selectedNode, selectedId, neighborhood, hoveredEdgeId],
-  );
+  const visibleEdges = useMemo(() => {
+    const taskIds = new Set(visibility.nodes.filter((node) => node.data.kind === 'task').map((node) => node.id));
+    return styledEdges(
+      visibility.edges.filter((edge) => taskIds.has(edge.source) && taskIds.has(edge.target)),
+      selectedNode ? selectedId : null,
+      neighborhood,
+      hoveredEdgeId,
+    );
+  }, [visibility.edges, visibility.nodes, selectedNode, selectedId, neighborhood, hoveredEdgeId]);
   const visibleNodes = useMemo(() => {
-    if (!selectedId || !neighborhood) return visibility.nodes;
-    return visibility.nodes.map((node) => ({
-      ...node,
-      className: neighborhood.has(node.id) ? 'is-neighbor' : node.className,
-    }));
-  }, [visibility.nodes, selectedId, neighborhood]);
+    const regions = visibility.nodes.filter((node) => node.type === 'wb-region');
+    const taskOrder = new Map<string, number>();
+    for (const region of regions) {
+      visibility.nodes
+        .filter((node) => node.parentNode === region.id && node.data.kind === 'task')
+        .forEach((node, index) => taskOrder.set(node.id, index));
+    }
+    return visibility.nodes
+      .filter((node) => node.type === 'wb-region' || (node.data.kind === 'task' && (taskOrder.get(node.id) ?? 99) < 3))
+      .map((node, regionIndex) => {
+        const focusedClass = selectedId && neighborhood?.has(node.id) ? 'is-neighbor' : node.className;
+        if (node.type === 'wb-region') {
+          return {
+            ...node,
+            position: narrowViewport ? { x: 0, y: regionIndex * 360 } : { x: 24, y: regionIndex * 500 + 24 },
+            style: narrowViewport ? { width: 820, height: 315 } : { width: 850, height: 430 },
+            className: focusedClass,
+          };
+        }
+        const index = taskOrder.get(node.id) ?? 0;
+        return {
+          ...node,
+          position: narrowViewport
+            ? (index === 2 ? { x: 640, y: 52 } : { x: 226 + index * 220, y: 18 + index * 100 })
+            : (index === 2 ? { x: 620, y: 160 } : { x: 296 + index * 26, y: 62 + index * 196 }),
+          style: narrowViewport ? { width: index === 0 ? 204 : index === 1 ? 196 : 166, height: 154 } : { width: index === 2 ? 190 : 222, height: 156 },
+          className: `${focusedClass ?? ''}${index === 2 ? ' approved-third-object' : ''}`.trim(),
+        };
+      });
+  }, [visibility.nodes, selectedId, neighborhood, narrowViewport]);
 
   // Explicit Full-Workbench Work/Task selection updates the thin local
   // current-selection bookmark the Compact surface reads. Never written
@@ -392,6 +441,7 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
 
   const openPreparation = useCallback(() => {
     setPreparedPacket(null);
+    setDispatchReady(false);
     setPreparationStage('context');
   }, []);
 
@@ -414,191 +464,122 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
   }, [preparationStage, selectedId]);
 
   const dimmed = selectedNode !== null;
+  const semanticNodes = revision.candidate.semanticFacts.nodes;
+  const semanticProject = semanticNodes.find((node) => node.kind === 'project');
+  const semanticWork = semanticNodes.find((node) => node.kind === 'work');
+  const includedContext = semanticNodes.filter((node) => node.kind === 'context' && node.state === 'included');
+  const executionRows = semanticNodes.filter((node) => node.kind === 'execution').slice(0, 3);
+  const conversationRows = semanticNodes.filter((node) => node.kind === 'conversation').slice(0, 4);
+  const gateRows = semanticNodes.filter((node) => node.kind === 'gate').slice(0, 2);
+  const mainTitle = preparationStage === 'preflight'
+    ? 'Prepare & send'
+    : detail?.label ?? semanticWork?.label ?? semanticProject?.label ?? revision.candidate.scope.projectId;
+  const mainKicker = preparationStage === 'preflight' ? 'SEND / READY' : detail ? 'TASK / CONTEXT' : 'WORK / ACTIVE';
 
   return (
-    <div className="workgraph-canvas-container">
-      <div className={`wb-canvas-skin${dimmed ? ' is-focus-mode' : ''}`}>
-        <ReactFlow
-          nodes={visibleNodes}
-          edges={visibleEdges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onInit={setInstance}
-          onNodeClick={(_event, node) => {
-            if (node.type === 'wb-region') return;
-            setSelectedId(node.id);
-            void instance?.setCenter(node.positionAbsolute?.x ?? node.position.x + 80, (node.positionAbsolute?.y ?? node.position.y) + 36, { zoom: Math.max(instance.getZoom(), 0.85), duration: 280 });
-          }}
-          onPaneClick={() => setSelectedId(null)}
-          onEdgeMouseEnter={(_event, edge) => setHoveredEdgeId(edge.id)}
-          onEdgeMouseLeave={() => setHoveredEdgeId(null)}
-          nodeTypes={wbNodeTypes as never}
-          nodesConnectable={false}
-          minZoom={0.25}
-          defaultEdgeOptions={{ type: 'smoothstep' }}
-          proOptions={{ hideAttribution: true }}
-          fitView
-          fitViewOptions={{ padding: 0.16 }}
-        >
-          <Background color="#1a212b" gap={26} size={1} variant={BackgroundVariant.Dots} />
-          <Panel position="top-left" className="wb-canvas-toolbar wb-glass" aria-label="Graph controls">
-            <span className="wb-toolbar-brand">Yunmin <em>Workbench</em></span>
-            <span className="wb-toolbar-sep" aria-hidden="true" />
-            <button type="button" className="wb-tool" onClick={() => void instance?.fitView({ padding: 0.16, duration: 280 })}>Fit view</button>
-            <button type="button" className="wb-tool" onClick={focusCurrentOrProject}>Locate</button>
-            <button
-              type="button"
-              className="wb-tool"
-              aria-pressed={preparationStage !== null}
-              onClick={openPreparation}
-              title={selectedNode && (selectedNode.data.kind === 'task' || selectedNode.data.kind === 'work') ? `Prepare · ${selectedNode.data.label}` : 'Choose context, snapshot it, and send it'}
-            >
-              Prepare
-            </button>
-            <button type="button" className="wb-tool" onClick={() => void onRefresh()}>Refresh</button>
-            <button
-              type="button"
-              className="wb-tool"
-              aria-label="Open Compact overview"
-              title="Open the Compact overview (Alt+Shift+B): your current work in a small always-on-top window"
-              onClick={() => void window.wb.toggleCompactWindow()}
-            >
-              Compact
-            </button>
-            {attentionNodes.length > 0 && (
-              <button type="button" className="wb-tool is-attention" aria-label="Attention" onClick={() => void instance?.fitView({ nodes: attentionNodes, padding: 0.9, duration: 280 })}>
-                ⚑ {attentionNodes.length}
-              </button>
-            )}
-            <span className="wb-toolbar-sep" aria-hidden="true" />
-            <WorkspaceTally revision={revision} />
-          </Panel>
-          {workRegions.length === 0 && (
-            <Panel position="bottom-center" className="wb-canvas-note">
-              No work areas yet — they appear when the project declares work.
-            </Panel>
-          )}
-          {workRegions.length > 0 && !selectedNode && preparationStage === null && !startDismissed && (
-            <Panel position="bottom-left" className="wb-start-card wb-glass">
-              <section aria-label="Where to start">
-                <button type="button" className="start-dismiss" aria-label="Dismiss getting started" onClick={() => setStartDismissed(true)}>×</button>
-                <p className="start-title">Start here</p>
-                <p className="start-body">Pick a task on the canvas, then <strong>Prepare</strong>.</p>
-                <ol className="start-path" aria-label="The main path">
-                  <li>Task</li>
-                  <li>Context</li>
-                  <li>Snapshot</li>
-                  <li>Send</li>
-                </ol>
-              </section>
-            </Panel>
-          )}
-        </ReactFlow>
-      </div>
-
-      {(projectNode || projectIds.length > 0) && (
-        <nav className="wb-region-nav wb-glass" aria-label="Work regions">
-          <div className="region-nav-project">
-            <span className="region-nav-kicker">
-              <span>Current project</span>
-              <button
-                type="button"
-                className="region-nav-toggle"
-                aria-expanded={!navCollapsed}
-                aria-label={navCollapsed ? 'Expand work list' : 'Collapse work list'}
-                title={navCollapsed ? 'Expand work list' : 'Collapse work list'}
-                onClick={() => setNavCollapsed((collapsed) => !collapsed)}
-              >
-                {navCollapsed ? '▸' : '▾'}
-              </button>
-            </span>
-            <strong>{projectNode?.data.label ?? revision.candidate.scope.projectId}</strong>
-            <select
-              aria-label="Switch project"
-              value={revision.candidate.scope.projectId}
-              disabled={projectIds.length < 2}
-              onChange={(event) => onSelectProject(event.target.value)}
-            >
-              {(projectIds.includes(revision.candidate.scope.projectId) ? projectIds : [revision.candidate.scope.projectId, ...projectIds]).map((projectId) => (
-                <option key={projectId} value={projectId}>{projectId}</option>
-              ))}
-            </select>
-          </div>
-          {!navCollapsed && (
-          <div className="region-nav-list">
-            {regionNavigation.length === 0 && <p className="region-nav-empty">No work in this project yet.</p>}
-            {regionNavigation.map((region, index) => (
-              <div className={`region-nav-row${region.active ? ' is-active' : ''}`} key={region.regionId}>
-                <button type="button" className="region-nav-focus" onClick={() => focusRegion(region.regionId)}>
-                  <span className="region-nav-index">{String(index + 1).padStart(2, '0')}</span>
-                  <span className="region-nav-name" title={region.label}>{region.label}</span>
-                  <span className="region-nav-count">{region.taskCount}</span>
-                </button>
-                <button
-                  type="button"
-                  className="region-nav-collapse"
-                  aria-label={`${collapsedRegions.has(region.regionId) ? 'Expand' : 'Collapse'} ${region.label}`}
-                  onClick={() => toggleRegion(region.regionId)}
-                >
-                  {collapsedRegions.has(region.regionId) ? '+' : '−'}
-                </button>
-              </div>
-            ))}
-          </div>
-          )}
-          {!navCollapsed && (
-          <div className="region-nav-actions">
-            <button
-              type="button"
-              onClick={() => {
-                setCollapsedRegions(new Set());
-                fitVisibleRegions(regionNavigation.map((region) => region.regionId));
-              }}
-            >Show all</button>
-            <button
-              type="button"
-              disabled={!regionNavigation.some((region) => region.active)}
-              onClick={() => {
-                const active = regionNavigation.find((region) => region.active);
-                if (!active) return;
-                setCollapsedRegions(new Set(regionNavigation.filter((region) => region.regionId !== active.regionId).map((region) => region.regionId)));
-                fitVisibleRegions([active.regionId]);
-              }}
-            >Keep current</button>
-          </div>
-          )}
+    <div className={`workgraph-canvas-container approved-shell${dimmed ? ' is-focus-mode' : ''}`} data-stage={preparationStage ?? (detail ? 'focus' : 'hero')}>
+      <aside className="approved-presence-rail" aria-label="Workbench surfaces">
+        <span className="approved-brand">Y</span>
+        <nav className="approved-rail-actions">
+          <button type="button" className="is-active" aria-label="Work">▦</button>
+          <button type="button" aria-label="Locate current work" onClick={focusCurrentOrProject}>⌖</button>
+          <button type="button" aria-label="Refresh workspace" onClick={() => void onRefresh()}>⌕</button>
         </nav>
-      )}
+        <button type="button" className="approved-avatar" aria-label="Profile">LQ</button>
+      </aside>
 
-      {detail && preparationStage === null && (
-        <FocusDetailPanel
-          detail={detail}
-          story={executionStory}
-          onClose={() => setSelectedId(null)}
-          onPrepare={openPreparation}
-        />
-      )}
-      {preparationStage === 'preflight' && preparedPacket && (
-        <DispatchSurface
-          projectId={revision.candidate.scope.projectId}
-          selection={dispatchSelection}
-          initialConversationKey={preparedPacket.conversationKey}
-          initialPacketId={preparedPacket.packetId}
-          onEditContext={() => setPreparationStage('context')}
-          onClose={() => setPreparationStage(null)}
-        />
-      )}
-      {preparationStage === 'context' && (
-        <ContextCabinet
-          projectId={revision.candidate.scope.projectId}
-          selection={cabinetSelection}
-          onPrepared={(packet) => {
-            setPreparedPacket(packet);
-            setPreparationStage('preflight');
-          }}
-          onClose={() => setPreparationStage(null)}
-        />
-      )}
+      <aside className="approved-work-rail" aria-label="Work regions">
+        <header className="approved-side-head"><span>YUNMIN / WORKBENCH</span><button type="button" onClick={() => void window.wb.toggleCompactWindow()} aria-label="Open Compact overview">⌘</button></header>
+        <section className="approved-current-work">
+          <span className="approved-kicker">CURRENT WORK</span>
+          <h2>{semanticWork?.label ?? 'Project workspace'}</h2>
+          <p>{semanticProject?.label ?? revision.candidate.scope.projectId}</p>
+          <div className="approved-phase-track" aria-label="Product path"><span className="done"/><span className="done"/><span className="active"/><span/><span/><span/><span/></div>
+          <div className="approved-phase-copy"><b>Task</b><span>Context → Prepare → Send</span></div>
+        </section>
+        <nav className="approved-work-list">
+          {regionNavigation.length === 0 && <p className="approved-empty">No declared Work in this project.</p>}
+          {regionNavigation.map((region, index) => (
+            <div className={`approved-work-row${region.active ? ' is-selected' : ''}`} key={region.regionId}>
+              <button type="button" className="approved-work-focus" onClick={() => focusRegion(region.regionId)}>
+                <i>{String(index + 1).padStart(2, '0')}</i><span><b>{region.label}</b><small>{region.taskCount} tasks · {region.currentness.toLowerCase()}</small></span>{region.taskCount > 0 && <em>{region.taskCount}</em>}
+              </button>
+              <button type="button" className="approved-work-collapse" aria-label={`${collapsedRegions.has(region.regionId) ? 'Expand' : 'Collapse'} ${region.label}`} onClick={() => toggleRegion(region.regionId)}>{collapsedRegions.has(region.regionId) ? '+' : '−'}</button>
+            </div>
+          ))}
+        </nav>
+        <footer className="approved-side-foot"><span><i className="approved-presence live"/>Projection current</span><small>REAL</small></footer>
+      </aside>
+
+      <main className="approved-main-surface">
+        <header className="approved-plane-head">
+          <div className="approved-crumb"><span>{semanticProject?.label ?? revision.candidate.scope.projectId}</span><i>/</i><span>Workbench</span><i>/</i><b>{preparationStage === 'preflight' ? 'Prepare & send' : detail ? 'Task focus' : 'Work plane'}</b></div>
+          <div className="approved-plane-title"><div><span className="approved-kicker">{mainKicker}</span><h1>{mainTitle}</h1></div><div className="approved-view-tools"><button type="button" onClick={focusCurrentOrProject}>⌖ Focus</button><button type="button" onClick={() => void instance?.zoomOut()}>−</button><span>{Math.round((instance?.getZoom() ?? .86) * 100)}%</span><button type="button" onClick={() => void instance?.zoomIn()}>+</button></div></div>
+        </header>
+        <div className="approved-canvas-stack">
+          <section className="approved-bounded-plane" aria-label="Work plane">
+            <div className="approved-spatial-world">
+              <ReactFlow
+                nodes={visibleNodes}
+                edges={visibleEdges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onInit={setInstance}
+                onNodeClick={(_event, node) => {
+                  if (node.type === 'wb-region') return;
+                  setSelectedId(node.id);
+                  void instance?.setCenter(node.positionAbsolute?.x ?? node.position.x + 80, (node.positionAbsolute?.y ?? node.position.y) + 36, { zoom: Math.max(instance.getZoom(), 0.85), duration: 280 });
+                }}
+                onPaneClick={() => setSelectedId(null)}
+                onEdgeMouseEnter={(_event, edge) => setHoveredEdgeId(edge.id)}
+                onEdgeMouseLeave={() => setHoveredEdgeId(null)}
+                nodeTypes={wbNodeTypes as never}
+                nodesConnectable={false}
+                minZoom={0.25}
+                defaultEdgeOptions={{ type: 'smoothstep' }}
+                proOptions={{ hideAttribution: true }}
+                fitView
+                fitViewOptions={{ padding: 0.16 }}
+              >
+                <Background color="#a7aeba" gap={32} size={1} variant={BackgroundVariant.Lines} />
+                {workRegions.length === 0 && <Panel position="bottom-center" className="wb-canvas-note">No work areas yet — they appear when the project declares work.</Panel>}
+                {workRegions.length > 0 && !selectedNode && preparationStage === null && !startDismissed && (
+                  <Panel position="bottom-left" className="wb-start-card"><section aria-label="Where to start"><button type="button" className="start-dismiss" aria-label="Dismiss getting started" onClick={() => setStartDismissed(true)}>×</button><p className="start-title">Start here</p><p className="start-body">Pick a task on the canvas, then <strong>Prepare</strong>.</p></section></Panel>
+                )}
+              </ReactFlow>
+            </div>
+          </section>
+          <div className={`approved-action-surface${preparationStage ? ` is-${preparationStage}` : ''}`}>
+            {preparationStage === 'preflight' && preparedPacket ? (
+              <DispatchSurface projectId={revision.candidate.scope.projectId} selection={dispatchSelection} initialConversationKey={preparedPacket.conversationKey} initialPacketId={preparedPacket.packetId} onEditContext={() => setPreparationStage('context')} onClose={() => setPreparationStage(null)} onReadinessChange={setDispatchReady} />
+            ) : preparationStage === 'context' ? (
+              <ContextCabinet projectId={revision.candidate.scope.projectId} selection={cabinetSelection} onPrepared={(packet) => { setPreparedPacket(packet); setPreparationStage('preflight'); }} onClose={() => setPreparationStage(null)} />
+            ) : (
+              <section className="approved-composer" aria-label="Composer">
+                <button className="approved-resize-handle" type="button" aria-label="Resize composer" />
+                {detail && <div className="approved-context-shelf">{includedContext.slice(0, 3).map((item) => <span key={item.id}><i>{item.kind === 'context' && item.isReference ? 'REF' : 'CTX'}</i>{item.label}<button type="button" aria-label={`Open ${item.label}`}>×</button></span>)}</div>}
+                <div className="approved-composer-input"><textarea readOnly value={detail ? `Prepare ${detail.label} with verified Context…` : 'Ask the team or prepare this Work…'} /><button type="button" className="approved-send" aria-label="Prepare Work" onClick={openPreparation}>➤</button></div>
+                <footer><span>＋ Context</span><span>/ commands</span><em>{conversationRows[0]?.label ?? 'Choose a target in Prepare'}</em></footer>
+              </section>
+            )}
+          </div>
+        </div>
+      </main>
+
+      <aside className="approved-team-dock" aria-label="Team and runtime">
+        <header className="approved-dock-head"><div><span className="approved-kicker">TEAM / RUNTIME</span><h3>{preparationStage === 'preflight' ? 'Send review' : detail ? 'Task detail' : `${conversationRows.length} sessions`}</h3></div><button type="button" aria-label="Dock options">···</button></header>
+        {detail && preparationStage === null ? (
+          <><nav className="approved-dock-tabs"><button type="button" className="active">Context</button><button type="button">Activity</button><button type="button">Evidence</button></nav><div className="approved-dock-scroll approved-detail-scroll"><FocusDetailPanel detail={detail} story={executionStory} onClose={() => setSelectedId(null)} onPrepare={openPreparation}/></div></>
+        ) : preparationStage === 'preflight' ? (
+          <><nav className="approved-dock-tabs"><button type="button" className="active">Preflight</button><button type="button">Packet</button><button type="button">Evidence</button></nav><div className="approved-dock-scroll approved-send-review"><section className="approved-readiness"><span>{dispatchReady ? '3/3' : preparedPacket ? '2/3' : '—'}</span><div><label>{dispatchReady ? 'READY TO SEND' : preparedPacket ? 'RUNNER REQUIRED' : 'CHECKING'}</label><h4>{mainTitle}</h4></div></section><div className="approved-check-list"><p>✓ Task scoped</p><p>✓ Context staged · {includedContext.length}</p><p>{dispatchReady ? '✓ Runner resolved' : '○ Choose a runner'}</p></div><section><span className="approved-kicker">PROVENANCE</span><p className="wb-mono">{preparedPacket?.packetId ?? 'No frozen packet'}</p></section></div></>
+        ) : (
+          <><div className="approved-dock-scroll">
+            {gateRows.length > 0 && <section className="approved-session-group"><label>NEEDS YOU <em>{gateRows.length}</em></label>{gateRows.map((node) => <button type="button" className="approved-session-row" key={node.id} onClick={() => setSelectedId(node.id)}><span className="approved-session-status attention"/><span><b>{node.label}</b><small>{node.gateKind} · {node.level}</small></span></button>)}</section>}
+            <section className="approved-session-group"><label>RUNNING <em>{executionRows.length}</em></label>{executionRows.length === 0 ? <p className="approved-runtime-empty">No running execution fact.</p> : executionRows.map((node) => <button type="button" className="approved-session-row" key={node.id} onClick={() => setSelectedId(node.id)}><span className={`approved-session-status ${node.live ? 'working' : 'idle'}`}/><span><b>{node.label}</b><small>{node.provider} · {node.runtimeState}</small></span></button>)}</section>
+            <section className="approved-session-group"><label>SESSIONS <em>{conversationRows.length}</em></label>{conversationRows.length === 0 ? <p className="approved-runtime-empty">No bound conversation fact.</p> : conversationRows.map((node) => <button type="button" className="approved-session-row" key={node.id} onClick={() => setSelectedId(node.id)}><span className="approved-session-status idle"/><span><b>{node.label}</b><small>{node.platform} · {node.runtimeState}</small></span></button>)}</section>
+          </div><footer className="approved-dock-foot"><span><i className="approved-presence live"/>{executionRows.filter((node) => node.live).length} working</span><span>{gateRows.length} needs you</span></footer></>
+        )}
+      </aside>
     </div>
   );
 }

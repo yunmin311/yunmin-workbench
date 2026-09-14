@@ -80,15 +80,16 @@ export function CompactApp() {
   }, []);
 
   return (
-    <div className="compact" data-expanded={expanded ? 'true' : 'false'}>
+    <div className="compact approved-compact-window" data-expanded={expanded ? 'true' : 'false'}>
       <div
-        className="compact-drag"
+        className="compact-drag approved-compact-head"
         onDoubleClick={toggleExpand}
         role="heading"
         aria-level={1}
         aria-label="Workbench Compact"
       >
-        <span className="compact-title">Yunmin Workbench</span>
+        <span className="approved-compact-brand" aria-hidden="true">Y</span>
+        <span className="compact-title"><small>CURRENT WORK</small>Yunmin Workbench</span>
         <span className="compact-drag-spacer" />
         <button
           type="button"
@@ -114,8 +115,8 @@ export function CompactApp() {
         <p className="compact-empty">Open the Workbench and select a Work or Task to pin it here.</p>
       )}
       {snapshot?.project && (
-        <div className="compact-body">
-          <button type="button" className="compact-scope" onClick={() => openWorkbench('continue')} title="Continue in the full Workbench">
+        <div className="compact-body approved-compact-body">
+          <button type="button" className="compact-scope approved-compact-task" onClick={() => openWorkbench('continue')} title="Continue in the full Workbench">
             <span className="compact-project">{snapshot.project.projectId}</span>
             {snapshot.work && (
               <span className="compact-work">
@@ -158,7 +159,7 @@ export function CompactApp() {
             </div>
           )}
 
-          <div className="compact-actions">
+          <div className="compact-actions approved-compact-actions">
             <button
               type="button"
               className="compact-expand-btn"
