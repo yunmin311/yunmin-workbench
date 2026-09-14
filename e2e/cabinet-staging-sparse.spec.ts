@@ -157,10 +157,10 @@ test('hermetic cabinet staging persists sparse overrides, never resolved snapsho
     await expect(win.locator('.vnext-app')).toBeVisible({ timeout: 30_000 });
 
     const openCabinet = async () => {
-      const nav = win.getByRole('navigation', { name: 'Work regions' });
-      await nav.locator('.region-nav-focus').first().click();
+      const workRail = win.getByRole('complementary', { name: 'Work regions' });
+      await workRail.locator('.approved-work-focus').first().click();
       await win.locator('.react-flow__node[data-id="task:sparse-hermetic:s-T1"]').click();
-      await win.getByRole('button', { name: 'Prepare Work', exact: true }).click();
+      await win.getByRole('complementary', { name: 'Focus Detail' }).getByRole('button', { name: 'Prepare Work', exact: true }).click();
       const cabinet = win.getByRole('region', { name: 'Context Cabinet' });
       await expect(cabinet).toBeVisible();
       return cabinet;

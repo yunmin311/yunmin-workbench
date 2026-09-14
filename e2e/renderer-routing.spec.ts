@@ -14,11 +14,11 @@ test('default launch loads vNext with the real WorkGraphRevision over preload IP
   const { app, win } = await launchWorkbench(stateDir, fixture.overlayRoot);
   try {
     await expect(win.locator('.vnext-app')).toBeVisible();
-    await expect(win.locator('.wb-node').first()).toBeVisible();
-    await expect(win.getByRole('button', { name: 'Fit view', exact: true })).toBeVisible();
-    await expect(win.getByRole('button', { name: 'Locate', exact: true })).toBeVisible();
-    await expect(win.getByRole('button', { name: 'Refresh', exact: true })).toBeVisible();
-    await expect(win.getByRole('button', { name: 'Attention', exact: true })).toHaveCount(0);
+    await expect(win.getByRole('region', { name: 'Work plane' })).toBeVisible();
+    await expect(win.getByRole('region', { name: 'Work plane' })).toContainText('No work areas yet');
+    await expect(win.getByRole('button', { name: 'Locate current work', exact: true })).toBeVisible();
+    await expect(win.getByRole('button', { name: 'Refresh workspace', exact: true })).toBeVisible();
+    await expect(win.locator('.approved-attention-group')).toHaveCount(0);
     const graphReport = await win.evaluate(async () => {
       const response = await window.wb.getWorkGraphRevision();
       if (!response.revision) return { error: response.error ?? 'missing revision' };
@@ -37,7 +37,7 @@ test('default launch loads vNext with the real WorkGraphRevision over preload IP
     console.log(`[vnext-real-graph] ${JSON.stringify(graphReport)}`);
     expect(graphReport).not.toHaveProperty('error');
     await win.screenshot({ path: join(screenshotDir, '01-workgraph-overview.png') });
-    await win.locator('.wb-node').first().click();
+    await win.locator('.approved-session-row').first().click();
     await expect(win.getByRole('complementary', { name: 'Focus Detail' })).toBeVisible();
     await win.screenshot({ path: join(screenshotDir, '02-workgraph-focus.png') });
   } finally {
@@ -61,7 +61,7 @@ test('explicit legacy opt-in keeps the rollback renderer', async () => {
   }
 });
 
-test('real attention facts enable the Attention control (TEST FIXTURE screenshot)', async () => {
+test('real attention facts surface as persistent needs-you presence (TEST FIXTURE screenshot)', async () => {
   const fixture = await useOverlayFixture();
   const stateDir = mkdtempSync(join(tmpdir(), 'wb-vnext-attention-e2e-'));
   const activityDir = join(stateDir, 'state', 'activity');
@@ -75,8 +75,11 @@ test('real attention facts enable the Attention control (TEST FIXTURE screenshot
   writeFileSync(join(activityDir, 'history.jsonl'), `${JSON.stringify({ schemaVersion: 1, event })}\n`, 'utf8');
   const { app, win } = await launchWorkbench(stateDir, fixture.overlayRoot);
   try {
-    await expect(win.getByRole('button', { name: 'Attention', exact: true })).toBeVisible();
-    await expect(win.locator('.wb-node[data-family="gate"]')).toBeVisible();
+    const attention = win.locator('.approved-attention-group');
+    await expect(attention).toBeVisible();
+    await expect(attention).toContainText('User input needed');
+    await attention.locator('.approved-session-row').click();
+    await expect(win.getByRole('complementary', { name: 'Focus Detail' })).toBeVisible();
     await win.locator('body').evaluate((body) => {
       const label = document.createElement('div');
       label.className = 'test-fixture-label';

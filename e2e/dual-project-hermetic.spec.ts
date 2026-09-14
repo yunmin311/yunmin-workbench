@@ -229,14 +229,14 @@ test('hermetic dual projects: discovery, switch, selection, compact handoff, sta
     expect(discovered['beta-hermetic']).toMatchObject({ nodeKinds: { project: 1, work: 2, task: 3, artifact: 1 }, problems: [] });
 
     // Switch: region rows follow the current project (1 vs 2 works).
-    const nav = win.getByRole('navigation', { name: 'Work regions' });
+    const nav = win.getByRole('complementary', { name: 'Work regions' });
     const select = nav.getByLabel('Switch project');
     await expect(select).toBeEnabled();
-    await expect(nav.locator('.region-nav-row')).toHaveCount(1);
+    await expect(nav.locator('.approved-work-row')).toHaveCount(1);
     await select.selectOption('beta-hermetic');
-    await expect(nav.locator('.region-nav-row')).toHaveCount(2);
+    await expect(nav.locator('.approved-work-row')).toHaveCount(2);
     await select.selectOption('alpha-hermetic');
-    await expect(nav.locator('.region-nav-row')).toHaveCount(1);
+    await expect(nav.locator('.approved-work-row')).toHaveCount(1);
 
     // Cross-project selection never mints a chimera.
     await select.selectOption('beta-hermetic');
@@ -280,7 +280,7 @@ test('hermetic dual projects: discovery, switch, selection, compact handoff, sta
     await cabinet.getByRole('button', { name: 'Close Context Cabinet' }).click();
     await select.selectOption('alpha-hermetic');
     await win.locator('.react-flow__node[data-id="task:alpha-hermetic:a-T1"]').click();
-    await win.getByRole('button', { name: 'Prepare Work', exact: true }).click();
+    await win.getByRole('complementary', { name: 'Focus Detail' }).getByRole('button', { name: 'Prepare Work', exact: true }).click();
     const alphaCabinet = win.getByRole('region', { name: 'Context Cabinet' });
     await expect(alphaCabinet).toBeVisible();
     await expect(alphaCabinet.locator('.cabinet-scope')).toHaveText('alpha-hermetic');
@@ -292,7 +292,7 @@ test('hermetic dual projects: discovery, switch, selection, compact handoff, sta
     await win.waitForTimeout(1200);
     await expect(win.locator('.vnext-app')).toBeVisible();
     await expect(select).toHaveValue('alpha-hermetic');
-    await expect(win.getByRole('navigation', { name: 'Work regions' }).locator('.region-nav-row')).toHaveCount(1);
+    await expect(win.getByRole('complementary', { name: 'Work regions' }).locator('.approved-work-row')).toHaveCount(1);
   } finally {
     await app.close();
     rmSync(scratch, { recursive: true, force: true });

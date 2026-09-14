@@ -79,12 +79,14 @@ test('headed real Compact edge surface mirrors canonical facts and hands off to 
     // Canonical facts mirrored: project / Work / Task. Unproven state stays
     // out of the chips entirely (same rule as the Full Workbench).
     await expect(compactWindow.locator('.compact-project')).toHaveText('creative-os');
-    await expect(compactWindow.locator('.compact-work')).toContainText('灵感采集');
-    await expect(compactWindow.locator('.compact-task')).toContainText('T006');
-    await expect(compactWindow.locator('.compact-task')).not.toContainText('unknown');
-    // No real execution exists -> no Running module. No attention instance -> none.
-    await expect(compactWindow.locator('.compact-running')).toHaveCount(0);
-    await expect(compactWindow.locator('.compact-attention')).toHaveCount(0);
+    await expect(compactWindow.locator('.compact-title')).toContainText('灵感采集');
+    await expect(compactWindow.locator('.approved-compact-task')).toContainText('T006');
+    await expect(compactWindow.locator('.approved-compact-task')).not.toContainText('unknown');
+    // Empty facts remain visible as honest idle states; the approved edge
+    // panel never collapses into a task card plus two buttons.
+    await expect(compactWindow.locator('.compact-running')).toContainText('No live execution fact.');
+    await expect(compactWindow.locator('.compact-running')).toContainText('sessions here');
+    await expect(compactWindow.locator('.compact-attention')).toContainText('Nothing needs review');
     await expect(compactWindow.getByRole('button', { name: 'Continue current work' })).toBeVisible();
     await expect(compactWindow.getByRole('button', { name: 'Prepare current work' })).toBeVisible();
     // Invalid persisted bounds (-4000,-4000) restored inside a visible work

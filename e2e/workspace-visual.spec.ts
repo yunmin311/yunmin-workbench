@@ -51,8 +51,8 @@ test('workspace visual acceptance (real facts + badged fixture)', async () => {
     await expect(win.locator('.vnext-app')).toBeVisible();
     await win.evaluate(() => window.wb.getWorkGraphRevision('creative-os'));
     await win.waitForTimeout(1400);
-    await expect(win.getByRole('navigation', { name: 'Work regions' })).toBeVisible();
-    await expect(win.getByRole('navigation', { name: 'Work regions' })).toContainText('Creative OS');
+    await expect(win.getByRole('complementary', { name: 'Work regions' })).toBeVisible();
+    await expect(win.getByRole('complementary', { name: 'Work regions' })).toContainText('Creative OS');
     await win.screenshot({ path: join(outDir, '40-full-workspace-real.png') });
 
     // Task focus: contextual dim + glass detail + actions.
@@ -62,7 +62,7 @@ test('workspace visual acceptance (real facts + badged fixture)', async () => {
     await win.screenshot({ path: join(outDir, '41-task-focus-real.png') });
 
     // Prepare enters one continuous Context -> packet -> preflight workflow.
-    await win.getByRole('button', { name: 'Prepare Work', exact: true }).click();
+    await win.getByRole('complementary', { name: 'Focus Detail' }).getByRole('button', { name: 'Prepare Work', exact: true }).click();
     await win.waitForTimeout(1400);
     const cabinet = win.getByRole('region', { name: 'Context Cabinet' });
     await expect(cabinet).toBeVisible();
@@ -114,13 +114,14 @@ test('workspace visual acceptance (real facts + badged fixture)', async () => {
     await win.evaluate((url) => { window.location.href = url; }, fixtureUrl);
     await win.waitForTimeout(2600);
     await expect(win.locator('.wb-fixture-badge')).toBeVisible();
-    const fixtureRegions = win.getByRole('navigation', { name: 'Work regions' });
-    await expect(fixtureRegions.locator('.region-nav-row')).toHaveCount(2);
-    await win.locator('.react-flow__node[data-id="execution:fixture-os:fixture-agent-7"]').click();
-    const executionStory = win.getByRole('region', { name: 'Execution story' });
-    await expect(executionStory).toContainText('Fixture · implement flow');
-    await expect(executionStory).toContainText('Fixture brief');
-    await expect(executionStory).toContainText('src/fixture/output.ts');
+    const fixtureRegions = win.getByRole('complementary', { name: 'Work regions' });
+    await expect(fixtureRegions.locator('.approved-work-row')).toHaveCount(2);
+    await expect(win.getByRole('region', { name: 'Runtime summary' })).toContainText('claude · working');
+    await expect(win.getByRole('region', { name: 'Runtime summary' })).toContainText('codex · stopped');
+    await win.locator('.react-flow__node[data-id="task:fixture-os:T100"]').click();
+    await expect(win.getByRole('complementary', { name: 'Focus Detail' })).toContainText('Fixture · implement flow');
+    await win.getByRole('button', { name: 'Evidence', exact: true }).click();
+    await expect(win.getByRole('complementary', { name: 'Focus Detail' })).toContainText('verified relation');
     await win.screenshot({ path: join(outDir, '45-governance-fixture.png') });
   } finally {
     await app.close();

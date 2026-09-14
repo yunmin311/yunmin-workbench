@@ -33,6 +33,8 @@
   font: 12px/1.4 "Segoe UI Variable", "Segoe UI", sans-serif;
 }
 .approved-shell button,.approved-shell textarea,.approved-shell select { font: inherit; }
+.approved-shell button:not(:disabled) { cursor:pointer; }
+.approved-shell button:disabled { cursor:default; }
 .approved-presence-rail,.approved-work-rail,.approved-main-surface,.approved-team-dock { min-width:0;min-height:0;overflow:hidden; }
 .approved-presence-rail { display:flex;flex-direction:column;align-items:center;padding:14px 0 18px;background:#0b0f17;border-right:1px solid var(--approved-line-soft);z-index:70; }
 .approved-brand { display:grid;place-items:center;width:32px;height:32px;background:var(--approved-accent);color:var(--approved-accent-ink);border-radius:9px 9px 3px 9px;font-size:15px;font-weight:800;letter-spacing:-.06em; }
@@ -49,6 +51,7 @@
 .approved-current-work { flex:none;padding:22px 18px 18px;border-bottom:1px solid var(--approved-line-soft); }
 .approved-current-work h2 { margin:9px 0 4px;font-size:16px;font-weight:620;letter-spacing:-.02em; }
 .approved-current-work p { margin:0;color:var(--approved-muted); }
+.approved-project-switch{display:block;width:100%;margin:0;padding:0 18px 0 0;border:0;outline:0;appearance:none;background:linear-gradient(45deg,transparent 50%,var(--approved-muted-2) 50%) calc(100% - 7px) 52%/4px 4px no-repeat,linear-gradient(135deg,var(--approved-muted-2) 50%,transparent 50%) calc(100% - 3px) 52%/4px 4px no-repeat;color:var(--approved-muted);font:inherit;cursor:pointer}.approved-project-switch:disabled{background:none;cursor:default}.approved-project-switch:focus-visible{outline:1.5px solid var(--approved-accent);outline-offset:3px}
 .approved-phase-track { display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-top:20px; }
 .approved-phase-track span { height:3px;border-radius:3px;background:#30394a; }.approved-phase-track .done{background:#6878a1}.approved-phase-track .active{background:var(--approved-accent)}
 .approved-phase-copy { display:flex;justify-content:space-between;margin-top:7px;font-size:10px; }.approved-phase-copy b{color:var(--approved-accent)}.approved-phase-copy span{color:var(--approved-muted-2)}
@@ -107,6 +110,7 @@
 .approved-dock-tabs{height:40px;flex:none;display:flex;border-bottom:1px solid var(--approved-line-soft);padding:0 12px;gap:14px}.approved-dock-tabs button{position:relative;border:0;background:transparent;color:var(--approved-muted-2);padding:0 2px;font-size:10px;font-weight:650}.approved-dock-tabs button.active{color:var(--approved-text)}.approved-dock-tabs button.active:after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--approved-accent)}
 .approved-detail-scroll{padding:14px 14px 24px}.approved-team-dock .focus-panel{position:relative;inset:auto;width:auto;max-height:none;border:0;border-radius:0;background:transparent;box-shadow:none;padding:0;color:var(--approved-text)}.approved-team-dock .focus-title{font-size:13px}.approved-team-dock .focus-source,.approved-team-dock .focus-meta,.approved-team-dock .focus-relation-group{border-color:var(--approved-line-soft)}.approved-team-dock .focus-meta dd,.approved-team-dock .focus-relation-label{color:var(--approved-muted)}
 .approved-send-review{padding:14px}.approved-readiness{display:flex;align-items:center;gap:12px;padding:4px 0 16px;border-bottom:1px solid var(--approved-line-soft)}.approved-readiness>span{width:46px;height:46px;display:grid;place-items:center;border:2px solid var(--approved-accent);border-radius:50%;color:var(--approved-accent);font:700 10px Consolas,monospace}.approved-readiness label{color:var(--approved-accent);font-size:9px;font-weight:700;letter-spacing:.12em}.approved-readiness h4{margin:5px 0 0;font-size:13px}.approved-check-list{padding:10px 0;border-bottom:1px solid var(--approved-line-soft)}.approved-check-list p{margin:0;padding:8px 0;color:var(--approved-green);font-size:10px}.approved-send-review section{padding:14px 0}.approved-send-review section p{color:var(--approved-muted);font-size:10px;overflow-wrap:anywhere}
+.approved-review-panel h4{margin:8px 0 16px;font-size:13px}.approved-review-panel .focus-meta{display:grid;grid-template-columns:52px minmax(0,1fr);gap:8px;margin:0}.approved-review-panel .focus-meta dt{color:var(--approved-muted-2);font-size:9px}.approved-review-panel .focus-meta dd{margin:0;color:var(--approved-muted);font-size:9px;overflow-wrap:anywhere}
 
 @media (max-width: 1099px) {
   .workgraph-canvas-container.approved-shell { grid-template-columns:64px minmax(0,1fr);grid-template-rows:minmax(0,1fr) 188px; }

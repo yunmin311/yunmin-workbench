@@ -183,6 +183,9 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
   const [preparedPacket, setPreparedPacket] = useState<{ conversationKey: string; packetId: string } | null>(null);
   const [dispatchReady, setDispatchReady] = useState(false);
   const [dispatchPreflight, setDispatchPreflight] = useState<DispatchPreflightState | null>(null);
+  const [focusDockTab, setFocusDockTab] = useState<'context' | 'activity' | 'evidence'>('context');
+  const [sendDockTab, setSendDockTab] = useState<'preflight' | 'packet' | 'evidence'>('preflight');
+  const [draggedPositions, setDraggedPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [collapsedRegions, setCollapsedRegions] = useState<Set<string>>(new Set());
   // Narrow windows start with the work list folded so the floating nav never
   // buries the project anchor; the project switcher itself stays visible.
@@ -198,8 +201,15 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
     setCollapsedRegions(new Set());
     setPreparedPacket(null);
     setDispatchReady(false);
+    setDispatchPreflight(null);
     setPreparationStage(null);
+    setDraggedPositions({});
   }, [initial, setEdges, setNodes]);
+
+  useEffect(() => setFocusDockTab('context'), [selectedId]);
+  useEffect(() => {
+    if (preparationStage === 'preflight') setSendDockTab('preflight');
+  }, [preparationStage]);
 
   useEffect(() => {
     const update = () => setNarrowViewport(window.innerWidth < 1100);
@@ -344,7 +354,7 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
         if (node.type === 'wb-region') {
           return {
             ...node,
-            position: narrowViewport ? { x: 0, y: regionIndex * 360 } : { x: 24, y: regionIndex * 500 + 24 },
+            position: draggedPositions[node.id] ?? (narrowViewport ? { x: 0, y: regionIndex * 360 } : { x: 24, y: regionIndex * 500 + 24 }),
             style: narrowViewport ? { width: 820, height: 315 } : { width: 850, height: 430 },
             className: focusedClass,
           };
@@ -352,14 +362,14 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
         const index = taskOrder.get(node.id) ?? 0;
         return {
           ...node,
-          position: narrowViewport
+          position: draggedPositions[node.id] ?? (narrowViewport
             ? (index === 2 ? { x: 640, y: 52 } : { x: 226 + index * 220, y: 18 + index * 100 })
-            : (index === 2 ? { x: 620, y: 160 } : { x: 296 + index * 26, y: 62 + index * 196 }),
+            : (index === 2 ? { x: 620, y: 160 } : { x: 296 + index * 26, y: 62 + index * 196 })),
           style: narrowViewport ? { width: index === 0 ? 204 : index === 1 ? 196 : 166, height: 154 } : { width: index === 2 ? 190 : 222, height: 156 },
           className: `${focusedClass ?? ''}${index === 2 ? ' approved-third-object' : ''}`.trim(),
         };
       });
-  }, [visibility.nodes, selectedId, neighborhood, narrowViewport]);
+  }, [visibility.nodes, selectedId, neighborhood, narrowViewport, draggedPositions]);
 
   // Explicit Full-Workbench Work/Task selection updates the thin local
   // current-selection bookmark the Compact surface reads. Never written
@@ -478,6 +488,12 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
     : detail?.label ?? semanticWork?.label ?? semanticProject?.label ?? revision.candidate.scope.projectId;
   const mainKicker = preparationStage === 'preflight' ? 'SEND / READY' : detail ? 'TASK / CONTEXT' : 'WORK / ACTIVE';
   const passedPreflightChecks = dispatchPreflight?.checks.filter((check) => check.status === 'PASS').length ?? 0;
+  const selectableProjectIds = projectIds.includes(revision.candidate.scope.projectId)
+    ? projectIds
+    : [revision.candidate.scope.projectId, ...projectIds];
+  const preparationSelection: CabinetSelection | null = preparedPacket
+    ? { ...(cabinetSelection ?? { kind: 'context', label: 'Context-only preparation' }), conversationKey: preparedPacket.conversationKey }
+    : cabinetSelection;
 
   return (
     <div className={`workgraph-canvas-container approved-shell${dimmed ? ' is-focus-mode' : ''}`} data-stage={preparationStage ?? (detail ? 'focus' : 'hero')}>
@@ -496,7 +512,9 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
         <section className="approved-current-work">
           <span className="approved-kicker">CURRENT WORK</span>
           <h2>{semanticWork?.label ?? 'Project workspace'}</h2>
-          <p>{semanticProject?.label ?? revision.candidate.scope.projectId}</p>
+          <select className="approved-project-switch" aria-label="Switch project" value={revision.candidate.scope.projectId} disabled={selectableProjectIds.length < 2} onChange={(event) => onSelectProject(event.target.value)}>
+            {selectableProjectIds.map((projectId) => <option key={projectId} value={projectId}>{projectId === revision.candidate.scope.projectId ? semanticProject?.label ?? projectId : projectId}</option>)}
+          </select>
           <div className="approved-phase-track" aria-label="Product path"><span className="done"/><span className="done"/><span className="active"/><span/><span/><span/><span/></div>
           <div className="approved-phase-copy"><b>Task</b><span>Context → Prepare → Send</span></div>
         </section>
@@ -531,13 +549,30 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
                 onNodeClick={(_event, node) => {
                   if (node.type === 'wb-region') return;
                   setSelectedId(node.id);
-                  void instance?.setCenter(node.positionAbsolute?.x ?? node.position.x + 80, (node.positionAbsolute?.y ?? node.position.y) + 36, { zoom: Math.max(instance.getZoom(), 0.85), duration: 280 });
+                }}
+                onNodeDrag={(_event, node) => setDraggedPositions((current) => ({
+                  ...current,
+                  [node.id]: node.position,
+                }))}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter' && event.key !== ' ') return;
+                  const element = (event.target as HTMLElement).closest<HTMLElement>('.react-flow__node');
+                  const nodeId = element?.dataset.id;
+                  const node = nodeId ? nodes.find((candidate) => candidate.id === nodeId) : undefined;
+                  if (!node || node.type === 'wb-region') return;
+                  event.preventDefault();
+                  setSelectedId(node.id);
                 }}
                 onPaneClick={() => setSelectedId(null)}
                 onEdgeMouseEnter={(_event, edge) => setHoveredEdgeId(edge.id)}
                 onEdgeMouseLeave={() => setHoveredEdgeId(null)}
                 nodeTypes={wbNodeTypes as never}
                 nodesConnectable={false}
+                panOnScroll
+                panActivationKeyCode={null}
+                zoomOnScroll={false}
+                zoomOnPinch
+                zoomActivationKeyCode="Control"
                 minZoom={0.25}
                 defaultEdgeOptions={{ type: 'smoothstep' }}
                 proOptions={{ hideAttribution: true }}
@@ -556,7 +591,7 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
             {preparationStage === 'preflight' && preparedPacket ? (
               <DispatchSurface projectId={revision.candidate.scope.projectId} selection={dispatchSelection} initialConversationKey={preparedPacket.conversationKey} initialPacketId={preparedPacket.packetId} onEditContext={() => setPreparationStage('context')} onClose={() => setPreparationStage(null)} onReadinessChange={setDispatchReady} onPreflightChange={setDispatchPreflight} />
             ) : preparationStage === 'context' ? (
-              <ContextCabinet projectId={revision.candidate.scope.projectId} selection={cabinetSelection} onPrepared={(packet) => { setPreparedPacket(packet); setPreparationStage('preflight'); }} onClose={() => setPreparationStage(null)} />
+              <ContextCabinet projectId={revision.candidate.scope.projectId} selection={preparationSelection} onPrepared={(packet) => { setPreparedPacket(packet); setPreparationStage('preflight'); }} onClose={() => setPreparationStage(null)} />
             ) : (
               <section className="approved-composer" aria-label="Composer">
                 <button className="approved-resize-handle" type="button" aria-label="Resize composer" />
@@ -572,9 +607,9 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
       <aside className="approved-team-dock" aria-label="Team and runtime">
         <header className="approved-dock-head"><div><span className="approved-kicker">TEAM / RUNTIME</span><h3>{preparationStage === 'preflight' ? 'Send review' : detail ? 'Task detail' : 'Session presence'}</h3></div><button type="button" aria-label="Dock options">···</button></header>
         {detail && preparationStage === null ? (
-          <><nav className="approved-dock-tabs"><button type="button" className="active">Context</button><button type="button">Activity</button><button type="button">Evidence</button></nav><div className="approved-dock-scroll approved-detail-scroll"><FocusDetailPanel detail={detail} story={executionStory} onClose={() => setSelectedId(null)} onPrepare={openPreparation}/></div></>
+          <><nav className="approved-dock-tabs" aria-label="Task detail views"><button type="button" className={focusDockTab === 'context' ? 'active' : ''} aria-pressed={focusDockTab === 'context'} onClick={() => setFocusDockTab('context')}>Context</button><button type="button" className={focusDockTab === 'activity' ? 'active' : ''} aria-pressed={focusDockTab === 'activity'} onClick={() => setFocusDockTab('activity')}>Activity</button><button type="button" className={focusDockTab === 'evidence' ? 'active' : ''} aria-pressed={focusDockTab === 'evidence'} onClick={() => setFocusDockTab('evidence')}>Evidence</button></nav><div className="approved-dock-scroll approved-detail-scroll">{focusDockTab === 'context' ? <FocusDetailPanel detail={detail} story={executionStory} onClose={() => setSelectedId(null)} onPrepare={openPreparation}/> : focusDockTab === 'activity' ? <aside className="focus-panel wb-glass" role="complementary" aria-label="Focus Detail"><p className="wb-kicker">ACTIVITY</p><h2 className="focus-title">{detail.label}</h2>{executionStory ? <section className="execution-story" aria-label="Execution story"><dl><dt>Doing</dt><dd>{executionStory.doing}</dd><dt>Using</dt><dd>{executionStory.context.length > 0 ? executionStory.context.join(' · ') : 'No consumed Context fact'}</dd><dt>Output</dt><dd>{executionStory.outputs.length > 0 ? executionStory.outputs.join(' · ') : 'No produced Artifact fact yet'}</dd><dt>Next</dt><dd>{executionStory.next}</dd></dl></section> : <p className="focus-empty">No execution linked to this selection.</p>}</aside> : <aside className="focus-panel wb-glass" role="complementary" aria-label="Focus Detail"><p className="wb-kicker">EVIDENCE</p><h2 className="focus-title">{detail.label}</h2><dl className="focus-meta"><dt>Verification</dt><dd>{detail.verification}</dd><dt>Source</dt><dd className="wb-mono">{detail.source}</dd><dt>Source ref</dt><dd className="wb-mono">{detail.sourceRef || '—'}</dd></dl>{detail.relations.length === 0 ? <p className="focus-empty">No linked evidence fact.</p> : <p className="focus-empty">{detail.relations.length} verified relation{detail.relations.length === 1 ? '' : 's'} available in Context.</p>}</aside>}</div></>
         ) : preparationStage === 'preflight' ? (
-          <><nav className="approved-dock-tabs"><button type="button" className="active">Preflight</button><button type="button">Packet</button><button type="button">Evidence</button></nav><div className="approved-dock-scroll approved-send-review"><section className="approved-readiness"><span>{dispatchPreflight?.checking ? '…' : `${passedPreflightChecks}/${dispatchPreflight?.checks.length ?? '—'}`}</span><div><label>{dispatchReady ? 'READY TO SEND' : dispatchPreflight?.checking ? 'CHECKING' : 'NEEDS REVIEW'}</label><h4>{mainTitle}</h4></div></section><div className="approved-check-list">{dispatchPreflight?.checks.map((check) => <p key={check.id} className={`is-${check.status.toLowerCase()}`}><b>{check.status === 'PASS' ? '✓' : '○'} {check.label}</b><span>{check.detail}</span></p>) ?? <p><b>○ Preflight</b><span>Checking real snapshot and runner facts…</span></p>}</div><section><span className="approved-kicker">PROVENANCE</span><p className="wb-mono">{preparedPacket?.packetId ?? 'No frozen packet'}</p></section></div></>
+          <><nav className="approved-dock-tabs" aria-label="Send review views"><button type="button" className={sendDockTab === 'preflight' ? 'active' : ''} aria-pressed={sendDockTab === 'preflight'} onClick={() => setSendDockTab('preflight')}>Preflight</button><button type="button" className={sendDockTab === 'packet' ? 'active' : ''} aria-pressed={sendDockTab === 'packet'} onClick={() => setSendDockTab('packet')}>Packet</button><button type="button" className={sendDockTab === 'evidence' ? 'active' : ''} aria-pressed={sendDockTab === 'evidence'} onClick={() => setSendDockTab('evidence')}>Evidence</button></nav><div className="approved-dock-scroll approved-send-review">{sendDockTab === 'preflight' ? <><section className="approved-readiness"><span>{dispatchPreflight?.checking ? '…' : `${passedPreflightChecks}/${dispatchPreflight?.checks.length ?? '—'}`}</span><div><label>{dispatchReady ? 'READY TO SEND' : dispatchPreflight?.checking ? 'CHECKING' : 'NEEDS REVIEW'}</label><h4>{mainTitle}</h4></div></section><div className="approved-check-list">{dispatchPreflight?.checks.map((check) => <p key={check.id} className={`is-${check.status.toLowerCase()}`}><b>{check.status === 'PASS' ? '✓' : '○'} {check.label}</b><span>{check.detail}</span></p>) ?? <p><b>○ Preflight</b><span>Checking real snapshot and runner facts…</span></p>}</div></> : sendDockTab === 'packet' ? <section className="approved-review-panel" aria-label="Packet review"><span className="approved-kicker">FROZEN PACKET</span><h4>{mainTitle}</h4><dl className="focus-meta"><dt>Packet</dt><dd className="wb-mono">{preparedPacket?.packetId ?? 'No frozen packet'}</dd><dt>Target</dt><dd className="wb-mono">{preparedPacket?.conversationKey ?? 'No conversation selected'}</dd></dl></section> : <section className="approved-review-panel" aria-label="Preflight evidence"><span className="approved-kicker">EVIDENCE</span><div className="approved-check-list">{dispatchPreflight?.checks.map((check) => <p key={check.id} className={`is-${check.status.toLowerCase()}`}><b>{check.label}</b><span>{check.detail}</span></p>) ?? <p><b>Preflight</b><span>Checking real facts…</span></p>}</div></section>}<section><span className="approved-kicker">PROVENANCE</span><p className="wb-mono">{preparedPacket?.packetId ?? 'No frozen packet'}</p></section></div></>
         ) : (
           <><div className="approved-dock-scroll">
             <section className="approved-session-group approved-presence-group"><label>PRESENCE <em>{conversationRows.length}</em></label>{conversationRows.length === 0 ? <p className="approved-runtime-empty">No bound conversation fact.</p> : conversationRows.map((node) => <button type="button" className="approved-session-row" key={node.id} onClick={() => setSelectedId(node.id)}><span className={`approved-session-status ${node.attentionState !== 'none' && node.attentionState !== 'unknown' ? 'attention' : node.runtimeState === 'working' ? 'working' : 'idle'}`}/><span><b>{node.label}</b><small>{node.platform} · {node.lifecycleState} · {node.runtimeState}</small></span>{node.attentionState !== 'none' && node.attentionState !== 'unknown' && <em className="approved-session-attention">{node.attentionState}</em>}</button>)}</section>
