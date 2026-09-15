@@ -88,6 +88,50 @@ describe('runtime observation history', () => {
     expect((await readActivity(root)).events).toEqual([]);
   });
 
+  it('round-trips OpenCode protocol identity and canonical dispatch lineage', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'wb-activity-opencode-'));
+    const opencode = event('opencode-turn', 'turn-completed', '2026-09-15T02:00:00.000Z', {
+      projectId: 'creative-os',
+      conversationKey: 'creative-os:opencode:ses_real',
+      harness: 'opencode',
+      adapter: 'opencode-run-json',
+      capability: 'receipt',
+      runtimeRef: 'ses_real',
+      intentId: 'intent-real',
+      workId: 'W006',
+      taskId: 'T006',
+      packetId: 'packet-real',
+      runtimeState: 'idle',
+      binding: {
+        harness: 'opencode',
+        machine: 'test-machine',
+        cwd: '/isolated/creative-os',
+        externalSessionRef: 'ses_real',
+      },
+      observed: {
+        source: 'protocol',
+        sourceRef: 'opencode:run:event.step_finish:ses_real',
+        observedAt: '2026-09-15T02:00:00.000Z',
+        verification: 'VERIFIED',
+      },
+    });
+
+    await appendActivity(root, opencode);
+    const page = await readActivityPage(root);
+
+    expect(page.rejectedLines).toBe(0);
+    expect(page.events).toEqual([opencode]);
+    expect(page.events[0]).toMatchObject({
+      harness: 'opencode',
+      runtimeRef: 'ses_real',
+      intentId: 'intent-real',
+      workId: 'W006',
+      taskId: 'T006',
+      packetId: 'packet-real',
+      binding: { harness: 'opencode', externalSessionRef: 'ses_real' },
+    });
+  });
+
   it('isolates malformed and contradictory runtime identity lines without discarding valid history', async () => {
     const root = await mkdtemp(join(tmpdir(), 'wb-activity-invalid-'));
     const valid = event('valid', 'session-started', '2026-08-26T01:00:00.000Z', {

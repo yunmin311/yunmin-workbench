@@ -11,6 +11,7 @@ import {
 } from '../../../../core/project/dispatchDraft';
 import { checkPacketValidity, renderAgentInput } from '../../../../core/project/packet';
 import type { FrozenPacket, FrozenPacketSummary, HarnessCapabilities, OverlaySnapshot, PacketValidity } from '../../../../core/types';
+import { composeDispatchInput } from '../../dispatchInput';
 
 /**
  * Explicit Dispatch Surface (PHASE 3D.1) —
@@ -214,7 +215,7 @@ export function DispatchSurface({ projectId, selection, initialConversationKey, 
           intentId,
           projectId,
           conversationKey: draft.conversationKey!,
-          packetText: renderAgentInput(packetDetail),
+          packetText: composeDispatchInput(draft.instruction, renderAgentInput(packetDetail)),
           harness: draft.provider!,
           environment: { kind: 'real' },
           groupId: globalThis.crypto.randomUUID(),

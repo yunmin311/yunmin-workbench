@@ -69,6 +69,18 @@ describe('OpenCode adapter native contract', () => {
     }
   });
 
+  it('settles from a quiet structured step_finish when the CLI wrapper keeps the process open', async () => {
+    process.env.FAKE_MODE = 'finish-hang';
+    const adapter = new OpenCodeAdapter({ command: process.execPath, commandArgs: [FAKE], terminalSettleMs: 100 });
+    try {
+      await expect(adapter.dispatch('55555555-5555-4555-8555-555555555555', process.cwd(), 'hello'))
+        .resolves.toMatchObject({ status: 'ACCEPTED', protocolEvidence: 'opencode:run:step_start+step_finish' });
+    } finally {
+      delete process.env.FAKE_MODE;
+      adapter.close();
+    }
+  }, 1_500);
+
   it('cancels the exact active Workbench intent', async () => {
     process.env.FAKE_MODE = 'hang';
     const adapter = make();

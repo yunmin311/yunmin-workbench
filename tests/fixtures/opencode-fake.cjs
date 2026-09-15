@@ -42,5 +42,6 @@ if (args[0] === 'run') {
   });
   if (mode !== 'no-session') emit({ type: 'text', sessionID: session, part: { id: 'prt_text', type: 'text', text: 'OPEN_CODE_OK' } });
   if (mode !== 'partial' && mode !== 'no-session') emit({ type: 'step_finish', sessionID: session, part: { id: 'prt_2', type: 'step-finish' } });
+  if (mode === 'finish-hang') return setInterval(() => {}, 1_000);
   process.exit(mode === 'crash' ? 2 : 0);
 }

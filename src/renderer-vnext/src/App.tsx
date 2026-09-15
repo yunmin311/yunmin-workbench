@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { WorkGraphCanvas } from './components/canvas/WorkGraphCanvas';
 
 import '../../../src/design/tokens.css';
@@ -7,6 +7,7 @@ import './styles/approved-blue.css';
 import type { WorkGraphRevision } from './types';
 import type { HarnessSessionPresence } from '../../core/types';
 import { projectIdsFromOverlay } from './workGraphView';
+import { startHarnessPresenceRefresh } from './presenceFreshness';
 
 function App() {
   const [revision, setRevision] = useState<WorkGraphRevision | null>(null);
@@ -18,12 +19,14 @@ function App() {
   const [overlayEmpty, setOverlayEmpty] = useState(false);
   const [hasBinding, setHasBinding] = useState(false);
   const [harnessSessions, setHarnessSessions] = useState<HarnessSessionPresence[]>([]);
+  const presenceProjectId = useRef<string | null>(null);
 
   const load = useCallback(async (projectId?: string) => {
     setError(null);
     // TEST FIXTURE scene: explicit dev flag, clearly badged in the UI, and
     // never mixed with real facts. The real read model stays the default.
     if (new URLSearchParams(window.location.search).has('fixture')) {
+      presenceProjectId.current = null;
       try {
         const response = await window.wb.getFixtureWorkGraph();
         if (response.error) throw new Error(response.error);
@@ -44,9 +47,9 @@ function App() {
         window.wb.loadOverlayBinding().catch(() => null),
       ]);
       setRevision(response.revision ?? null);
-      setHarnessSessions(response.revision
-        ? await window.wb.listHarnessSessions(response.revision.candidate.scope.projectId)
-        : []);
+      const loadedProjectId = response.revision?.candidate.scope.projectId ?? null;
+      presenceProjectId.current = loadedProjectId;
+      setHarnessSessions(loadedProjectId ? await window.wb.listHarnessSessions(loadedProjectId) : []);
       setProjectIds(projectIdsFromOverlay(overlay));
       setOverlayEmpty(overlay.projects.length === 0);
       setHasBinding(binding !== null);
@@ -70,6 +73,16 @@ function App() {
       setNavigateRequest(identity);
     });
   }, [load]);
+
+  useEffect(() => {
+    const presence = startHarnessPresenceRefresh({
+      currentProjectId: () => presenceProjectId.current,
+      listSessions: (projectId) => window.wb.listHarnessSessions(projectId),
+      apply: setHarnessSessions,
+      subscribeActivity: (listener) => window.wb.onActivityChanged(listener),
+    });
+    return presence.dispose;
+  }, []);
 
   const chooseFolder = useCallback(async () => {
     setError(null);

@@ -64,7 +64,7 @@ import { readMaterialPreference, writeMaterialPreferenceAtomic } from './materia
 import { detectMaterialCapability } from './materialCapability';
 import { ClaudeCodeAdapter } from './adapters/claudeCodeAdapter';
 import { DeepSeekAdapter } from './adapters/deepseekAdapter';
-import { OpenCodeAdapter } from './adapters/openCodeAdapter';
+import { OpenCodeAdapter, type OpenCodeSessionPresence } from './adapters/openCodeAdapter';
 import { MockHarnessAdapter, type MockHarnessEvent } from './adapters/mockHarnessAdapter';
 import { LiveExecutionRegistry } from './liveExecutions';
 import { handleCancelRequest, handleRuntimeLiveRequest } from './harnessControl';
@@ -213,7 +213,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
   const memory = new MemoryService(stateDir(), history);
   const pendingProfileImports = new Map<string, { raw: string; preview: ProfileImportPreview }>();
   const pendingProfileExports = new Map<string, string>();
-  const openCodePresenceCache = new Map<string, { at: number; sessions: HarnessSessionPresence[] }>();
+  const openCodePresenceCache = new Map<string, { at: number; sessions: OpenCodeSessionPresence[] }>();
   let profileStateOperation: Promise<void> = Promise.resolve();
   const withProfileStateLock = <T>(operation: () => Promise<T>): Promise<T> => {
     const result = profileStateOperation.then(operation, operation);
@@ -980,9 +980,22 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     const root = await projectRoot(snapshot, projectId);
     if (!root) return [];
     const cached = openCodePresenceCache.get(root);
-    if (cached && Date.now() - cached.at < 4_000) return cached.sessions;
-    const observedAt = new Date().toISOString();
-    const sessions = (await openCodeAdapter.listSessions(20, root)).map((session) => ({
+    const observation = cached && Date.now() - cached.at < 4_000
+      ? cached
+      : { at: Date.now(), sessions: await openCodeAdapter.listSessions(20, root) };
+    if (observation !== cached) openCodePresenceCache.set(root, observation);
+    const sessionsByRef = new Map(observation.sessions.map((session) => [session.nativeRef, session]));
+    for (const live of liveExecutions.list()) {
+      if (live.harness !== 'opencode') continue;
+      const context = runtimeContexts.get('opencode', live.externalSessionRef);
+      if (context?.projectId !== projectId || sessionsByRef.has(live.externalSessionRef)) continue;
+      sessionsByRef.set(live.externalSessionRef, {
+        nativeRef: live.externalSessionRef,
+        sourceRef: `opencode:run:event.sessionID:${live.externalSessionRef}`,
+      });
+    }
+    const observedAt = new Date(observation.at).toISOString();
+    return [...sessionsByRef.values()].map((session) => ({
       harness: 'opencode' as const,
       nativeRef: session.nativeRef,
       label: session.title ?? session.nativeRef,
@@ -992,8 +1005,6 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       sourceRef: session.sourceRef,
       observedAt,
     }));
-    openCodePresenceCache.set(root, { at: Date.now(), sessions });
-    return sessions;
   });
   ipcMain.handle('harness:dispatch', async (_event, rawRequest: unknown) => {
     const request = HarnessDispatchSchema.parse(rawRequest);
@@ -1082,7 +1093,7 @@ const rememberRuntime = (threadId: string) => {
             taskId: request.taskId,
             packetId: request.packetId,
           });
-          liveExecutions.add(harness, threadId, new Date().toISOString(), harness === 'claude', request.intentId);
+          liveExecutions.add(harness, threadId, new Date().toISOString(), harness === 'claude' || harness === 'opencode', request.intentId);
         };
         const onCodexThread = (threadId: string) => {
           rememberRuntime(threadId);
@@ -1175,7 +1186,10 @@ const rememberRuntime = (threadId: string) => {
             receipt = linkedNativeSession
               ? await openCodeAdapter.continueSession(request.intentId, cwd, linkedNativeSession, dispatchText, rememberRuntime)
               : await openCodeAdapter.dispatch(request.intentId, cwd, dispatchText, rememberRuntime);
-            if (receipt.runtimeRef) liveExecutions.remove('opencode', receipt.runtimeRef, request.intentId);
+            if (receipt.runtimeRef) {
+              liveExecutions.remove('opencode', receipt.runtimeRef, request.intentId);
+              openCodePresenceCache.delete(cwd);
+            }
           } finally {
             pendingOpenCodeContexts.delete(request.intentId);
           }

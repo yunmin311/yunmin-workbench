@@ -31,6 +31,7 @@ export interface OpenCodeSessionPresence {
 export interface OpenCodeAdapterOptions {
   command?: string;
   commandArgs?: string[];
+  terminalSettleMs?: number;
 }
 
 function unavailableCapabilities(reason: string): HarnessCapabilities {
@@ -66,6 +67,7 @@ function isNativeSessionRef(value: unknown): value is string {
 export class OpenCodeAdapter {
   private readonly command: string;
   private readonly commandArgs: string[];
+  private readonly terminalSettleMs: number;
   private readonly listeners = new Set<(event: OpenCodeProtocolEvent) => void>();
   private readonly activeChildren = new Map<string, ChildProcessWithoutNullStreams>();
   private readonly cancelled = new Set<string>();
@@ -76,6 +78,7 @@ export class OpenCodeAdapter {
     this.commandArgs = defaultWindowsCommand
       ? ['/d', '/s', '/c', 'opencode.cmd', ...(options.commandArgs ?? [])]
       : (options.commandArgs ?? []);
+    this.terminalSettleMs = Math.max(50, options.terminalSettleMs ?? 5_000);
   }
 
   onEvent(listener: (event: OpenCodeProtocolEvent) => void): () => void {
@@ -240,14 +243,17 @@ export class OpenCodeAdapter {
       let sessionId: string | undefined;
       let sawStart = false;
       let sawFinish = false;
+      let settledFromTerminalEvidence = false;
       let resultText = '';
       const emit = (event: Omit<OpenCodeProtocolEvent, 'harness' | 'observedAt' | 'dispatchRef' | 'runtimeSessionRef'>) => {
         this.emit({ ...event, harness: 'opencode', dispatchRef: intentId, runtimeSessionRef: sessionId, observedAt: new Date().toISOString() });
       };
       const rl = createInterface({ input: proc.stdout });
       const parsed = new Promise<void>((resolve) => {
+        let terminalTimer: ReturnType<typeof setTimeout> | undefined;
         rl.on('line', (line) => {
           if (!line.trim()) return;
+          if (terminalTimer) clearTimeout(terminalTimer);
           let event: Record<string, unknown>;
           try { event = JSON.parse(line) as Record<string, unknown>; } catch {
             emit({ kind: 'error', method: 'adapter/error', params: { message: 'Malformed OpenCode JSON line was isolated' }, verification: 'OBSERVED', sourceRef: 'opencode:run:malformed-line' });
@@ -270,6 +276,7 @@ export class OpenCodeAdapter {
           const part = event.part as Record<string, unknown> | undefined;
           if (type === 'step_start') {
             sawStart = true;
+            sawFinish = false;
             emit({ kind: 'turn', method: 'turn/started', params: event, verification: 'VERIFIED', sourceRef: 'opencode:run:step_start' });
           } else if (type === 'text' && typeof part?.text === 'string') {
             resultText = part.text.slice(0, 2_000);
@@ -283,8 +290,17 @@ export class OpenCodeAdapter {
           } else if (type === 'error') {
             emit({ kind: 'error', method: 'adapter/error', params: event.error, verification: 'OBSERVED', sourceRef: 'opencode:run:error' });
           }
+          if (sawFinish) {
+            terminalTimer = setTimeout(() => {
+              settledFromTerminalEvidence = true;
+              this.terminate(proc);
+            }, this.terminalSettleMs);
+          }
         });
-        rl.on('close', resolve);
+        rl.on('close', () => {
+          if (terminalTimer) clearTimeout(terminalTimer);
+          resolve();
+        });
         proc.on('close', () => rl.close());
         proc.on('error', () => rl.close());
       });
@@ -301,7 +317,7 @@ export class OpenCodeAdapter {
         emit({ kind: 'lifecycle', method: 'process/cancelled', params: {}, verification: 'OBSERVED', sourceRef: 'opencode:process:cancelled' });
         return { intentId, harness: 'opencode', status: 'CANCELLED', at: new Date().toISOString(), runtimeRef: sessionId, source: 'process', protocolEvidence: 'OpenCode process cancelled' };
       }
-      if (exitCode === 0 && sessionId && sawStart && sawFinish) {
+      if ((exitCode === 0 || settledFromTerminalEvidence) && sessionId && sawStart && sawFinish) {
         return {
           intentId, harness: 'opencode', status: 'ACCEPTED', at: new Date().toISOString(), runtimeRef: sessionId,
           turnRef: `${sessionId}:turn`, source: 'protocol', protocolEvidence: 'opencode:run:step_start+step_finish', message: resultText || undefined,

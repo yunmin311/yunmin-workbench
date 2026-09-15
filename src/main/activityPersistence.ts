@@ -14,7 +14,7 @@ const ActivityEventSchema = z.object({
     'approval-required', 'needs-user-input', 'harness-error', 'process-cancelled',
   ]),
   summary: z.string(),
-  harness: z.enum(['codex', 'claude', 'deepseek']).optional(),
+  harness: z.enum(['codex', 'claude', 'deepseek', 'opencode']).optional(),
   adapter: z.string().optional(),
   capability: z.enum([
     'dispatch', 'observe', 'receipt', 'approval', 'needsInput',
@@ -33,7 +33,7 @@ const ActivityEventSchema = z.object({
   evidenceRef: z.string().min(1).max(4096).optional(),
   simulated: z.boolean().optional(),
   binding: z.object({
-    harness: z.enum(['codex', 'claude', 'deepseek']), machine: z.string(), cwd: z.string().optional(),
+    harness: z.enum(['codex', 'claude', 'deepseek', 'opencode']), machine: z.string(), cwd: z.string().optional(),
     worktree: z.string().optional(), branch: z.string().optional(), head: z.string().optional(),
     externalSessionRef: z.string().min(1).max(1024).regex(/^[^\u0000\r\n]+$/).optional(),
   }).optional(),
