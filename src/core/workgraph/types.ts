@@ -321,7 +321,7 @@ export function getNodeKind(node: WorkGraphNode): WorkGraphNodeKind {
 // - evidences: Gate/Artifact/Evidence backed by an Execution/Event.
 // - blocked-by: Execution/Conversation blocked by a Gate.
 // - handoff: explicit handoff between two Executions with exact usedResultRef.
-// - execution-of: Conversation/Work launched an Execution.
+// - execution-of: Conversation/Work/Task launched an Execution.
 // - derived-from: Artifact/Memory derived from another Artifact/Memory.
 //
 // Prohibited heuristics: cwd proximity, time proximity, provider
@@ -406,7 +406,7 @@ export interface WorkGraphHandoffEdge extends WorkGraphEdgeBase {
   relationId?: string;
 }
 
-/** Conversation/Work launched an execution. */
+/** Conversation/Work/Task launched an execution. */
 export interface WorkGraphExecutionOfEdge extends WorkGraphEdgeBase {
   kind: 'execution-of';
   source: WorkGraphNodeId;
@@ -460,7 +460,7 @@ const SOURCE_KIND_MAP: Record<WorkGraphEdgeKind, Array<WorkGraphNode['kind']>> =
   evidences: ['evidence', 'artifact', 'gate'],
   'blocked-by': ['work', 'task', 'execution', 'conversation'],
   handoff: ['execution'],
-  'execution-of': ['conversation', 'work'],
+  'execution-of': ['conversation', 'work', 'task'],
   'derived-from': ['artifact', 'memory-source'],
 };
 

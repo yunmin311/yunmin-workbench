@@ -288,12 +288,31 @@ export interface ExecutionStory {
  * the graph. Missing facts remain explicit instead of being narrated. */
 export function buildExecutionStory(revision: WorkGraphRevision, nodeId: string): ExecutionStory | null {
   const facts = revision.candidate.semanticFacts;
-  const node = facts.nodes.find((candidate) => candidate.id === nodeId);
-  if (!node || node.kind !== 'execution') return null;
+  const selected = facts.nodes.find((candidate) => candidate.id === nodeId);
+  if (!selected) return null;
+  const linkedExecutions = selected.kind === 'task'
+    ? facts.edges
+      .filter((edge) => edge.kind === 'execution-of' && edge.source === selected.id)
+      .map((edge) => facts.nodes.find((candidate) => candidate.id === edge.target))
+      .filter((candidate): candidate is Extract<WorkGraphNode, { kind: 'execution' }> => candidate?.kind === 'execution')
+      .sort((a, b) => {
+        const outputCount = (executionId: string) => facts.edges
+          .filter((edge) => edge.kind === 'produces' && edge.source === executionId).length;
+        return outputCount(b.id) - outputCount(a.id) || a.id.localeCompare(b.id);
+      })
+    : [];
+  const node = selected.kind === 'execution' ? selected : linkedExecutions[0];
+  if (!node) return null;
+  const executionNodeId = node.id;
   const byId = new Map(facts.nodes.map((candidate) => [candidate.id, candidate]));
   const labelsFor = (kind: WorkGraphEdge['kind'], direction: 'out' | 'in' = 'out') => facts.edges
-    .filter((edge) => edge.kind === kind && (direction === 'out' ? edge.source === nodeId : edge.target === nodeId))
-    .map((edge) => byId.get(direction === 'out' ? edge.target : edge.source)?.label)
+    .filter((edge) => edge.kind === kind && (direction === 'out' ? edge.source === executionNodeId : edge.target === executionNodeId))
+    .map((edge) => {
+      const related = byId.get(direction === 'out' ? edge.target : edge.source);
+      return kind === 'produces' && related?.kind === 'artifact' && related.content?.trim()
+        ? related.content.trim()
+        : related?.label;
+    })
     .filter((label): label is string => Boolean(label));
   const task = node.taskId
     ? facts.nodes.find((candidate) => candidate.kind === 'task' && candidate.taskId === node.taskId)

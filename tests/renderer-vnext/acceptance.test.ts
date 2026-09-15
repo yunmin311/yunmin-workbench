@@ -36,7 +36,11 @@ function facts(): WorkGraphSourceFacts {
       { contextId: 'available', projectId: 'p1', title: 'Available only', source: 'manual', body: '', state: 'available', pinned: false, isReference: false, evidenceRefs: [] },
       { contextId: 'included', projectId: 'p1', title: 'Included', source: 'manual', body: '', state: 'included', pinned: false, isReference: false, evidenceRefs: [], consumedBy: { executionId: 'paseo-agent-1', action: 'included' } },
     ],
-    attentionItems: [], artifacts: [],
+    attentionItems: [], artifacts: [{
+      artifactId: 'result-1', projectId: 'p1', kind: 'agent-result', executionId: 'paseo-agent-1',
+      eventRef: 'event-final', title: 'Agent response completed', content: 'No contract mismatch; no files changed.',
+      observedAt: NOW, verification: 'OBSERVED', evidenceRefs: [],
+    }],
     tasks: [{
       taskId: 'task-1', projectId: 'p1', label: 'Close Phase 3B', source: 'governance-tasks',
       sourceRef: 'governance:task-1', observedAt: NOW, verification: 'UNKNOWN', taskState: 'active',
@@ -144,10 +148,20 @@ describe('vNext renderer acceptance', () => {
     expect(story).toMatchObject({
       doing: 'Close Phase 3B',
       context: ['Included'],
-      outputs: [],
+      outputs: ['No contract mismatch; no files changed.'],
       next: 'No next-step fact yet',
     });
     expect(JSON.stringify(story)).not.toContain('Available only');
+  });
+
+  it('resolves a canonical Task result through its exact execution relation', async () => {
+    const story = buildExecutionStory(await revision(), 'task:p1:task-1');
+    expect(story).toMatchObject({
+      doing: 'Close Phase 3B',
+      context: ['Included'],
+      outputs: ['No contract mismatch; no files changed.'],
+      next: 'No next-step fact yet',
+    });
   });
 
   it('bookmarks an explicit selection only inside its own project', async () => {
