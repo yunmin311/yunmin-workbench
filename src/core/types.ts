@@ -31,7 +31,7 @@ export type AttentionState = 'none' | 'needs-user' | 'approval' | 'blocked';
 /** Raw dialogue-registry status: external fact, kept verbatim. */
 export type DialogueStatus = 'ACTIVE' | 'PAUSED' | 'FROZEN' | 'STANDBY' | 'UNKNOWN';
 export type Verification = 'VERIFIED' | 'UNVERIFIED' | 'UNKNOWN';
-export type Platform = 'claude' | 'codex' | 'deepseek' | 'other';
+export type Platform = 'claude' | 'codex' | 'deepseek' | 'opencode' | 'other';
 
 export interface Conversation {
   /**
@@ -283,7 +283,7 @@ export interface HarnessCapabilityTruth {
 }
 
 export interface HarnessCapabilities {
-  harness: 'codex' | 'claude' | 'deepseek';
+  harness: 'codex' | 'claude' | 'deepseek' | 'opencode';
   /** Explicit capability truth. UNKNOWN is never collapsed into a positive boolean. */
   support: HarnessCapabilityTruth;
   /** Compatibility flags consumed by the existing Codex UI path. */
@@ -296,9 +296,21 @@ export interface HarnessCapabilities {
   evidence: string;
 }
 
+/** Read-only native session presence. Identity is always supplied by the Harness. */
+export interface HarnessSessionPresence {
+  harness: HarnessCapabilities['harness'];
+  nativeRef: string;
+  label: string;
+  agent?: string;
+  model?: string;
+  runtimeState: RuntimeState;
+  sourceRef: string;
+  observedAt: string;
+}
+
 export interface HandoffReceipt {
   intentId: string;
-  harness: 'codex' | 'claude' | 'deepseek';
+  harness: 'codex' | 'claude' | 'deepseek' | 'opencode';
   status: 'ACCEPTED' | 'REJECTED' | 'FAILED' | 'CANCELLED';
   at: string;
   runtimeRef?: string;

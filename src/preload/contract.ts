@@ -34,6 +34,7 @@ import type {
   HandoffReceipt,
   HarnessCapabilities,
   HarnessDispatchRequest,
+  HarnessSessionPresence,
   OverlaySnapshot,
   SourceFingerprint,
   TaskPacket,
@@ -111,11 +112,12 @@ export interface WorkbenchContractV1 {
   loadAllHarnessCapabilities(
     environment?: ExecutionEnvironment,
   ): Promise<Record<string, HarnessCapabilities>>;
+  listHarnessSessions(projectId: string): Promise<HarnessSessionPresence[]>;
   dispatchToHarness(request: HarnessDispatchRequest): Promise<HandoffReceipt>;
   smokeHarness(
     projectId: string,
-    harness: 'codex' | 'claude' | 'deepseek',
-  ): Promise<HandoffReceipt | { userAgent: string; ephemeralThreadId: string }>;
+    harness: HarnessCapabilities['harness'],
+  ): Promise<HandoffReceipt | { userAgent: string; ephemeralThreadId: string } | HarnessSessionPresence[]>;
 
   loadLiveExecutions(): Promise<
     { executionId: string; harness: string; externalSessionRef: string; startedAt: string; canCancel: boolean }[]
@@ -231,6 +233,7 @@ const CONTRACT_METHOD_NAMES: ReadonlyArray<ContractMethodNames> = [
   'saveWorkspaceSession',
   'loadHarnessCapabilities',
   'loadAllHarnessCapabilities',
+  'listHarnessSessions',
   'dispatchToHarness',
   'smokeHarness',
   'loadLiveExecutions',

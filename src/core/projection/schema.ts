@@ -48,7 +48,7 @@ const conversationSchema = z.object({
   projectId: z.string().min(1),
   role: z.string().min(1),
   level: z.string().min(1).optional(),
-  platform: z.enum(['claude', 'codex', 'deepseek', 'other']),
+  platform: z.enum(['claude', 'codex', 'deepseek', 'opencode', 'other']),
   lifecycleState: z.enum(['ACTIVE', 'PAUSED', 'FROZEN', 'STANDBY', 'UNKNOWN']),
   taskState: z.enum(['active', 'waiting', 'blocked', 'standby', 'unknown']),
   runtimeState: z.enum(['working', 'idle', 'stopped', 'error', 'unknown']),

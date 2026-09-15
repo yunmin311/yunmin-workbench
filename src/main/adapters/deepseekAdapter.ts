@@ -1,4 +1,11 @@
 import type { HandoffReceipt, HarnessCapabilities } from '../../core/types';
+import { spawn } from 'node:child_process';
+import { allowlistedVersionToken, boundedProcessError } from './evidenceBounds';
+
+export interface DeepSeekAdapterOptions {
+  command?: string;
+  commandArgs?: string[];
+}
 
 /**
  * DeepSeek Harness — honest capability probe.
@@ -7,18 +14,49 @@ import type { HandoffReceipt, HarnessCapabilities } from '../../core/types';
  * We do NOT synthesize via web automation or heuristic parser.
  */
 export class DeepSeekAdapter {
+  private readonly command: string;
+  private readonly commandArgs: string[];
+
+  constructor(options: DeepSeekAdapterOptions = {}) {
+    const defaultWindowsCommand = options.command === undefined && process.platform === 'win32';
+    this.command = defaultWindowsCommand ? (process.env.ComSpec ?? 'cmd.exe') : (options.command ?? 'dsh');
+    this.commandArgs = defaultWindowsCommand
+      ? ['/d', '/s', '/c', 'dsh.cmd', ...(options.commandArgs ?? [])]
+      : (options.commandArgs ?? []);
+  }
+
+  private probe(args: string[], timeoutMs = 4_000): Promise<{ code: number | null; stdout: string; marker?: string }> {
+    return new Promise((resolve) => {
+      let done = false;
+      let stdout = '';
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const finish = (value: { code: number | null; stdout: string; marker?: string }) => {
+        if (done) return;
+        done = true;
+        if (timer) clearTimeout(timer);
+        resolve(value);
+      };
+      let child;
+      try {
+        child = spawn(this.command, [...this.commandArgs, ...args], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+      } catch (error) {
+        finish({ code: 127, stdout, marker: boundedProcessError(error) });
+        return;
+      }
+      child.stdout.on('data', (chunk: Buffer) => { stdout = `${stdout}${chunk.toString('utf8')}`.slice(-20_000); });
+      child.on('error', (error) => finish({ code: 127, stdout, marker: boundedProcessError(error) }));
+      child.on('close', (code) => finish({ code, stdout }));
+      timer = setTimeout(() => { try { child.kill(); } catch {}; finish({ code: 124, stdout, marker: 'timeout' }); }, timeoutMs);
+    });
+  }
+
   async capabilities(): Promise<HarnessCapabilities> {
-    // Check for deepseek CLI existence without invoking model
-    // We treat absence as graceful NO, not failure.
     try {
-      const { spawn } = await import('node:child_process');
-      const child = spawn('deepseek', ['--version'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-      const result = await new Promise<{ code: number | null }>((resolve) => {
-        child.on('error', () => resolve({ code: 127 }));
-        child.on('close', (code) => resolve({ code }));
-        setTimeout(() => { try { child.kill(); } catch {}; resolve({ code: 124 }); }, 2000);
-      });
+      const result = await this.probe(['--version']);
       if (result.code === 0) {
+        const version = allowlistedVersionToken(result.stdout.split(/\r?\n/)[0] ?? '') ?? 'unknown';
+        const help = await this.probe(['--profile', 'headless', '--help'], 20_000);
+        const headless = help.code === 0 && /profile headless|Answer one task/i.test(help.stdout);
         return {
           harness: 'deepseek',
           support: {
@@ -30,11 +68,17 @@ export class DeepSeekAdapter {
           canResumeSession: false,
           canObserveRuntime: false,
           canReceiveReceipt: false,
-          protocol: 'DeepSeek CLI (unstructured)',
-          evidence: 'deepseek binary found but Workbench has no validated stable structured interface',
+          protocol: 'DeepSeek Harness headless CLI',
+          evidence: `dsh ${version}; headless=${headless ? 'yes' : 'unknown'}; no structured lifecycle or native session identity`,
         };
       }
-    } catch {}
+    } catch (error) {
+      return this.unavailable(boundedProcessError(error));
+    }
+    return this.unavailable('dsh binary not found or version probe failed');
+  }
+
+  private unavailable(reason: string): HarnessCapabilities {
     return {
       harness: 'deepseek',
       support: {
@@ -47,7 +91,7 @@ export class DeepSeekAdapter {
       canObserveRuntime: false,
       canReceiveReceipt: false,
       protocol: 'DeepSeek harness',
-      evidence: 'unavailable: deepseek binary not found or no stable structured interface — graceful degradation',
+      evidence: `unavailable: ${reason}; no stable structured interface — graceful degradation`,
     };
   }
 

@@ -192,7 +192,7 @@ interface WorkbenchState {
   refreshLiveExecutions: () => Promise<void>;
   openRuntimeInspector: (target: RuntimeInspectorTarget) => void;
   loadHarnessCapabilities: () => Promise<void>;
-  sendTask: (summary: string, harness: 'codex' | 'claude' | 'deepseek' | ('codex' | 'claude' | 'deepseek')[]) => Promise<DispatchOutcome[]>;
+  sendTask: (summary: string, harness: HarnessCapabilities['harness'] | HarnessCapabilities['harness'][]) => Promise<DispatchOutcome[]>;
   addResultToContext: (event: ActivityEvent) => void;
   clearHandoffSource: () => void;
   loadAttentionLocal: () => Promise<void>;

@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, screen, type OpenDialogOptions } from 'electron';
 import { watch, type FSWatcher } from 'chokidar';
 import { z } from 'zod';
-import type { ActivityEvent, HandoffReceipt, HarnessCapabilities, OverlaySnapshot, SourceFingerprint, TaskPacket } from '../core/types';
+import type { ActivityEvent, HandoffReceipt, HarnessCapabilities, HarnessSessionPresence, OverlaySnapshot, SourceFingerprint, TaskPacket } from '../core/types';
 import { isReviewWorthyCodexFileChange } from '../core/attention/codexSignals';
 import {
   listFrozenPackets,
@@ -64,6 +64,7 @@ import { readMaterialPreference, writeMaterialPreferenceAtomic } from './materia
 import { detectMaterialCapability } from './materialCapability';
 import { ClaudeCodeAdapter } from './adapters/claudeCodeAdapter';
 import { DeepSeekAdapter } from './adapters/deepseekAdapter';
+import { OpenCodeAdapter } from './adapters/openCodeAdapter';
 import { MockHarnessAdapter, type MockHarnessEvent } from './adapters/mockHarnessAdapter';
 import { LiveExecutionRegistry } from './liveExecutions';
 import { handleCancelRequest, handleRuntimeLiveRequest } from './harnessControl';
@@ -101,6 +102,7 @@ const codexAdapter = new CodexAppServerAdapter({
 });
 const claudeAdapter = new ClaudeCodeAdapter();
 const deepseekAdapter = new DeepSeekAdapter();
+const openCodeAdapter = new OpenCodeAdapter();
 const handoffRequests = new HandoffDispatchRegistry<HandoffReceipt>();
 const windowRoles = new WeakMap<BrowserWindow, { role: 'main' | 'island' }>();
 
@@ -194,11 +196,24 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     taskId?: string;
     packetId?: string;
   }>();
+  const pendingOpenCodeContexts = new Map<string, {
+    projectId: string;
+    conversationKey: string;
+    machine: string;
+    cwd: string;
+    intentId: string;
+    groupId: string;
+    parentSourceRef?: string;
+    workId?: string;
+    taskId?: string;
+    packetId?: string;
+  }>();
   const reviewWorthyTurns = new Set<string>();
   const history = new HistoryService({ stateDir: stateDir(), roots: defaultHistoryRoots() });
   const memory = new MemoryService(stateDir(), history);
   const pendingProfileImports = new Map<string, { raw: string; preview: ProfileImportPreview }>();
   const pendingProfileExports = new Map<string, string>();
+  const openCodePresenceCache = new Map<string, { at: number; sessions: HarnessSessionPresence[] }>();
   let profileStateOperation: Promise<void> = Promise.resolve();
   const withProfileStateLock = <T>(operation: () => Promise<T>): Promise<T> => {
     const result = profileStateOperation.then(operation, operation);
@@ -442,6 +457,37 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       const p = params as { type?: string } | undefined;
       if (p?.type === 'assistant') void recordActivity({ ...base, kind: 'agent-response' as const, summary: 'Claude response completed', content: protocolText(params) });
       return;
+    }
+  });
+
+  openCodeAdapter.onEvent((event) => {
+    const params = event.params as Record<string, unknown> | undefined;
+    const threadId = event.runtimeSessionRef;
+    const context = (threadId ? runtimeContexts.get('opencode', threadId) : undefined)
+      ?? pendingOpenCodeContexts.get(event.dispatchRef);
+    if (!context) return;
+    const base = {
+      id: randomUUID(), projectId: context.projectId, conversationKey: context.conversationKey,
+      harness: 'opencode' as const, adapter: 'opencode-cli-json', capability: 'observe' as const,
+      runtimeRef: threadId, intentId: context.intentId, groupId: context.groupId,
+      parentSourceRef: context.parentSourceRef, workId: context.workId, taskId: context.taskId,
+      packetId: context.packetId,
+      observed: { source: 'protocol' as const, sourceRef: event.sourceRef, observedAt: event.observedAt, verification: event.verification },
+    };
+    if (event.method === 'process/cancelled') {
+      void recordActivity({ ...base, kind: 'process-cancelled', runtimeState: 'stopped' as const, summary: 'OpenCode process cancelled by user', observed: { ...base.observed, source: 'process' as const, verification: 'OBSERVED' as const } });
+    } else if (event.method === 'adapter/error') {
+      void recordActivity({ ...base, kind: 'harness-error', runtimeState: 'error' as const, summary: typeof params?.message === 'string' ? params.message : 'OpenCode harness error', attentionKey: threadId ? `runtime:opencode:${threadId}` : `dispatch:${event.dispatchRef}`, observed: { ...base.observed, source: 'process' as const, verification: 'OBSERVED' as const } });
+    } else if (event.method === 'session/started' && threadId) {
+      void recordActivity({ ...base, capability: 'externalSessionRef', kind: 'session-started', summary: 'OpenCode session started', runtimeState: 'unknown' as const, binding: { harness: 'opencode', machine: context.machine, cwd: context.cwd, externalSessionRef: threadId } });
+    } else if (event.method === 'turn/started') {
+      void recordActivity({ ...base, kind: 'turn-started', summary: 'OpenCode turn started', runtimeState: 'working' as const });
+    } else if (event.method === 'turn/completed') {
+      void recordActivity({ ...base, kind: 'turn-completed', summary: 'OpenCode turn completed', runtimeState: 'idle' as const });
+    } else if (event.method === 'tool-started' || event.method === 'tool-completed') {
+      void recordActivity({ ...base, capability: 'toolEvents', kind: event.method === 'tool-started' ? 'tool-started' as const : 'tool-completed' as const, summary: `OpenCode tool ${event.method === 'tool-started' ? 'started' : 'completed'}`, ...eventEvidence(params ?? {}) });
+    } else if (event.method === 'item/completed') {
+      void recordActivity({ ...base, kind: 'agent-response', summary: 'OpenCode response completed', content: protocolText(params) });
     }
   });
 
@@ -916,16 +962,38 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
   ipcMain.handle('harness:capabilitiesAll', async (_event, rawEnvironment: unknown = { kind: 'real' }) => {
     const environment = HarnessEnvironmentSchema.parse(rawEnvironment);
     if (environment.kind === 'demo') {
-      const [codex, claude, deepseek] = await Promise.all((['codex', 'claude', 'deepseek'] as const)
+      const [codex, claude, opencode, deepseek] = await Promise.all((['codex', 'claude', 'opencode', 'deepseek'] as const)
         .map((harness) => new MockHarnessAdapter(harness, { sessionId: environment.sessionId }).capabilities()));
-      return { codex, claude, deepseek } as const;
+      return { codex, claude, opencode, deepseek } as const;
     }
-    const [codex, claude, deepseek] = await Promise.all([
+    const [codex, claude, opencode, deepseek] = await Promise.all([
       codexAdapter.capabilities(),
       claudeAdapter.capabilities(),
+      openCodeAdapter.capabilities(),
       deepseekAdapter.capabilities(),
     ]);
-    return { codex, claude, deepseek } as const;
+    return { codex, claude, opencode, deepseek } as const;
+  });
+  ipcMain.handle('harness:sessions', async (_event, rawProjectId: unknown): Promise<HarnessSessionPresence[]> => {
+    const projectId = KeySchema.parse(rawProjectId);
+    const snapshot = cache?.snapshot ?? await refresh();
+    const root = await projectRoot(snapshot, projectId);
+    if (!root) return [];
+    const cached = openCodePresenceCache.get(root);
+    if (cached && Date.now() - cached.at < 4_000) return cached.sessions;
+    const observedAt = new Date().toISOString();
+    const sessions = (await openCodeAdapter.listSessions(20, root)).map((session) => ({
+      harness: 'opencode' as const,
+      nativeRef: session.nativeRef,
+      label: session.title ?? session.nativeRef,
+      agent: session.agent,
+      model: session.model,
+      runtimeState: liveExecutions.has('opencode', session.nativeRef) ? 'working' as const : 'unknown' as const,
+      sourceRef: session.sourceRef,
+      observedAt,
+    }));
+    openCodePresenceCache.set(root, { at: Date.now(), sessions });
+    return sessions;
   });
   ipcMain.handle('harness:dispatch', async (_event, rawRequest: unknown) => {
     const request = HarnessDispatchSchema.parse(rawRequest);
@@ -960,7 +1028,7 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
       const mockAdapter = simulated
         ? new MockHarnessAdapter(harness, { sessionId: demoSessionId!, completionDelayMs: 650 })
         : null;
-      const adapter = mockAdapter ?? (harness === 'claude' ? claudeAdapter : harness === 'deepseek' ? deepseekAdapter : codexAdapter);
+      const adapter = mockAdapter ?? (harness === 'claude' ? claudeAdapter : harness === 'opencode' ? openCodeAdapter : harness === 'deepseek' ? deepseekAdapter : codexAdapter);
       const caps = await adapter.capabilities();
       if (!canDispatchToHarness(caps)) {
         const receipt = workbenchRejectedReceipt(
@@ -1093,6 +1161,24 @@ const rememberRuntime = (threadId: string) => {
           if (receipt.runtimeRef) {
             runtimeContexts.set('deepseek', receipt.runtimeRef, { projectId: request.projectId, conversationKey: request.conversationKey, machine, cwd, workId: request.workId, taskId: request.taskId, packetId: request.packetId });
           }
+        } else if (harness === 'opencode') {
+          pendingOpenCodeContexts.set(request.intentId, {
+            projectId: request.projectId, conversationKey: request.conversationKey, machine, cwd,
+            intentId: request.intentId, groupId: request.groupId, parentSourceRef: request.parentSourceRef,
+            workId: request.workId, taskId: request.taskId, packetId: request.packetId,
+          });
+          try {
+            const selectedConversation = snap?.conversations.find((conversation) => conversation.key === request.conversationKey);
+            const linkedNativeSession = selectedConversation?.platform === 'opencode'
+              ? selectedConversation.sessionId
+              : undefined;
+            receipt = linkedNativeSession
+              ? await openCodeAdapter.continueSession(request.intentId, cwd, linkedNativeSession, dispatchText, rememberRuntime)
+              : await openCodeAdapter.dispatch(request.intentId, cwd, dispatchText, rememberRuntime);
+            if (receipt.runtimeRef) liveExecutions.remove('opencode', receipt.runtimeRef, request.intentId);
+          } finally {
+            pendingOpenCodeContexts.delete(request.intentId);
+          }
         } else {
           receipt = await (adapter as typeof codexAdapter).dispatch(request.intentId, cwd, dispatchText, onCodexThread);
         }
@@ -1135,7 +1221,7 @@ const rememberRuntime = (threadId: string) => {
     const snap = cache?.snapshot ?? (await refresh());
     const cwd = await projectRoot(snap, projectId);
     if (!cwd) throw new Error(`No project root binding for ${projectId}`);
-    const adapter = harness === 'claude' ? claudeAdapter : harness === 'deepseek' ? deepseekAdapter : codexAdapter;
+    const adapter = harness === 'claude' ? claudeAdapter : harness === 'opencode' ? openCodeAdapter : harness === 'deepseek' ? deepseekAdapter : codexAdapter;
     return adapter.smoke(cwd);
   });
 
@@ -1150,12 +1236,11 @@ const rememberRuntime = (threadId: string) => {
       const context = runtimeContexts.get(entry.harness, entry.externalSessionRef);
       if (context?.intentId) liveIntents.set(entry.executionId, context.intentId);
     }
-    // Mirrors adapter reality: only the Claude adapter implements a cancel path
-    // today. Codex/DeepSeek return a structured refusal instead of a fake stop.
+    // Mirrors adapter reality: Claude and OpenCode own cancellable child processes.
     return handleCancelRequest(rawRequest, {
       liveIntents,
-      cancelableHarnesses: new Set(['claude']),
-      cancelByIntent: (intentId) => claudeAdapter.cancel(intentId),
+      cancelableHarnesses: new Set(['claude', 'opencode']),
+      cancelByIntent: (intentId) => claudeAdapter.cancel(intentId) || openCodeAdapter.cancel(intentId),
     });
   });
 
@@ -1609,6 +1694,7 @@ app.on('before-quit', () => {
   codexAdapter.close();
   claudeAdapter.close();
   deepseekAdapter.close();
+  openCodeAdapter.close();
   closeCompactForQuit();
 });
 

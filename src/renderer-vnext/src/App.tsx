@@ -5,6 +5,7 @@ import '../../../src/design/tokens.css';
 import './styles/index.css';
 import './styles/approved-blue.css';
 import type { WorkGraphRevision } from './types';
+import type { HarnessSessionPresence } from '../../core/types';
 import { projectIdsFromOverlay } from './workGraphView';
 
 function App() {
@@ -16,6 +17,7 @@ function App() {
   const [projectIds, setProjectIds] = useState<string[]>([]);
   const [overlayEmpty, setOverlayEmpty] = useState(false);
   const [hasBinding, setHasBinding] = useState(false);
+  const [harnessSessions, setHarnessSessions] = useState<HarnessSessionPresence[]>([]);
 
   const load = useCallback(async (projectId?: string) => {
     setError(null);
@@ -26,6 +28,7 @@ function App() {
         const response = await window.wb.getFixtureWorkGraph();
         if (response.error) throw new Error(response.error);
         setRevision(response.revision);
+        setHarnessSessions([]);
         setIsFixture(response.revision !== null);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -41,6 +44,9 @@ function App() {
         window.wb.loadOverlayBinding().catch(() => null),
       ]);
       setRevision(response.revision ?? null);
+      setHarnessSessions(response.revision
+        ? await window.wb.listHarnessSessions(response.revision.candidate.scope.projectId)
+        : []);
       setProjectIds(projectIdsFromOverlay(overlay));
       setOverlayEmpty(overlay.projects.length === 0);
       setHasBinding(binding !== null);
@@ -136,6 +142,7 @@ function App() {
       <main className="vnext-main">
         <WorkGraphCanvas
           revision={revision}
+          harnessSessions={harnessSessions}
           projectIds={projectIds}
           onSelectProject={(projectId) => void load(projectId)}
           onRefresh={() => load(revision.candidate.scope.projectId)}

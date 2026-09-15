@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
-import type { ActivityEvent, AttentionLocalState, ContextItem, ExecutionEnvironment, FrozenPacket, FrozenPacketSummary, GitFacts, HandoffReceipt, HarnessCapabilities, HarnessDispatchRequest, OverlaySnapshot, SourceFingerprint, TaskPacket } from '../core/types';
+import type { ActivityEvent, AttentionLocalState, ContextItem, ExecutionEnvironment, FrozenPacket, FrozenPacketSummary, GitFacts, HandoffReceipt, HarnessCapabilities, HarnessDispatchRequest, HarnessSessionPresence, OverlaySnapshot, SourceFingerprint, TaskPacket } from '../core/types';
 import type { WorkbenchDraftV1 } from '../core/project/draft';
 import type { CabinetStagingV1 } from '../core/project/cabinetStaging';
 import type { WorkspaceSessionV1 } from '../core/project/workspaceSession';
@@ -101,9 +101,11 @@ const api = {
     ipcRenderer.invoke('harness:capabilities'),
   loadAllHarnessCapabilities: (environment: ExecutionEnvironment = { kind: 'real' }): Promise<Record<string, HarnessCapabilities>> =>
     ipcRenderer.invoke('harness:capabilitiesAll', environment),
+  listHarnessSessions: (projectId: string): Promise<HarnessSessionPresence[]> =>
+    ipcRenderer.invoke('harness:sessions', projectId),
   dispatchToHarness: (request: HarnessDispatchRequest): Promise<HandoffReceipt> =>
     ipcRenderer.invoke('harness:dispatch', request),
-  smokeHarness: (projectId: string, harness: 'codex' | 'claude' | 'deepseek'): Promise<HandoffReceipt | { userAgent: string; ephemeralThreadId: string }> =>
+  smokeHarness: (projectId: string, harness: HarnessCapabilities['harness']): Promise<HandoffReceipt | { userAgent: string; ephemeralThreadId: string } | HarnessSessionPresence[]> =>
     ipcRenderer.invoke('harness:smoke', projectId, harness),
   loadLiveExecutions: (): Promise<{ executionId: string; harness: string; externalSessionRef: string; startedAt: string; canCancel: boolean }[]> =>
     ipcRenderer.invoke('runtime:live'),

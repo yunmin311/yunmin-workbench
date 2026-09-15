@@ -61,7 +61,7 @@ export function parseHarnessManifest(yamlText: string, observed: Observation = F
   if (plugins) for (const k of Object.keys(plugins)) harnessNames.add(k);
 
   for (const name of harnessNames) {
-    if (name === 'claude' || name === 'codex' || name === 'deepseek' || harnessNames.size === 0) {
+    if (name === 'claude' || name === 'codex' || name === 'deepseek' || name === 'opencode' || harnessNames.size === 0) {
       const renderCfg = render?.[name] as Record<string, unknown> | undefined;
       const pluginCfg = plugins?.[name];
       const pluginsEnabled = Array.isArray(pluginCfg)

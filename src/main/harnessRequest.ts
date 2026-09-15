@@ -14,7 +14,7 @@ export const HarnessDispatchSchema = z.object({
   projectId: KeySchema,
   conversationKey: KeySchema,
   packetText: z.string().min(1).max(5_000_000),
-  harness: z.enum(['codex', 'claude', 'deepseek']),
+  harness: z.enum(['codex', 'claude', 'deepseek', 'opencode']),
   environment: HarnessEnvironmentSchema,
   parentSourceRef: z.string().min(1).max(4096).optional(),
   /** Optional canonical lineage from the dispatching Work/Task/Packet. Exact identity only; never inferred. */
@@ -23,7 +23,7 @@ export const HarnessDispatchSchema = z.object({
   packetId: z.string().min(1).max(1024).optional(),
 });
 
-export const HarnessSmokeSchema = z.enum(['codex', 'claude', 'deepseek']);
+export const HarnessSmokeSchema = z.enum(['codex', 'claude', 'deepseek', 'opencode']);
 
 type HarnessDispatchRequest = z.infer<typeof HarnessDispatchSchema>;
 

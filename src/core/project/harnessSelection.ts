@@ -3,7 +3,7 @@ import type { HarnessCapabilities } from '../types';
 export type HarnessTarget = HarnessCapabilities['harness'];
 export type HarnessCapabilityMatrix = Record<HarnessTarget, HarnessCapabilities>;
 
-const ORDER: HarnessTarget[] = ['codex', 'claude', 'deepseek'];
+const ORDER: HarnessTarget[] = ['codex', 'claude', 'opencode', 'deepseek'];
 
 export function canDispatchToHarness(capability: HarnessCapabilities): boolean {
   return capability.canDispatch && capability.support.dispatch === 'YES';

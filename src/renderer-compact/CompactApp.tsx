@@ -41,6 +41,7 @@ export function CompactApp() {
         ? (await window.wb.getWorkGraphRevision(selection.projectId)).revision
         : null;
       const live = await window.wb.loadLiveExecutions();
+      const nativeSessions = selection ? await window.wb.listHarnessSessions(selection.projectId) : [];
       const [activity, local] = await Promise.all([
         window.wb.loadActivity({ limit: 400 }),
         window.wb.loadAttentionLocal(),
@@ -55,14 +56,19 @@ export function CompactApp() {
         liveExecutions: live,
         attentionItems: attention,
       }));
-      setPresence((revision?.candidate.semanticFacts.nodes ?? [])
+      setPresence([...(revision?.candidate.semanticFacts.nodes ?? [])
         .filter((node) => node.kind === 'conversation')
         .map((node) => ({
           id: node.id,
           label: node.label,
           platform: node.platform,
           runtimeState: node.runtimeState,
-        })));
+        })), ...nativeSessions.map((session) => ({
+          id: `${session.harness}:${session.nativeRef}`,
+          label: session.label,
+          platform: session.harness,
+          runtimeState: session.runtimeState,
+        }))]);
       setError('');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

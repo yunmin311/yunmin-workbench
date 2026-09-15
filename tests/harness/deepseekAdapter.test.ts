@@ -1,9 +1,12 @@
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { DeepSeekAdapter } from '../../src/main/adapters/deepseekAdapter';
 
+const FAKE = fileURLToPath(new URL('../fixtures/dsh-fake.cjs', import.meta.url));
+
 describe('DeepSeek adapter — honest capability (no heuristic)', () => {
   it('reports unavailable when no binary and no structured protocol', async () => {
-    const adapter = new DeepSeekAdapter();
+    const adapter = new DeepSeekAdapter({ command: 'dsh-definitely-not-on-path-xyz' });
     const caps = await adapter.capabilities();
     expect(caps.harness).toBe('deepseek');
     expect(caps.canDispatch).toBe(false);
@@ -14,16 +17,23 @@ describe('DeepSeek adapter — honest capability (no heuristic)', () => {
     });
     expect(caps.evidence).toContain('unavailable');
   });
+  it('reports an installed DSH headless profile but keeps dispatch unsupported without structured identity/events', async () => {
+    const adapter = new DeepSeekAdapter({ command: process.execPath, commandArgs: [FAKE] });
+    const caps = await adapter.capabilities();
+    expect(caps).toMatchObject({ harness: 'deepseek', canDispatch: false, protocol: 'DeepSeek Harness headless CLI' });
+    expect(caps.evidence).toContain('0.1.2-rc.1');
+    expect(caps.evidence).toContain('no structured lifecycle or native session identity');
+  });
   it('dispatch returns FAILED honest receipt, not throw', async () => {
     const adapter = new DeepSeekAdapter();
     const receipt = await adapter.dispatch('77777777-7777-4111-8111-111111111111', process.cwd(), 'hello');
     expect(receipt.status).toBe('FAILED');
     expect(receipt.harness).toBe('deepseek');
-    expect(receipt.protocolEvidence).toContain('unavailable');
+    expect(receipt.protocolEvidence).toMatch(/unavailable|no structured lifecycle/i);
   });
   it('real smoke is skipped instead of inventing a DeepSeek session ref', async () => {
     const adapter = new DeepSeekAdapter();
-    await expect(adapter.smoke(process.cwd())).rejects.toThrow(/unavailable|no stable structured interface/i);
+    await expect(adapter.smoke(process.cwd())).rejects.toThrow(/unavailable|no stable structured interface|no structured lifecycle/i);
   });
   it('does not turn an environment flag into fictional live capability', async () => {
     process.env.WB_FORCE_DEEPSEEK = 'available';
