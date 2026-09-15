@@ -187,6 +187,7 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
   const [sendDockTab, setSendDockTab] = useState<'preflight' | 'packet' | 'evidence'>('preflight');
   const [draggedPositions, setDraggedPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [collapsedRegions, setCollapsedRegions] = useState<Set<string>>(new Set());
+  const [expandedRegionId, setExpandedRegionId] = useState<string | null>(null);
   // Narrow windows start with the work list folded so the floating nav never
   // buries the project anchor; the project switcher itself stays visible.
   const [navCollapsed, setNavCollapsed] = useState(() => window.innerWidth < 1100);
@@ -199,6 +200,7 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
     setEdges(initial.edges);
     setSelectedId((current) => current && initial.nodes.some((node) => node.id === current) ? current : null);
     setCollapsedRegions(new Set());
+    setExpandedRegionId(null);
     setPreparedPacket(null);
     setDispatchReady(false);
     setDispatchPreflight(null);
@@ -341,25 +343,63 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
   }, [visibility.edges, visibility.nodes, selectedNode, selectedId, neighborhood, hoveredEdgeId]);
   const visibleNodes = useMemo(() => {
     const regions = visibility.nodes.filter((node) => node.type === 'wb-region');
-    const taskOrder = new Map<string, number>();
+    const tasksByRegion = new Map<string, typeof visibility.nodes>();
+    const visibleTaskIds = new Set<string>();
+    const restingOrder = new Map<string, number>();
     for (const region of regions) {
-      visibility.nodes
-        .filter((node) => node.parentNode === region.id && node.data.kind === 'task')
-        .forEach((node, index) => taskOrder.set(node.id, index));
+      const tasks = visibility.nodes.filter((node) => node.parentNode === region.id && node.data.kind === 'task');
+      tasksByRegion.set(region.id, tasks);
+      if (expandedRegionId === region.id) {
+        for (const task of tasks) visibleTaskIds.add(task.id);
+      } else {
+        const selectedIndex = tasks.findIndex((task) => task.id === selectedId);
+        const resting = selectedIndex >= 3 ? [...tasks.slice(0, 2), tasks[selectedIndex]] : tasks.slice(0, 3);
+        resting.forEach((task, index) => {
+          visibleTaskIds.add(task.id);
+          restingOrder.set(task.id, index);
+        });
+      }
     }
-    return visibility.nodes
-      .filter((node) => node.type === 'wb-region' || (node.data.kind === 'task' && (taskOrder.get(node.id) ?? 99) < 3))
+    const expandedTasks = expandedRegionId ? tasksByRegion.get(expandedRegionId) ?? [] : [];
+    const expandedOrder = new Map(expandedTasks.map((task, index) => [task.id, index]));
+    const candidates = expandedRegionId
+      ? visibility.nodes.filter((node) => node.id === expandedRegionId || node.parentNode === expandedRegionId)
+      : visibility.nodes;
+    return candidates
+      .filter((node) => node.type === 'wb-region' || (node.data.kind === 'task' && visibleTaskIds.has(node.id)))
       .map((node, regionIndex) => {
         const focusedClass = selectedId && neighborhood?.has(node.id) ? 'is-neighbor' : node.className;
         if (node.type === 'wb-region') {
+          const tasks = tasksByRegion.get(node.id) ?? [];
+          const expanded = expandedRegionId === node.id;
+          const hiddenCount = expanded ? 0 : Math.max(0, tasks.length - tasks.filter((task) => visibleTaskIds.has(task.id)).length);
           return {
             ...node,
-            position: draggedPositions[node.id] ?? (narrowViewport ? { x: 0, y: regionIndex * 360 } : { x: 24, y: regionIndex * 500 + 24 }),
-            style: narrowViewport ? { width: 820, height: 315 } : { width: 850, height: 430 },
+            position: expanded ? { x: 24, y: 24 } : draggedPositions[node.id] ?? (narrowViewport ? { x: 0, y: regionIndex * 360 } : { x: 24, y: regionIndex * 500 + 24 }),
+            style: expanded ? { width: 900, height: Math.max(430, 62 + Math.ceil(tasks.length / 3) * 174) } : narrowViewport ? { width: 820, height: 315 } : { width: 850, height: 430 },
+            className: `${focusedClass ?? ''}${expanded ? ' is-region-expanded' : ''}`.trim(),
+            data: {
+              ...node.data,
+              disclosure: {
+                hiddenCount,
+                expanded,
+                onToggle: () => setExpandedRegionId((current) => current === node.id ? null : node.id),
+              },
+            },
+          };
+        }
+        const regionTasks = node.parentNode ? tasksByRegion.get(node.parentNode) ?? [] : [];
+        const index = expandedRegionId ? expandedOrder.get(node.id) ?? 0 : restingOrder.get(node.id) ?? 0;
+        if (expandedRegionId) {
+          const column = index % 3;
+          const row = Math.floor(index / 3);
+          return {
+            ...node,
+            position: { x: 260 + column * 206, y: 34 + row * 174 },
+            style: { width: 190, height: 156 },
             className: focusedClass,
           };
         }
-        const index = taskOrder.get(node.id) ?? 0;
         return {
           ...node,
           position: draggedPositions[node.id] ?? (narrowViewport
@@ -369,7 +409,19 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
           className: `${focusedClass ?? ''}${index === 2 ? ' approved-third-object' : ''}`.trim(),
         };
       });
-  }, [visibility.nodes, selectedId, neighborhood, narrowViewport, draggedPositions]);
+  }, [visibility.nodes, selectedId, neighborhood, narrowViewport, draggedPositions, expandedRegionId]);
+
+  useEffect(() => {
+    if (!instance || !expandedRegionId) return;
+    // React Flow applies the expanded parent/children on this commit. Move
+    // the camera on the next frame so its internal node measurement cannot
+    // replace the readable drill-in zoom with a fit-all viewport.
+    const frame = window.setTimeout(() => {
+      const zoom = Math.max(instance.getZoom(), 0.72);
+      void instance.setCenter(474, 284, { zoom, duration: 320 });
+    }, 60);
+    return () => window.clearTimeout(frame);
+  }, [expandedRegionId, instance]);
 
   // Explicit Full-Workbench Work/Task selection updates the thin local
   // current-selection bookmark the Compact surface reads. Never written
@@ -427,6 +479,9 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
   const attentionNodes = nodes.filter((node) => node.data.kind === 'gate');
   const workRegions = nodes.filter((node) => node.type === 'wb-region');
   const regionNavigation = useMemo(() => buildRegionNavigation(nodes, selectedId), [nodes, selectedId]);
+  const expandedRegion = expandedRegionId
+    ? regionNavigation.find((region) => region.regionId === expandedRegionId) ?? null
+    : null;
   const projectNode = nodes.find((node) => node.data.kind === 'project');
 
   const focusRegion = useCallback((regionId: string) => {
@@ -437,8 +492,17 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
       return next;
     });
     const region = nodes.find((node) => node.id === regionId);
-    if (region && instance) void instance.fitView({ nodes: [region], padding: 0.18, duration: 320 });
-  }, [instance, nodes]);
+    if (region && instance) {
+      if (expandedRegionId === regionId) {
+        void instance.setCenter(region.position.x + 450, region.position.y + 260, {
+          zoom: Math.max(instance.getZoom(), 0.72),
+          duration: 320,
+        });
+      } else {
+        void instance.fitView({ nodes: [region], padding: 0.18, duration: 320 });
+      }
+    }
+  }, [expandedRegionId, instance, nodes]);
 
   const toggleRegion = useCallback((regionId: string) => {
     setCollapsedRegions((current) => {
@@ -573,13 +637,24 @@ export function WorkGraphCanvas({ revision, projectIds, onSelectProject, onRefre
                 zoomOnScroll={false}
                 zoomOnPinch
                 zoomActivationKeyCode="Control"
-                minZoom={0.25}
+                minZoom={expandedRegionId ? 0.62 : 0.25}
                 defaultEdgeOptions={{ type: 'smoothstep' }}
                 proOptions={{ hideAttribution: true }}
                 fitView
                 fitViewOptions={{ padding: 0.16 }}
               >
                 <Background color="#a7aeba" gap={32} size={1} variant={BackgroundVariant.Lines} />
+                {expandedRegion && (
+                  <Panel position="top-right" className="approved-drill-exit">
+                    <button
+                      type="button"
+                      aria-label={`Show fewer tasks in ${expandedRegion.label}`}
+                      onClick={() => setExpandedRegionId(null)}
+                    >
+                      Show fewer · keep current
+                    </button>
+                  </Panel>
+                )}
                 {workRegions.length === 0 && <Panel position="bottom-center" className="wb-canvas-note">No work areas yet — they appear when the project declares work.</Panel>}
                 {workRegions.length > 0 && !selectedNode && preparationStage === null && !startDismissed && (
                   <Panel position="bottom-left" className="wb-start-card"><section aria-label="Where to start"><button type="button" className="start-dismiss" aria-label="Dismiss getting started" onClick={() => setStartDismissed(true)}>×</button><p className="start-title">Start here</p><p className="start-body">Pick a task on the canvas, then <strong>Prepare</strong>.</p></section></Panel>

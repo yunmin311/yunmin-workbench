@@ -14,6 +14,12 @@ export interface WorkGraphNodeData {
   sourceRef: string;
   /** Set on synthetic region containers. */
   region?: WorkspaceRegion;
+  /** Renderer-only progressive disclosure for a Work region. */
+  disclosure?: {
+    hiddenCount: number;
+    expanded: boolean;
+    onToggle: () => void;
+  };
 }
 
 export interface WorkGraphEdgeData {

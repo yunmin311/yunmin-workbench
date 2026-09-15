@@ -86,7 +86,24 @@ const WorkRegionNode = memo((props: NodeProps) => {
         <span className="wb-object-index">WORK / {region.workId ?? 'UNKNOWN'}</span>
         <span className="wb-region-label" title={region.label}>{region.label}</span>
         <p>Declared workspace scope and its current Tasks.</p>
-        <footer className="wb-object-footer"><span>{region.taskCount} tasks</span><span>{region.currentness.toLowerCase()}</span></footer>
+        <footer className="wb-object-footer">
+          <span>{region.taskCount} tasks</span>
+          {data.disclosure && (data.disclosure.hiddenCount > 0 || data.disclosure.expanded) ? (
+            <button
+              type="button"
+              className="wb-task-disclosure nodrag nopan"
+              aria-label={data.disclosure.expanded
+                ? `Show fewer tasks in ${region.label}`
+                : `Show ${data.disclosure.hiddenCount} more tasks in ${region.label}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                data.disclosure?.onToggle();
+              }}
+            >
+              {data.disclosure.expanded ? 'Show fewer' : `+${data.disclosure.hiddenCount} more`}
+            </button>
+          ) : <span>{region.currentness.toLowerCase()}</span>}
+        </footer>
       </div>
 
     </div>

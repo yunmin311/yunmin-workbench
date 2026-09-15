@@ -159,10 +159,16 @@ test('hermetic dual projects: discovery, switch, selection, compact handoff, sta
   const alphaCommit = initHermeticRepo(alphaRepo, alphaRemote, {
     'CLAUDE.md': '# Alpha Hermetic\nSynthetic constitution for hermetic dual-project acceptance.\n',
     'spec.md': '# Alpha spec\nReal-enough spec body.\n',
-    'tasks.md': '# Alpha tasks\n## a-T1\n## a-T2\n',
+    'tasks.md': '# Alpha tasks\n## a-T1\n## a-T2\n## a-T3\n## a-T4\n## a-T5\n',
     'src/alpha.ts': 'export const alpha = 1;\n',
     'canonical-facts.yaml': manifestYaml('alpha-hermetic', [
-      { id: 'w-alpha', label: 'Alpha work', spec: 'spec.md', tasks: [{ id: 'a-T1', label: 'Alpha task one' }, { id: 'a-T2', label: 'Alpha task two' }] },
+      { id: 'w-alpha', label: 'Alpha work', spec: 'spec.md', tasks: [
+        { id: 'a-T1', label: 'Alpha task one' },
+        { id: 'a-T2', label: 'Alpha task two' },
+        { id: 'a-T3', label: 'Alpha task three' },
+        { id: 'a-T4', label: 'Alpha task four' },
+        { id: 'a-T5', label: 'Alpha task five' },
+      ] },
     ], [{ id: 'alpha-hermetic:a-T1:code', file: 'src/alpha.ts', task: 'a-T1' }]),
   });
   const betaCommit = initHermeticRepo(betaRepo, betaRemote, {
@@ -225,7 +231,7 @@ test('hermetic dual projects: discovery, switch, selection, compact handoff, sta
       return out;
     });
     expect(discovered.projects).toEqual(['alpha-hermetic', 'beta-hermetic']);
-    expect(discovered['alpha-hermetic']).toMatchObject({ nodeKinds: { project: 1, work: 1, task: 2, artifact: 1 }, problems: [] });
+    expect(discovered['alpha-hermetic']).toMatchObject({ nodeKinds: { project: 1, work: 1, task: 5, artifact: 1 }, problems: [] });
     expect(discovered['beta-hermetic']).toMatchObject({ nodeKinds: { project: 1, work: 2, task: 3, artifact: 1 }, problems: [] });
 
     // Switch: region rows follow the current project (1 vs 2 works).
@@ -238,9 +244,38 @@ test('hermetic dual projects: discovery, switch, selection, compact handoff, sta
     await select.selectOption('alpha-hermetic');
     await expect(nav.locator('.approved-work-row')).toHaveCount(1);
 
+    // Progressive disclosure: the resting Work composition keeps three Task
+    // objects, exposes the exact hidden count, and drills into every Task
+    // without changing semantic facts.
+    const alphaRegion = win.locator('.react-flow__node-wb-region');
+    const alphaTasks = win.locator('.react-flow__node-wb-task');
+    await expect(alphaTasks).toHaveCount(3);
+    const showAll = win.locator('button[aria-label="Show 2 more tasks in Alpha work"]');
+    await expect(showAll).toBeVisible();
+    await showAll.click();
+    await expect(alphaTasks).toHaveCount(5);
+    await expect(alphaRegion).toHaveClass(/is-region-expanded/);
+    await win.locator('.react-flow__node[data-id="task:alpha-hermetic:a-T4"]').click();
+    await expect(win.getByRole('complementary', { name: 'Focus Detail' })).toContainText('Alpha task four');
+    await win.locator('.approved-drill-exit button[aria-label="Show fewer tasks in Alpha work"]').click();
+    await expect(alphaTasks).toHaveCount(3);
+    await expect(win.locator('.react-flow__node[data-id="task:alpha-hermetic:a-T4"]')).toBeVisible();
+    await win.getByRole('button', { name: 'Locate current work' }).click();
+
+    // Drill-in state belongs to this project only.
+    await nav.locator('.approved-work-focus').click();
+    await showAll.click();
+    await select.selectOption('beta-hermetic');
+    await expect(win.locator('button[aria-label^="Show fewer tasks in"]')).toHaveCount(0);
+    await select.selectOption('alpha-hermetic');
+    await expect(alphaTasks).toHaveCount(3);
+
     // Cross-project selection never mints a chimera.
     await select.selectOption('beta-hermetic');
-    await win.locator('.react-flow__node[data-id="task:beta-hermetic:b-T1"]').click();
+    const betaTask = win.locator('.react-flow__node[data-id="task:beta-hermetic:b-T1"]');
+    await expect(betaTask).toBeVisible();
+    await win.waitForTimeout(400);
+    await betaTask.click();
     await expect.poll(() => win.evaluate(async () => window.wb.getCurrentSelection())).toMatchObject({
       projectId: 'beta-hermetic', workId: 'w-beta-1', taskId: 'b-T1',
     });
