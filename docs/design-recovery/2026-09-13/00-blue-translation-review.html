@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Approved Green Baseline → Blue Translation</title>
+  <style>
+    *{box-sizing:border-box}html{background:#090c13;color:#eef2f8;font-family:"Segoe UI Variable","Segoe UI",sans-serif}body{margin:0;background:#090c13}.head{position:sticky;top:0;z-index:5;min-height:76px;display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:rgba(12,16,25,.92);backdrop-filter:blur(18px);border-bottom:1px solid #273249}.head h1{font-size:18px;margin:0}.head p{font-size:11px;color:#8e9aaf;margin:5px 0 0}.toggle{height:40px;border:1px solid #3b4965;border-radius:8px;background:#182135;color:#dce5f4;padding:0 14px;font:600 12px inherit}.review{max-width:1440px;margin:0 auto;padding:20px 20px 50px}.state{margin-bottom:24px;border:1px solid #273249;border-radius:13px;overflow:hidden;background:#101622}.state-head{height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-bottom:1px solid #273249}.state-head strong{font-size:13px}.state-head span{font:10px Consolas,monospace;color:#73829c}.labels,.pair{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:#273249}.labels div{height:38px;display:flex;align-items:center;padding:0 12px;background:#151d2b;font-size:10px;font-weight:700;letter-spacing:.1em;color:#9eabc0}.labels div:last-child{color:#8fa8ff}.pair figure{margin:0;background:#0a0d14}.pair img{display:block;width:100%;height:auto}.gray .pair img{filter:grayscale(1)}.gray .head p:after{content:" · GRAYSCALE INSPECTION";color:#aeb8c8}@media(max-width:800px){.pair,.labels{grid-template-columns:1fr}.labels div:nth-child(2){display:none}.pair figure+figure{border-top:1px solid #273249}.review{padding:10px}}
+  </style>
+</head>
+<body>
+  <header class="head"><div><h1>APPROVED GREEN BASELINE → BLUE TRANSLATION</h1><p>Same DOM, geometry, typography, component character, surface hierarchy and interaction states</p></div><button class="toggle" id="toggle">View grayscale</button></header>
+  <main class="review">
+    <section class="state"><div class="state-head"><strong>Full Hero</strong><span>1440 × 900</span></div><div class="labels"><div>APPROVED GREEN BASELINE</div><div>BLUE TRANSLATION</div></div><div class="pair"><figure><img src="shots-transplant/01-full-hero-1440x900.png" alt="Approved green Full Hero"></figure><figure><img src="shots-blue/01-full-hero-blue-1440x900.png" alt="Blue Full Hero"></figure></div></section>
+    <section class="state"><div class="state-head"><strong>Focused Work</strong><span>1440 × 900</span></div><div class="labels"><div>APPROVED GREEN BASELINE</div><div>BLUE TRANSLATION</div></div><div class="pair"><figure><img src="shots-transplant/02-focused-work-1440x900.png" alt="Approved green Focused Work"></figure><figure><img src="shots-blue/02-focused-work-blue-1440x900.png" alt="Blue Focused Work"></figure></div></section>
+    <section class="state"><div class="state-head"><strong>Send-ready</strong><span>1440 × 900</span></div><div class="labels"><div>APPROVED GREEN BASELINE</div><div>BLUE TRANSLATION</div></div><div class="pair"><figure><img src="shots-transplant/03-send-ready-1440x900.png" alt="Approved green Send-ready"></figure><figure><img src="shots-blue/03-send-ready-blue-1440x900.png" alt="Blue Send-ready"></figure></div></section>
+    <section class="state"><div class="state-head"><strong>Compact Edge Surface</strong><span>1440 × 900</span></div><div class="labels"><div>APPROVED GREEN BASELINE</div><div>BLUE TRANSLATION</div></div><div class="pair"><figure><img src="shots-transplant/04-compact-1440x900.png" alt="Approved green Compact"></figure><figure><img src="shots-blue/04-compact-blue-1440x900.png" alt="Blue Compact"></figure></div></section>
+  </main>
+  <script>
+    const forced=new URLSearchParams(location.search).get('gray')==='1';if(forced)document.body.classList.add('gray');
+    const button=document.getElementById('toggle');button.textContent=forced?'View color':'View grayscale';button.addEventListener('click',()=>{document.body.classList.toggle('gray');button.textContent=document.body.classList.contains('gray')?'View color':'View grayscale'});
+  </script>
+</body>
+</html>

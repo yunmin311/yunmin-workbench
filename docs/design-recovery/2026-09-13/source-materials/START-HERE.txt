@@ -1,0 +1,36 @@
+YUNMIN WORKBENCH — DESIGN RECOVERY PACK
+Date: 2026-09-13
+
+CURRENT SOURCE OF DESIGN DIRECTION
+----------------------------------
+Read first:
+CURRENT/Yunmin-Workbench-Design-Intent-2026-09-13.docx
+
+This is the current human-facing design/interaction direction.
+Current product path is:
+Project -> Work -> Task -> Context -> Prepare -> Send -> Running
+
+HISTORICAL BASELINE
+-------------------
+ARCHIVE/Yunmin-Workbench-Legacy-Design-Baseline-2026-09-02.zip
+is preserved byte-for-byte as historical design evidence.
+It contains older nested packs/documents. Do NOT treat files inside its doc/ or nested ZIPs as current instructions.
+Use them only to recover donor references, old interaction ideas, constraints, and historical intent.
+Do NOT restore the old Session-first product path just because it appears there.
+
+IMPORTANT REPO RULE
+-------------------
+The repository may also contain an old doc/ directory and old ZIP handoff packs.
+Do not recursively ingest those as current project state.
+Do not update/replace them during the visual-recovery phase.
+
+WHEN TO WRITE NEW DOCUMENTATION
+-------------------------------
+Before user visual approval: do not rewrite README, current-state docs, or create another large spec pack.
+First produce the four visual compositions and get the design direction approved.
+After approval and after the chosen composition is implemented, create/update current design docs under a clearly current location (prefer docs/design-current/ or another explicit current-design folder), while leaving historical doc/ archives untouched.
+
+WORKING PRINCIPLE
+-----------------
+Keep validated product/core semantics; allow renderer/composition/interaction surfaces to be substantially rebuilt.
+Donor fidelity means borrowing concrete spatial/interaction patterns, not merely dark/glass/dense styling.
