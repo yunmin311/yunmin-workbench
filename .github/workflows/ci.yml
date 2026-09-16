@@ -29,6 +29,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - run: pnpm docs:check
 
   hermetic-e2e:
     name: Hermetic Electron E2E
@@ -49,3 +50,33 @@ jobs:
       - run: pnpm build
       - name: Run portable Electron acceptance
         run: xvfb-run -a pnpm e2e:hermetic
+
+  windows-package:
+    name: Windows package smoke
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.1
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm package:win
+      - name: Run installed-code packaged acceptance
+        shell: pwsh
+        run: |
+          $env:WB_PACKAGED_EXE = (Resolve-Path 'release\win-unpacked\Yunmin Workbench.exe').Path
+          pnpm e2e:packaged
+      - name: Retain unsigned RC installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: yunmin-workbench-windows-unsigned
+          path: |
+            release/Yunmin-Workbench-*-Setup.exe
+            release/Yunmin-Workbench-*-Setup.exe.blockmap
+            release/latest.yml
+          if-no-files-found: error

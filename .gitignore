@@ -1,6 +1,7 @@
 node_modules/
 out/
 dist/
+release/
 .workbench-state/
 *.log
 smoke-screenshot.png
