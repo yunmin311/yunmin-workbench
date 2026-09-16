@@ -12,12 +12,30 @@ function localPath(stateDir: string): string {
 }
 
 export async function readAttentionLocalState(stateDir: string): Promise<AttentionLocalState> {
+  const file = localPath(stateDir);
+  let text: string;
   try {
-    return LocalSchema.parse(JSON.parse(await readFile(localPath(stateDir), 'utf8'))) as AttentionLocalState;
+    text = await readFile(file, 'utf8');
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return EMPTY;
     throw new Error(`Attention local state rejected: ${String(error)}`);
   }
+  let raw: unknown;
+  try { raw = JSON.parse(text); }
+  catch {
+    await rename(file, `${file}.rejected-${Date.now()}-${process.pid}`);
+    return EMPTY;
+  }
+  const schemaVersion = typeof raw === 'object' && raw !== null
+    ? (raw as { schemaVersion?: unknown }).schemaVersion
+    : undefined;
+  if (schemaVersion !== undefined && schemaVersion !== 1) {
+    throw new Error(`unsupported attention local schema: ${String(schemaVersion)}`);
+  }
+  const parsed = LocalSchema.safeParse(raw);
+  if (parsed.success) return parsed.data as AttentionLocalState;
+  await rename(file, `${file}.rejected-${Date.now()}-${process.pid}`);
+  return EMPTY;
 }
 
 async function writeAtomic(stateDir: string, state: AttentionLocalState): Promise<void> {

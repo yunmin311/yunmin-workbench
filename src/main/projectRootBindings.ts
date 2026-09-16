@@ -27,11 +27,29 @@ const empty = (): ProjectRootBindingsV1 => ({ schemaVersion: 1, bindings: {}, un
 export const projectRootBindingsPath = (stateRoot: string) => join(stateRoot, 'portability', 'project-root-bindings-v1.json');
 
 export async function readProjectRootBindings(stateRoot: string): Promise<ProjectRootBindingsV1> {
-  try { return BindingSchema.parse(JSON.parse(await readFile(projectRootBindingsPath(stateRoot), 'utf8'))); }
+  const file = projectRootBindingsPath(stateRoot);
+  let text: string;
+  try { text = await readFile(file, 'utf8'); }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return empty();
     throw new Error(`project root bindings rejected: ${String(error)}`);
   }
+  let raw: unknown;
+  try { raw = JSON.parse(text); }
+  catch {
+    await rename(file, `${file}.rejected-${Date.now()}-${process.pid}`);
+    return empty();
+  }
+  const schemaVersion = typeof raw === 'object' && raw !== null
+    ? (raw as { schemaVersion?: unknown }).schemaVersion
+    : undefined;
+  if (schemaVersion !== undefined && schemaVersion !== 1) {
+    throw new Error(`unsupported project root bindings schema: ${String(schemaVersion)}`);
+  }
+  const parsed = BindingSchema.safeParse(raw);
+  if (parsed.success) return parsed.data;
+  await rename(file, `${file}.rejected-${Date.now()}-${process.pid}`);
+  return empty();
 }
 
 export async function writeProjectRootBindingsAtomic(stateRoot: string, state: ProjectRootBindingsV1): Promise<void> {
