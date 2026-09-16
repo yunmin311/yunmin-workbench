@@ -7,6 +7,7 @@ import {
   runProcess,
   spawnOwnedProcess,
 } from '../../src/main/process/processRunner';
+import { parseWindowsCmdShim } from '../../src/main/process/windowsCmdShim';
 
 describe('Workbench child-process substrate', () => {
   it('resolves a generated Windows cmd shim without shell:true', async () => {
@@ -17,13 +18,21 @@ describe('Workbench child-process substrate', () => {
     await mkdir(join(root, 'node_modules', 'opencode', 'bin'), { recursive: true });
     await writeFile(node, 'fixture');
     await writeFile(script, 'fixture');
-    await writeFile(shim, [
+    const shimContents = [
       '@echo off',
       'GOTO start', ':find_dp0', 'SET dp0=%~dp0', 'EXIT /b', ':start', 'SETLOCAL', 'CALL :find_dp0',
       'IF EXIST "%~dp0\\node.exe" (', 'SET "_prog=%~dp0\\node.exe"', ') ELSE (', 'SET "_prog=node"',
       'SET PATHEXT=%PATHEXT:;.JS;=;%', ')',
       'endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%" "%dp0%\\node_modules\\opencode\\bin\\opencode.js" %*',
-    ].join('\r\n'));
+    ].join('\r\n');
+    await writeFile(shim, shimContents);
+
+    expect(parseWindowsCmdShim(shimContents)).toEqual({
+      kind: 'node', script: 'node_modules\\opencode\\bin\\opencode.js',
+    });
+    // Full filesystem resolution must use the host's real Windows path
+    // semantics. The parser assertion above remains portable on Linux CI.
+    if (process.platform !== 'win32') return;
 
     const resolved = resolveProcessSpawn({ program: shim, args: ['run', 'line one\nline two'] }, 'win32');
     expect(resolved.file.toLowerCase()).toBe(node.toLowerCase());
