@@ -3,7 +3,6 @@ import { constants, existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { access, stat } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
-import { spawn } from 'node:child_process';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, screen, type OpenDialogOptions } from 'electron';
 import { watch, type FSWatcher } from 'chokidar';
 import { z } from 'zod';
@@ -75,6 +74,7 @@ import { resolveMaterial } from '../core/material/tokens';
 import { buildDoctorReport } from './doctor';
 import { RecoverableSerialQueue } from './recoverableSerialQueue';
 import { allowlistedVersionToken } from './adapters/evidenceBounds';
+import { runProcess } from './process/processRunner';
 import { codexAgentContent, eventEvidence, packetTaskSummary, protocolText } from './activityEvidence';
 import { compileWorkGraph } from '../core/workgraph/compiler';
 import type { WorkGraphCompileOptions, WorkGraphGovernanceFact, WorkGraphRevision } from '../core/workgraph/revision';
@@ -126,29 +126,15 @@ function boundedRecordEntries<T>(record: Record<string, T>, limit: number): {
 }
 
 async function probeCommandVersion(command: string, args: string[]): Promise<string | undefined> {
-  return new Promise((resolve) => {
-    let settled = false;
-    let output = '';
-    const finish = (value?: string) => {
-      if (settled) return;
-      settled = true;
-      resolve(value);
-    };
-    try {
-      const child = spawn(command, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
-      child.stdout.on('data', (chunk: Buffer) => { output = `${output}${chunk.toString('utf8')}`.slice(0, 100); });
-      child.on('error', () => finish());
-      // Only a version-shaped first line survives; arbitrary external output is withheld.
-      child.on('close', (code) => finish(code === 0 ? allowlistedVersionToken(output) : undefined));
-      setTimeout(() => { try { child.kill(); } catch {}; finish(); }, 2_000);
-    } catch { finish(); }
-  });
+  try {
+    const result = await runProcess({ program: command, args, timeoutMs: 2_000, maxOutputBytes: 100, ownProcessTree: true });
+    // Only a version-shaped first line survives; arbitrary external output is withheld.
+    return result.code === 0 && !result.timedOut ? allowlistedVersionToken(result.stdout) : undefined;
+  } catch { return undefined; }
 }
 
 const probeNodeVersion = () => probeCommandVersion('node', ['--version']).then((version) => version?.replace(/^v/, ''));
-const probePnpmVersion = () => process.platform === 'win32'
-  ? probeCommandVersion(process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', 'pnpm.cmd', '--version'])
-  : probeCommandVersion('pnpm', ['--version']);
+const probePnpmVersion = () => probeCommandVersion('pnpm', ['--version']);
 
 const KeySchema = z.string().min(1).max(1024);
 

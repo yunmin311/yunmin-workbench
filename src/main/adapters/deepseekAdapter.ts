@@ -1,5 +1,5 @@
 import type { HandoffReceipt, HarnessCapabilities } from '../../core/types';
-import { spawn } from 'node:child_process';
+import { runProcess } from '../process/processRunner';
 import { allowlistedVersionToken, boundedProcessError } from './evidenceBounds';
 
 export interface DeepSeekAdapterOptions {
@@ -18,36 +18,23 @@ export class DeepSeekAdapter {
   private readonly commandArgs: string[];
 
   constructor(options: DeepSeekAdapterOptions = {}) {
-    const defaultWindowsCommand = options.command === undefined && process.platform === 'win32';
-    this.command = defaultWindowsCommand ? (process.env.ComSpec ?? 'cmd.exe') : (options.command ?? 'dsh');
-    this.commandArgs = defaultWindowsCommand
-      ? ['/d', '/s', '/c', 'dsh.cmd', ...(options.commandArgs ?? [])]
-      : (options.commandArgs ?? []);
+    this.command = options.command ?? 'dsh';
+    this.commandArgs = options.commandArgs ?? [];
   }
 
-  private probe(args: string[], timeoutMs = 4_000): Promise<{ code: number | null; stdout: string; marker?: string }> {
-    return new Promise((resolve) => {
-      let done = false;
-      let stdout = '';
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const finish = (value: { code: number | null; stdout: string; marker?: string }) => {
-        if (done) return;
-        done = true;
-        if (timer) clearTimeout(timer);
-        resolve(value);
-      };
-      let child;
-      try {
-        child = spawn(this.command, [...this.commandArgs, ...args], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-      } catch (error) {
-        finish({ code: 127, stdout, marker: boundedProcessError(error) });
-        return;
-      }
-      child.stdout.on('data', (chunk: Buffer) => { stdout = `${stdout}${chunk.toString('utf8')}`.slice(-20_000); });
-      child.on('error', (error) => finish({ code: 127, stdout, marker: boundedProcessError(error) }));
-      child.on('close', (code) => finish({ code, stdout }));
-      timer = setTimeout(() => { try { child.kill(); } catch {}; finish({ code: 124, stdout, marker: 'timeout' }); }, timeoutMs);
+  private async probe(args: string[], timeoutMs = 4_000): Promise<{ code: number | null; stdout: string; marker?: string }> {
+    const result = await runProcess({
+      program: this.command,
+      args: [...this.commandArgs, ...args],
+      timeoutMs,
+      maxOutputBytes: 20_000,
+      ownProcessTree: true,
     });
+    return {
+      code: result.timedOut ? 124 : result.code,
+      stdout: result.stdout,
+      marker: result.timedOut ? 'timeout' : result.code === 127 ? result.stderr : undefined,
+    };
   }
 
   async capabilities(): Promise<HarnessCapabilities> {

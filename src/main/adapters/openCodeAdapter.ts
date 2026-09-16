@@ -1,7 +1,7 @@
-import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { resolve } from 'node:path';
 import type { HandoffReceipt, HarnessCapabilities } from '../../core/types';
+import { runProcess, spawnOwnedProcess, type OwnedProcess } from '../process/processRunner';
 import { allowlistedVersionToken, boundedProcessError } from './evidenceBounds';
 
 export interface OpenCodeProtocolEvent {
@@ -104,15 +104,12 @@ export class OpenCodeAdapter {
   private readonly commandArgs: string[];
   private readonly terminalSettleMs: number;
   private readonly listeners = new Set<(event: OpenCodeProtocolEvent) => void>();
-  private readonly activeChildren = new Map<string, ChildProcessWithoutNullStreams>();
+  private readonly activeChildren = new Map<string, OwnedProcess>();
   private readonly cancelled = new Set<string>();
 
   constructor(options: OpenCodeAdapterOptions = {}) {
-    const defaultWindowsCommand = options.command === undefined && process.platform === 'win32';
-    this.command = defaultWindowsCommand ? (process.env.ComSpec ?? 'cmd.exe') : (options.command ?? 'opencode');
-    this.commandArgs = defaultWindowsCommand
-      ? ['/d', '/s', '/c', 'opencode.cmd', ...(options.commandArgs ?? [])]
-      : (options.commandArgs ?? []);
+    this.command = options.command ?? 'opencode';
+    this.commandArgs = options.commandArgs ?? [];
     this.terminalSettleMs = Math.max(50, options.terminalSettleMs ?? 5_000);
   }
 
@@ -125,48 +122,21 @@ export class OpenCodeAdapter {
     for (const listener of this.listeners) listener(event);
   }
 
-  private terminate(child: ChildProcessWithoutNullStreams): void {
-    try {
-      if (process.platform === 'win32' && child.pid) {
-        spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
-          windowsHide: true, stdio: 'ignore', timeout: 5_000,
-        });
-      } else if (!child.killed) child.kill('SIGTERM');
-    } catch {
-      try { child.kill(); } catch {}
-    }
-  }
-
-  private capture(args: string[], timeoutMs = 5_000, cwd?: string): Promise<{ code: number | null; stdout: string; stderr: string; marker?: string }> {
-    return new Promise((resolve) => {
-      let settled = false;
-      let stdout = '';
-      let stderr = '';
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const finish = (result: { code: number | null; stdout: string; stderr: string; marker?: string }) => {
-        if (settled) return;
-        settled = true;
-        if (timer) clearTimeout(timer);
-        resolve(result);
-      };
-      let child;
-      try {
-        child = spawn(this.command, [...this.commandArgs, ...args], {
-          cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
-        });
-      } catch (error) {
-        finish({ code: 127, stdout, stderr, marker: boundedProcessError(error) });
-        return;
-      }
-      child.stdout.on('data', (chunk: Buffer) => { stdout = `${stdout}${chunk.toString('utf8')}`.slice(-2_000_000); });
-      child.stderr.on('data', (chunk: Buffer) => { stderr = `${stderr}${chunk.toString('utf8')}`.slice(-20_000); });
-      child.on('error', (error) => finish({ code: 127, stdout, stderr, marker: boundedProcessError(error) }));
-      child.on('close', (code) => finish({ code, stdout, stderr }));
-      timer = setTimeout(() => {
-        try { child.kill(); } catch {}
-        finish({ code: 124, stdout, stderr, marker: 'timeout' });
-      }, timeoutMs);
+  private async capture(args: string[], timeoutMs = 5_000, cwd?: string): Promise<{ code: number | null; stdout: string; stderr: string; marker?: string }> {
+    const result = await runProcess({
+      program: this.command,
+      args: [...this.commandArgs, ...args],
+      cwd,
+      timeoutMs,
+      maxOutputBytes: 2_000_000,
+      ownProcessTree: true,
     });
+    return {
+      code: result.timedOut ? 124 : result.code,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      marker: result.timedOut ? 'timeout' : result.code === 127 ? result.stderr : undefined,
+    };
   }
 
   async capabilities(): Promise<HarnessCapabilities> {
@@ -236,10 +206,10 @@ export class OpenCodeAdapter {
   }
 
   cancel(intentId: string): boolean {
-    const child = this.activeChildren.get(intentId);
-    if (!child) return false;
+    const owned = this.activeChildren.get(intentId);
+    if (!owned) return false;
     this.cancelled.add(intentId);
-    this.terminate(child);
+    void owned.terminate();
     return true;
   }
 
@@ -258,18 +228,24 @@ export class OpenCodeAdapter {
   }
 
   private async run(intentId: string, cwd: string, text: string, onThreadStarted?: (threadId: string) => void, nativeSessionRef?: string): Promise<HandoffReceipt> {
-    let child: ChildProcessWithoutNullStreams | null = null;
+    let owned: OwnedProcess | null = null;
     try {
       const args = [
         ...this.commandArgs, 'run', '--format', 'json', '--dir', cwd,
         ...(nativeSessionRef ? ['--session', nativeSessionRef] : []),
       ];
-      child = spawn(this.command, args, {
-        cwd, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env },
-      }) as ChildProcessWithoutNullStreams;
-      const proc = child;
-      this.activeChildren.set(intentId, proc);
-      proc.stdin.end(text);
+      owned = spawnOwnedProcess({
+        program: this.command,
+        args,
+        cwd,
+        env: { ...process.env },
+        input: text,
+        timeoutMs: null,
+        maxOutputBytes: 2_000_000,
+        ownProcessTree: true,
+      });
+      const proc = owned.child;
+      this.activeChildren.set(intentId, owned);
       let stderr = '';
       proc.stderr.on('data', (chunk: Buffer) => { stderr = `${stderr}${chunk.toString('utf8')}`.slice(-8_000); });
       proc.on('error', () => undefined);
@@ -330,7 +306,7 @@ export class OpenCodeAdapter {
           if (sawFinish) {
             terminalTimer = setTimeout(() => {
               settledFromTerminalEvidence = true;
-              this.terminate(proc);
+              void owned?.terminate();
             }, this.terminalSettleMs);
           }
         });
@@ -341,15 +317,11 @@ export class OpenCodeAdapter {
         proc.on('close', () => rl.close());
         proc.on('error', () => rl.close());
       });
-      const exitCode = await new Promise<number | null>((resolve) => {
-        let done = false;
-        const finish = (code: number | null) => { if (!done) { done = true; resolve(code); } };
-        proc.on('close', finish);
-        proc.on('error', () => finish(127));
-      });
+      const processResult = await owned.result;
+      const exitCode = processResult.code;
       await parsed;
       this.activeChildren.delete(intentId);
-      child = null;
+      owned = null;
       if (this.cancelled.delete(intentId)) {
         emit({ kind: 'lifecycle', method: 'process/cancelled', params: {}, verification: 'OBSERVED', sourceRef: 'opencode:process:cancelled' });
         return { intentId, harness: 'opencode', status: 'CANCELLED', at: new Date().toISOString(), runtimeRef: sessionId, source: 'process', protocolEvidence: 'OpenCode process cancelled' };
@@ -368,7 +340,7 @@ export class OpenCodeAdapter {
     } catch (error) {
       return { intentId, harness: 'opencode', status: 'FAILED', at: new Date().toISOString(), source: 'process', protocolEvidence: 'OpenCode dispatch exception', message: boundedProcessError(error) };
     } finally {
-      if (child) this.terminate(child);
+      if (owned) void owned.terminate();
       this.activeChildren.delete(intentId);
       this.cancelled.delete(intentId);
     }
@@ -381,9 +353,9 @@ export class OpenCodeAdapter {
   }
 
   close(): void {
-    for (const [intentId, child] of this.activeChildren) {
+    for (const [intentId, owned] of this.activeChildren) {
       this.cancelled.add(intentId);
-      this.terminate(child);
+      void owned.terminate();
     }
     this.activeChildren.clear();
   }

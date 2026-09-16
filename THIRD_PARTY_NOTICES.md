@@ -150,6 +150,48 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+## Orca
+
+- Repository: https://github.com/stablyai/orca
+- Reviewed commit: `9ed561c1d2505184946b39a27614002f0145de40`
+- License: MIT
+- Copyright: Copyright (c) 2026 Lovecast Inc.
+- Upstream files adapted:
+  - `src/shared/child-process/process-spec.ts`
+  - `src/shared/child-process/run-process.ts`
+  - `src/shared/child-process/spawn-resolution.ts`
+  - `src/shared/child-process/windows-cmd-shim-resolution.ts`
+  - `src/shared/child-process/windows-command-line.ts`
+  - `src/shared/child-process/process-tree-termination.ts`
+- Incorporated/adapted code: argv-safe process specs, bounded output,
+  generated Windows command-shim resolution, timeout/abort ownership, and
+  confirmed process-tree termination. Workbench keeps its own adapter,
+  lifecycle, receipt, runtime, and harness capability contracts.
+- Not incorporated: Orca terminal daemon, PTY UI, SSH, worktree orchestration,
+  pane graph, child/alias/tombstone graph, or repository/session IA.
+
+MIT License
+
+Copyright (c) 2026 Lovecast Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
 ## cdesktop
 
 - Repository: https://github.com/cdesktop-ai/cdesktop
