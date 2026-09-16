@@ -1,4 +1,10 @@
+import { randomUUID } from 'node:crypto';
 import { isValidNativeRuntimeRef, runtimeExecutionId, workbenchExecutionId } from '../core/project/runtimeIdentity';
+import type {
+  RuntimePresenceEnvelope,
+  RuntimePresenceMutation,
+  RuntimePresenceSnapshot,
+} from '../core/runtimePresence';
 import type { HarnessCapabilities } from '../core/types';
 
 type Harness = HarnessCapabilities['harness'];
@@ -20,6 +26,40 @@ export interface LiveExecution {
  */
 export class LiveExecutionRegistry {
   private entries = new Map<string, LiveExecution>();
+  private readonly epoch: string;
+  private revision = 0;
+  private readonly listeners = new Set<(envelope: RuntimePresenceEnvelope) => void>();
+
+  constructor(options: { epoch?: string } = {}) {
+    this.epoch = options.epoch ?? randomUUID();
+  }
+
+  private publish(mutation: RuntimePresenceMutation): void {
+    const previousRevision = this.revision;
+    this.revision += 1;
+    const envelope: RuntimePresenceEnvelope = {
+      kind: 'mutation',
+      epoch: this.epoch,
+      previousRevision,
+      revision: this.revision,
+      mutation,
+    };
+    for (const listener of this.listeners) listener(envelope);
+  }
+
+  subscribe(listener: (envelope: RuntimePresenceEnvelope) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  snapshot(): RuntimePresenceSnapshot {
+    return {
+      kind: 'snapshot',
+      epoch: this.epoch,
+      revision: this.revision,
+      executions: this.list(),
+    };
+  }
 
   add(
     harness: Harness,
@@ -38,18 +78,24 @@ export class LiveExecutionRegistry {
       startedAt,
       canCancel,
     };
+    const previous = this.entries.get(entry.executionId);
     this.entries.set(entry.executionId, entry);
+    if (!previous || JSON.stringify(previous) !== JSON.stringify(entry)) {
+      this.publish({ type: 'upsert', execution: entry });
+    }
     return entry;
   }
 
   remove(harness: Harness, externalSessionRef: string, intentId?: string): void {
     if (intentId) {
-      this.entries.delete(workbenchExecutionId(harness, intentId));
+      const executionId = workbenchExecutionId(harness, intentId);
+      if (this.entries.delete(executionId)) this.publish({ type: 'remove', executionId });
       return;
     }
     for (const [executionId, entry] of this.entries) {
       if (entry.harness === harness && entry.externalSessionRef === externalSessionRef) {
         this.entries.delete(executionId);
+        this.publish({ type: 'remove', executionId });
       }
     }
   }
@@ -64,6 +110,8 @@ export class LiveExecutionRegistry {
   }
 
   clear(): void {
+    if (this.entries.size === 0) return;
     this.entries.clear();
+    this.publish({ type: 'clear' });
   }
 }

@@ -2,18 +2,30 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   handleCancelRequest,
   handleRuntimeLiveRequest,
+  handleRuntimePresenceRequest,
 } from '../../src/main/harnessControl';
 import { LiveExecutionRegistry } from '../../src/main/liveExecutions';
 
 describe('Runtime IPC boundaries', () => {
   it('accepts no runtime:live input and returns only process-local registry evidence', () => {
-    const registry = new LiveExecutionRegistry();
+    const registry = new LiveExecutionRegistry({ epoch: 'epoch-test' });
     registry.add('codex', 'thread-1', '2026-08-31T01:00:00.000Z');
     expect(handleRuntimeLiveRequest(undefined, registry)).toEqual([
       expect.objectContaining({ executionId: 'codex::thread-1' }),
     ]);
     expect(() => handleRuntimeLiveRequest({ projectId: 'guess-me' }, registry)).toThrow('Invalid runtime:live request');
     expect(new LiveExecutionRegistry().list()).toEqual([]);
+  });
+
+  it('returns the authoritative epoch/revision snapshot without accepting a project guess', () => {
+    const registry = new LiveExecutionRegistry({ epoch: 'epoch-test' });
+    registry.add('codex', 'thread-1', '2026-08-31T01:00:00.000Z');
+    expect(handleRuntimePresenceRequest(undefined, registry)).toEqual({
+      kind: 'snapshot', epoch: 'epoch-test', revision: 1,
+      executions: [expect.objectContaining({ executionId: 'codex::thread-1' })],
+    });
+    expect(() => handleRuntimePresenceRequest({ projectId: 'guess-me' }, registry))
+      .toThrow('Invalid runtime:presence request');
   });
 
   it('keeps equal external refs from different Harnesses distinct and rejects malformed refs', () => {

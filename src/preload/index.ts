@@ -10,6 +10,7 @@ import type { MemoryEvidenceExpansion, MemorySearchQuery, MemorySearchResult, Me
 import type { DoctorReport } from '../main/doctor';
 import type { WorkbenchContract } from './contract';
 import type { WorkGraphRevision } from '../core/workgraph/revision';
+import type { RuntimePresenceEnvelope, RuntimePresenceSnapshot } from '../core/runtimePresence';
 
 const api = {
   loadOverlay: (opts?: { refresh?: boolean }): Promise<OverlaySnapshot> =>
@@ -109,6 +110,13 @@ const api = {
     ipcRenderer.invoke('harness:smoke', projectId, harness),
   loadLiveExecutions: (): Promise<{ executionId: string; harness: string; externalSessionRef: string; startedAt: string; canCancel: boolean }[]> =>
     ipcRenderer.invoke('runtime:live'),
+  loadRuntimePresence: (): Promise<RuntimePresenceSnapshot> =>
+    ipcRenderer.invoke('runtime:presence'),
+  onRuntimePresenceChanged: (cb: (envelope: RuntimePresenceEnvelope) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, envelope: RuntimePresenceEnvelope) => cb(envelope);
+    ipcRenderer.on('runtime:presence-changed', listener);
+    return () => ipcRenderer.removeListener('runtime:presence-changed', listener);
+  },
   cancelExecution: (executionId: string): Promise<{ delivered: boolean; reason?: string }> =>
     ipcRenderer.invoke('harness:cancel', { executionId }),
   loadActivity: (options?: { beforeByte?: number; limit?: number }): Promise<{

@@ -67,7 +67,7 @@ import { DeepSeekAdapter } from './adapters/deepseekAdapter';
 import { OpenCodeAdapter, type OpenCodeSessionPresence } from './adapters/openCodeAdapter';
 import { MockHarnessAdapter, type MockHarnessEvent } from './adapters/mockHarnessAdapter';
 import { LiveExecutionRegistry } from './liveExecutions';
-import { handleCancelRequest, handleRuntimeLiveRequest } from './harnessControl';
+import { handleCancelRequest, handleRuntimeLiveRequest, handleRuntimePresenceRequest } from './harnessControl';
 import { RuntimeContextRegistry } from './runtimeContextRegistry';
 import { HarnessDispatchSchema, HarnessEnvironmentSchema, HarnessSmokeSchema, workbenchRejectedReceipt } from './harnessRequest';
 import { canDispatchToHarness } from '../core/project/harnessSelection';
@@ -171,6 +171,11 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
   let refreshing: Promise<OverlaySnapshot> | null = null;
   const activityWrites = new RecoverableSerialQueue();
   const liveExecutions = new LiveExecutionRegistry();
+  liveExecutions.subscribe((envelope) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send('runtime:presence-changed', envelope);
+    }
+  });
   const lastGoodWorkGraphs = new Map<string, WorkGraphRevision>();
   const runtimeContexts = new RuntimeContextRegistry<{
     projectId: string;
@@ -1253,6 +1258,8 @@ const rememberRuntime = (threadId: string) => {
   // Empty after a restart — historical activity never renders as a live runtime.
   ipcMain.handle('runtime:live', (_event, rawRequest?: unknown) =>
     handleRuntimeLiveRequest(rawRequest, liveExecutions));
+  ipcMain.handle('runtime:presence', (_event, rawRequest?: unknown) =>
+    handleRuntimePresenceRequest(rawRequest, liveExecutions));
 
   ipcMain.handle('harness:cancel', (_event, rawRequest: unknown) => {
     const liveIntents = new Map<string, string>();

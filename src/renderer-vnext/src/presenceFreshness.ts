@@ -1,18 +1,12 @@
 import type { ActivityEvent, AttentionItem, HarnessSessionPresence } from '../../core/types';
-import { workbenchExecutionId } from '../../core/project/runtimeIdentity';
+import {
+  applyRuntimePresenceEnvelope,
+  type RuntimePresenceEnvelope,
+  type RuntimePresenceExecution,
+  type RuntimePresenceSnapshot,
+} from '../../core/runtimePresence';
 
-export interface LiveExecutionPresence {
-  executionId: string;
-  harness: string;
-  externalSessionRef: string;
-  startedAt: string;
-  canCancel: boolean;
-}
-
-export interface RuntimePresenceSnapshot {
-  liveExecutions: LiveExecutionPresence[];
-  attention: AttentionItem[];
-}
+export type LiveExecutionPresence = RuntimePresenceExecution;
 
 export const FULL_PRESENCE_REFRESH_MS = 4_000;
 
@@ -20,33 +14,12 @@ interface PresenceRefreshOptions {
   currentProjectId: () => string | null;
   listSessions: (projectId: string) => Promise<HarnessSessionPresence[]>;
   apply: (sessions: HarnessSessionPresence[]) => void;
-  loadRuntime?: (projectId: string) => Promise<RuntimePresenceSnapshot>;
-  applyRuntime?: (snapshot: RuntimePresenceSnapshot) => void;
+  loadAttention?: (projectId: string) => Promise<AttentionItem[]>;
+  applyAttention?: (attention: AttentionItem[]) => void;
+  loadRuntimePresence?: () => Promise<RuntimePresenceSnapshot>;
+  applyRuntimePresence?: (snapshot: RuntimePresenceSnapshot) => void;
+  subscribeRuntimePresence?: (listener: (envelope: RuntimePresenceEnvelope) => void) => () => void;
   subscribeActivity: (listener: (event: ActivityEvent) => void) => () => void;
-  observeActivity?: (event: ActivityEvent) => void;
-}
-
-export function projectLiveExecutionActivity(
-  current: LiveExecutionPresence[],
-  event: ActivityEvent,
-  projectId: string,
-): LiveExecutionPresence[] {
-  if (event.projectId !== projectId || !event.harness || !event.runtimeRef || !event.intentId) return current;
-  const executionId = workbenchExecutionId(event.harness, event.intentId);
-  if (event.kind === 'turn-started') {
-    const next = current.filter((item) => item.executionId !== executionId);
-    return [...next, {
-      executionId,
-      harness: event.harness,
-      externalSessionRef: event.runtimeRef,
-      startedAt: event.observed.observedAt,
-      canCancel: event.harness === 'claude' || event.harness === 'opencode',
-    }];
-  }
-  if (['turn-completed', 'turn-error', 'process-cancelled', 'handoff-failed', 'handoff-cancelled'].includes(event.kind)) {
-    return current.filter((item) => item.executionId !== executionId);
-  }
-  return current;
 }
 
 export function startHarnessPresenceRefresh(options: PresenceRefreshOptions): {
@@ -56,7 +29,8 @@ export function startHarnessPresenceRefresh(options: PresenceRefreshOptions): {
   let disposed = false;
   let requestSequence = 0;
   let appliedSignature: string | undefined;
-  let appliedRuntimeSignature: string | undefined;
+  let appliedAttentionSignature: string | undefined;
+  let authoritativePresence: RuntimePresenceSnapshot | undefined;
 
   const signature = (projectId: string, sessions: HarnessSessionPresence[]): string => JSON.stringify({
     projectId,
@@ -75,9 +49,10 @@ export function startHarnessPresenceRefresh(options: PresenceRefreshOptions): {
     if (!projectId || disposed) return;
     const sequence = ++requestSequence;
     try {
-      const [sessions, runtime] = await Promise.all([
+      const [sessions, attention, presence] = await Promise.all([
         options.listSessions(projectId),
-        options.loadRuntime?.(projectId),
+        options.loadAttention?.(projectId),
+        options.loadRuntimePresence?.(),
       ]);
       if (disposed || sequence !== requestSequence || options.currentProjectId() !== projectId) return;
       const nextSignature = signature(projectId, sessions);
@@ -85,12 +60,19 @@ export function startHarnessPresenceRefresh(options: PresenceRefreshOptions): {
         appliedSignature = nextSignature;
         options.apply(sessions);
       }
-      if (runtime && options.applyRuntime) {
-        const runtimeSignature = JSON.stringify(runtime);
-        if (runtimeSignature !== appliedRuntimeSignature) {
-          appliedRuntimeSignature = runtimeSignature;
-          options.applyRuntime(runtime);
+      if (attention && options.applyAttention) {
+        const attentionSignature = JSON.stringify(attention);
+        if (attentionSignature !== appliedAttentionSignature) {
+          appliedAttentionSignature = attentionSignature;
+          options.applyAttention(attention);
         }
+      }
+      if (presence && options.applyRuntimePresence) {
+        const applied = authoritativePresence
+          ? applyRuntimePresenceEnvelope(authoritativePresence, presence)
+          : { snapshot: presence, accepted: true, needsSnapshot: false };
+        authoritativePresence = applied.snapshot;
+        if (applied.accepted) options.applyRuntimePresence(applied.snapshot);
       }
     } catch {
       // Presence is an observational projection. Keep the last known rows when
@@ -99,10 +81,28 @@ export function startHarnessPresenceRefresh(options: PresenceRefreshOptions): {
   };
 
   const timer = globalThis.setInterval(() => void refresh(), FULL_PRESENCE_REFRESH_MS);
-  const unsubscribeActivity = options.subscribeActivity((event) => {
-    options.observeActivity?.(event);
+  const unsubscribeActivity = options.subscribeActivity(() => {
     void refresh();
   });
+  const unsubscribeRuntimePresence = options.subscribeRuntimePresence?.((envelope) => {
+    if (!authoritativePresence) {
+      if (envelope.kind === 'mutation' && envelope.previousRevision === 0 && envelope.revision === 1) {
+        authoritativePresence = {
+          kind: 'snapshot', epoch: envelope.epoch, revision: 0, executions: [],
+        };
+        const applied = applyRuntimePresenceEnvelope(authoritativePresence, envelope);
+        authoritativePresence = applied.snapshot;
+        if (applied.accepted) options.applyRuntimePresence?.(applied.snapshot);
+        return;
+      }
+      void refresh();
+      return;
+    }
+    const applied = applyRuntimePresenceEnvelope(authoritativePresence, envelope);
+    authoritativePresence = applied.snapshot;
+    if (applied.accepted) options.applyRuntimePresence?.(applied.snapshot);
+    if (applied.needsSnapshot) void refresh();
+  }) ?? (() => undefined);
   return {
     refresh,
     dispose: () => {
@@ -110,6 +110,7 @@ export function startHarnessPresenceRefresh(options: PresenceRefreshOptions): {
       requestSequence += 1;
       globalThis.clearInterval(timer);
       unsubscribeActivity();
+      unsubscribeRuntimePresence();
     },
   };
 }

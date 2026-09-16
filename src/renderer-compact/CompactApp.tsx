@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   buildCompactSnapshot,
   compactNavigationFromSnapshot,
@@ -7,6 +7,7 @@ import {
 } from '../core/compact/snapshot';
 import { reduceAttention, applyAttentionLocalState } from '../core/attention/reducer';
 import type { AttentionLocalState } from '../core/types';
+import { applyRuntimePresenceEnvelope, type RuntimePresenceSnapshot } from '../core/runtimePresence';
 
 /**
  * Workbench Compact (PHASE 4A) — the compressed state of the same product.
@@ -32,6 +33,7 @@ export function CompactApp() {
   const [presence, setPresence] = useState<CompactPresence[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [error, setError] = useState('');
+  const runtimePresence = useRef<RuntimePresenceSnapshot>();
 
   const load = useCallback(async () => {
     try {
@@ -40,7 +42,8 @@ export function CompactApp() {
       const revision = selection
         ? (await window.wb.getWorkGraphRevision(selection.projectId)).revision
         : null;
-      const live = await window.wb.loadLiveExecutions();
+      const live = await window.wb.loadRuntimePresence();
+      runtimePresence.current = live;
       const nativeSessions = selection ? await window.wb.listHarnessSessions(selection.projectId) : [];
       const [activity, local] = await Promise.all([
         window.wb.loadActivity({ limit: 400 }),
@@ -53,7 +56,7 @@ export function CompactApp() {
       setSnapshot(buildCompactSnapshot({
         selection,
         revision,
-        liveExecutions: live,
+        liveExecutions: live.executions,
         attentionItems: attention,
       }));
       setPresence([...(revision?.candidate.semanticFacts.nodes ?? [])
@@ -81,10 +84,31 @@ export function CompactApp() {
     const onChanged = () => void load();
     const offActivity = window.wb.onActivityChanged(() => void load());
     const offOverlay = window.wb.onOverlayChanged(onChanged);
+    const offRuntime = window.wb.onRuntimePresenceChanged((envelope) => {
+      const current = runtimePresence.current;
+      if (!current) {
+        void load();
+        return;
+      }
+      const applied = applyRuntimePresenceEnvelope(current, envelope);
+      runtimePresence.current = applied.snapshot;
+      if (applied.accepted) {
+        setSnapshot((existing) => existing ? {
+          ...existing,
+          running: applied.snapshot.executions.map((execution) => ({
+            executionId: execution.executionId,
+            harness: execution.harness,
+            startedAt: execution.startedAt,
+          })),
+        } : existing);
+      }
+      if (applied.needsSnapshot) void load();
+    });
     return () => {
       clearInterval(timer);
       offActivity();
       offOverlay();
+      offRuntime();
     };
   }, [load]);
 

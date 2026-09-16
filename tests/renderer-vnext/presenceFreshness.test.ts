@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { HarnessSessionPresence } from '../../src/core/types';
-import { projectLiveExecutionActivity, startHarnessPresenceRefresh } from '../../src/renderer-vnext/src/presenceFreshness';
+import { startHarnessPresenceRefresh } from '../../src/renderer-vnext/src/presenceFreshness';
+import type { RuntimePresenceSnapshot } from '../../src/core/runtimePresence';
 import type { ActivityEvent } from '../../src/core/types';
 
 const session = (nativeRef: string): HarnessSessionPresence => ({
@@ -19,17 +20,59 @@ const activityEvent = (): ActivityEvent => ({
 });
 
 describe('Full Workbench harness presence freshness', () => {
-  it('projects exact turn lifecycle immediately so a fast execution is not missed between polls', () => {
-    const base: ActivityEvent = {
-      id: 'evt-start', projectId: 'project-a', conversationKey: 'project-a::codex::main',
-      kind: 'turn-started', summary: 'started', harness: 'codex', runtimeRef: 'thread-native',
-      intentId: '11111111-1111-4111-8111-111111111111',
-      observed: { source: 'protocol', sourceRef: 'codex:turn-started', observedAt: '2026-09-16T00:00:00Z', verification: 'VERIFIED' },
+  it('shows a short execution from the authority stream even before the first poll settles', async () => {
+    let runtimeEvent: ((event: import('../../src/core/runtimePresence').RuntimePresenceEnvelope) => void) | undefined;
+    const verdicts: string[][] = [];
+    const controller = startHarnessPresenceRefresh({
+      currentProjectId: () => 'project-a',
+      listSessions: vi.fn().mockResolvedValue([]),
+      apply: () => undefined,
+      applyRuntimePresence: (snapshot) => verdicts.push(snapshot.executions.map((item) => item.executionId)),
+      subscribeActivity: () => () => undefined,
+      subscribeRuntimePresence: (listener) => { runtimeEvent = listener; return () => undefined; },
+    });
+    const execution = {
+      executionId: 'opencode::execution:intent-short', harness: 'opencode' as const,
+      externalSessionRef: 'ses_short', startedAt: '2026-09-16T00:00:00Z', canCancel: true,
     };
-    const running = projectLiveExecutionActivity([], base, 'project-a');
-    expect(running).toEqual([expect.objectContaining({ harness: 'codex', externalSessionRef: 'thread-native', canCancel: false })]);
-    expect(projectLiveExecutionActivity(running, { ...base, id: 'evt-finish', kind: 'turn-completed' }, 'project-a')).toEqual([]);
-    expect(projectLiveExecutionActivity(running, { ...base, projectId: 'project-b' }, 'project-a')).toBe(running);
+    runtimeEvent?.({
+      kind: 'mutation', epoch: 'epoch-short', previousRevision: 0, revision: 1,
+      mutation: { type: 'upsert', execution },
+    });
+    runtimeEvent?.({
+      kind: 'mutation', epoch: 'epoch-short', previousRevision: 1, revision: 2,
+      mutation: { type: 'remove', executionId: execution.executionId },
+    });
+
+    expect(verdicts).toEqual([[execution.executionId], []]);
+    controller.dispose();
+  });
+
+  it('uses Activity only to request an authoritative refresh', async () => {
+    let activity: ((event: ActivityEvent) => void) | undefined;
+    const empty: RuntimePresenceSnapshot = { kind: 'snapshot', epoch: 'epoch-a', revision: 2, executions: [] };
+    const applied: RuntimePresenceSnapshot[] = [];
+    const loadRuntimePresence = vi.fn().mockResolvedValue(empty);
+    const controller = startHarnessPresenceRefresh({
+      currentProjectId: () => 'project-a',
+      listSessions: vi.fn().mockResolvedValue([]),
+      apply: () => undefined,
+      loadRuntimePresence,
+      applyRuntimePresence: (snapshot) => applied.push(snapshot),
+      subscribeActivity: (listener) => { activity = listener; return () => undefined; },
+      subscribeRuntimePresence: () => () => undefined,
+    });
+
+    activity?.({
+      id: 'late-start', projectId: 'project-a', conversationKey: 'conversation',
+      kind: 'turn-started', summary: 'historical start', harness: 'opencode',
+      runtimeRef: 'ses_ended', intentId: 'intent-ended',
+      observed: { source: 'protocol', sourceRef: 'late', observedAt: '2026-09-16T00:00:00Z', verification: 'VERIFIED' },
+    });
+    await vi.waitFor(() => expect(applied).toHaveLength(1));
+    expect(loadRuntimePresence).toHaveBeenCalledOnce();
+    expect(applied.at(-1)?.executions).toEqual([]);
+    controller.dispose();
   });
   it('refreshes only session presence on activity and the bounded interval', async () => {
     vi.useFakeTimers();
@@ -96,25 +139,29 @@ describe('Full Workbench harness presence freshness', () => {
     controller.dispose();
   });
 
-  it('refreshes live execution and attention even when session rows stay unchanged', async () => {
+  it('refreshes authoritative live execution and Attention even when session rows stay unchanged', async () => {
     const runtime: string[][] = [];
+    const attention: number[] = [];
     const controller = startHarnessPresenceRefresh({
       currentProjectId: () => 'project-a',
       listSessions: vi.fn().mockResolvedValue([session('ses_stable')]),
       apply: () => undefined,
-      loadRuntime: vi.fn()
-        .mockResolvedValueOnce({ liveExecutions: [], attention: [] })
+      loadRuntimePresence: vi.fn()
+        .mockResolvedValueOnce({ kind: 'snapshot', epoch: 'epoch-a', revision: 0, executions: [] })
         .mockResolvedValueOnce({
-          liveExecutions: [{ executionId: 'execution:opencode:intent-1', harness: 'opencode', externalSessionRef: 'ses_live', startedAt: '2026-09-15T00:00:00Z', canCancel: true }],
-          attention: [],
+          kind: 'snapshot', epoch: 'epoch-a', revision: 1,
+          executions: [{ executionId: 'opencode::execution:intent-1', harness: 'opencode', externalSessionRef: 'ses_live', startedAt: '2026-09-15T00:00:00Z', canCancel: true }],
         }),
-      applyRuntime: (snapshot) => runtime.push(snapshot.liveExecutions.map((item) => item.executionId)),
+      applyRuntimePresence: (snapshot) => runtime.push(snapshot.executions.map((item) => item.executionId)),
+      loadAttention: vi.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([{}]),
+      applyAttention: (items) => attention.push(items.length),
       subscribeActivity: () => () => undefined,
     });
 
     await controller.refresh();
     await controller.refresh();
-    expect(runtime).toEqual([[], ['execution:opencode:intent-1']]);
+    expect(runtime).toEqual([[], ['opencode::execution:intent-1']]);
+    expect(attention).toEqual([0, 1]);
     controller.dispose();
   });
 });

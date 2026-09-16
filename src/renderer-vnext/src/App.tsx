@@ -6,21 +6,18 @@ import './styles/index.css';
 import './styles/approved-blue.css';
 import type { WorkGraphRevision } from './types';
 import type { AttentionItem, HarnessSessionPresence } from '../../core/types';
+import type { RuntimePresenceSnapshot } from '../../core/runtimePresence';
 import { applyAttentionLocalState, reduceAttention } from '../../core/attention/reducer';
 import { projectIdsFromOverlay } from './workGraphView';
-import { projectLiveExecutionActivity, startHarnessPresenceRefresh, type LiveExecutionPresence, type RuntimePresenceSnapshot } from './presenceFreshness';
+import { startHarnessPresenceRefresh, type LiveExecutionPresence } from './presenceFreshness';
 
-async function loadRuntimePresence(projectId: string): Promise<RuntimePresenceSnapshot> {
-  const [liveExecutions, activity, local] = await Promise.all([
-    window.wb.loadLiveExecutions(),
+async function loadRuntimeAttention(projectId: string): Promise<AttentionItem[]> {
+  const [activity, local] = await Promise.all([
     window.wb.loadActivity({ limit: 200 }),
     window.wb.loadAttentionLocal(),
   ]);
-  return {
-    liveExecutions,
-    attention: applyAttentionLocalState(reduceAttention({ activity: activity.events, limit: 200 }), local)
-      .filter((item) => item.projectId === projectId),
-  };
+  return applyAttentionLocalState(reduceAttention({ activity: activity.events, limit: 200 }), local)
+    .filter((item) => item.projectId === projectId);
 }
 
 function App() {
@@ -68,13 +65,14 @@ function App() {
       const loadedProjectId = response.revision?.candidate.scope.projectId ?? null;
       presenceProjectId.current = loadedProjectId;
       if (loadedProjectId) {
-        const [sessions, runtime] = await Promise.all([
+        const [sessions, runtime, attention] = await Promise.all([
           window.wb.listHarnessSessions(loadedProjectId),
-          loadRuntimePresence(loadedProjectId),
+          window.wb.loadRuntimePresence(),
+          loadRuntimeAttention(loadedProjectId),
         ]);
         setHarnessSessions(sessions);
-        setLiveExecutions(runtime.liveExecutions);
-        setRuntimeAttention(runtime.attention);
+        setLiveExecutions(runtime.executions);
+        setRuntimeAttention(attention);
       } else {
         setHarnessSessions([]);
         setLiveExecutions([]);
@@ -109,18 +107,14 @@ function App() {
       currentProjectId: () => presenceProjectId.current,
       listSessions: (projectId) => window.wb.listHarnessSessions(projectId),
       apply: setHarnessSessions,
-      loadRuntime: loadRuntimePresence,
-      applyRuntime: (runtime) => {
-        setLiveExecutions(runtime.liveExecutions);
-        setRuntimeAttention(runtime.attention);
-      },
-      observeActivity: (event) => {
-        const projectId = presenceProjectId.current;
-        if (!projectId) return;
-        setLiveExecutions((current) => projectLiveExecutionActivity(current, event, projectId));
-      },
+      loadAttention: loadRuntimeAttention,
+      applyAttention: setRuntimeAttention,
+      loadRuntimePresence: () => window.wb.loadRuntimePresence(),
+      applyRuntimePresence: (runtime: RuntimePresenceSnapshot) => setLiveExecutions(runtime.executions),
+      subscribeRuntimePresence: (listener) => window.wb.onRuntimePresenceChanged(listener),
       subscribeActivity: (listener) => window.wb.onActivityChanged(listener),
     });
+    void presence.refresh();
     return presence.dispose;
   }, []);
 

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { parseRuntimeExecutionId, runtimeExecutionId } from '../core/project/runtimeIdentity';
 import type { LiveExecution, LiveExecutionRegistry } from './liveExecutions';
+import type { RuntimePresenceSnapshot } from '../core/runtimePresence';
 
 const RuntimeLiveRequestSchema = z.undefined();
 const CancelRequestSchema = z.object({
@@ -26,6 +27,16 @@ export function handleRuntimeLiveRequest(
     throw new Error('Invalid runtime:live request');
   }
   return registry.list();
+}
+
+export function handleRuntimePresenceRequest(
+  rawRequest: unknown,
+  registry: Pick<LiveExecutionRegistry, 'snapshot'>,
+): RuntimePresenceSnapshot {
+  if (!RuntimeLiveRequestSchema.safeParse(rawRequest).success) {
+    throw new Error('Invalid runtime:presence request');
+  }
+  return registry.snapshot();
 }
 
 export function handleCancelRequest(rawRequest: unknown, deps: CancelDependencies): CancelOutcome {
