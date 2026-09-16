@@ -1,120 +1,106 @@
 # Yunmin Workbench
 
-个人 Agent 工作台：把 Governance、项目、Git、Harness 之上的事实投影成一张可工作的画布。它不替代 Claude Code / Codex / DeepSeek，也不复制任何外部 Source of Truth——只负责让你看清工作在哪、带什么上下文、发给谁做。
+Yunmin Workbench 是一个面向 Agent 工作流的桌面工作台。它把项目里的 canonical Work / Task、治理侧 Context、Harness session 与真实执行事件投影成一条连续路径：
 
-![Yunmin Workbench 主界面](docs/images/workbench/hero-workbench.png)
+`Project → Work → Task → Context → Prepare → Send → Running → Result`
 
-**Full Workbench** 是主工作面：Project → Work → Task → Context → Prepare → Send，一条走到底。**Compact** 是常驻小窗：当前工作随身带，一键回到原文，一键开始准备。
+它不是 Task 数据库，也不是新的治理 Source of Truth，更不是 Claude Code、Codex 或 OpenCode 的替代品。
 
-## 现在能做什么
+> **Workbench is a verified projection, not a second SOT.** 事实仍属于项目、Git、Governance / Overlay 和 Harness；Workbench 只保存自己的窗口、staging、packet、activity 与交互书签。
 
-- 打开即进入 vNext 主界面；没有数据时是 Welcome + Choose folder，不是空白报错
-- 在 Canvas 上选 Task，看清它属于哪个 Work、连着什么
-- 在 Context Cabinet 里决定这次带什么上下文（Will use / Available，稀疏持久化，只记你的显式决定）
-- 选一个 chat 做 Snapshot，到 Dispatch 检查通过后 Send
-- Compact 小窗随时 Continue / Prepare，全程同一份事实往返
+![Full Workbench：真实 Creative OS Work / Task 与 session presence](docs/images/workbench/01-full-hero.png)
 
-```
-Project → Work → Task → Context → Prepare → Send → Running
-```
+## 产品路径
 
-![多 Work 项目画布](docs/images/workbench/canvas-projects.png)
+1. **Project / Work / Task** — 读取项目声明的真实 facts；Canvas 默认保持低密度，Task 多于三个时可 spatial drill-in，全部真实 Task 都可达。
+2. **Context** — Context Cabinet 区分 Available 与 Will use；只有本次真正需要的内容进入 snapshot，显式 pinned / override 优先。
+3. **Prepare / Send** — 选择 conversation、冻结 packet、检查 runner / snapshot / lineage，再发送给可用 Harness。
+4. **Running / Attention** — Full、Send-ready 与 Compact 消费同一份 authoritative runtime projection；失败摘要与 provenance 留在 Activity / Attention。
+5. **Result** — Task 主视图突出最新有效 response，完整 chronology 保留在 progressive disclosure 中。
 
-![Context Cabinet](docs/images/workbench/context-cabinet.png)
+![Focused Task：保持空间关系的 Task focus](docs/images/workbench/02-focused-task.png)
 
-![Dispatch 就绪](docs/images/workbench/dispatch-ready.png)
+![Context Cabinet：Available 不等于 Used](docs/images/workbench/03-context-cabinet.png)
 
-![Compact 小窗](docs/images/workbench/compact.png)
+![Send-ready：真实 snapshot、runner 与 preflight](docs/images/workbench/04-send-ready.png)
 
-更多状态截图（Welcome、Task focus、Context detail、Prepare、窄窗口等）都在 [`docs/images/workbench/`](docs/images/workbench/)。
+## 真实执行
 
-## 数据原则
+下面两张图来自当前 production Electron，经 `Prepare → Send` 发往 OpenCode 的真实免费模型调用。执行使用 provider-owned native `ses_*` identity；prompt 禁止 tools 和文件修改，验证后项目 Git working tree 仍为空。
 
-- REAL 数据（Governance adapter、项目 canonical facts、真实运行时事件）与 TEST 数据严格分离；TEST FIXTURE 只能显式进入，不会出现在正常产品里
-- 没有事实就不编：缺失状态保持 UNKNOWN，不猜、不补故事
-- Workbench 是投影层：排序、拖动、staging 只影响本地视图，不反写 Governance、项目或 Git
+![REAL Running：同一 action surface 中持续可见的执行状态](docs/images/workbench/05-real-running.png)
 
-## 本地启动
+![Result：Task Activity 中的最终有效 response](docs/images/workbench/06-result.png)
 
-需要 Node `>= 22.13`，pnpm 由 `packageManager` 固定（`pnpm@11.7.0`，走 corepack）：
+Compact 是同一产品状态的独立 Edge Surface，不是 Full 的缩小截图：它保留 Current Work、Attention、Runtime / Session Presence 与 Next Action。
 
-```bash
+![Compact：Current Work、Attention、Session Presence 与行动](docs/images/workbench/07-compact.png)
+
+## Harness capability truth
+
+能力在运行时由本机 CLI / protocol probe 决定；未安装或协议不匹配时会诚实降级。
+
+| Harness | Dispatch | Runtime / receipt | Native session | Exact resume | 当前限制 |
+|---|---:|---:|---:|---:|---|
+| OpenCode | YES | YES | YES | YES | `opencode run --format json` 与精确 `--session ses_*` 已做 REAL E2E；approval / user-input、外部 OpenCode 进程观察与 file events 尚不支持 |
+| Codex | YES | YES | YES | NO | 官方 app-server `thread/start` / `turn/start` 已做 REAL dogfood；不把已有 thread 猜成可 resume |
+| Claude Code | YES | YES | protocol 提供时记录 | NO | 使用 `stream-json`；approval / needs-input 不在当前稳定 contract 内，file events 为 UNKNOWN |
+| DeepSeek / DSH | NO | NO | UNKNOWN | NO | 可探测本机 headless capability，但没有可信 structured lifecycle 与 native session seam，因此不 dispatch |
+
+## 本地运行
+
+要求：Windows 为主要验证平台，Node `>=22.13`，pnpm 固定为 `11.7.0`。
+
+```powershell
 corepack enable
 corepack pnpm install --frozen-lockfile
-pnpm dev        # 开发运行
-pnpm build      # 构建
-pnpm start      # 预览构建产物
-pnpm typecheck  # 类型检查
-pnpm test       # 单元测试
-pnpm e2e        # 先 build，再跑 Playwright Electron 关键路径
+$env:GOV_OVERLAY = 'E:\path\to\your\overlay'
+pnpm dev
 ```
 
-用自己的数据启动：设置 `GOV_OVERLAY` 指向你的 Personal Overlay 根目录。没有可用 GPU 的环境（headless CI、远程会话）加 `WB_ELECTRON_ARGS="--no-sandbox --disable-gpu"`。
+常用验证：
 
-## 当前状态与已知限制
-
-- 目前还没有 REAL Execution：没有真实 dispatch 产生过运行时事件，所以 Running 诚实地为 0（不会用 fixture 充数）
-- work-capsule 项目尚未绑定 conversation，它的 Prepare 会明确告诉你缺什么，而不是假装能继续
-- 旧版 prototype 界面仍保留为显式回退（`WB_RENDERER_LEGACY=1`），默认不再使用
-
----
-
-以下为开发与数据契约备忘（产品行为以 UI 为准）。
-
-## 稳定数据流
-
-```
-Governance Kernel + Personal Overlay / Profile + Project / Git / Harness
-  → Adapter / Normalize → Workbench Projection → Interaction
+```powershell
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm e2e:hermetic
 ```
 
-数据库、缓存、Canvas、Timeline、History index 永远只是 projection/cache。UI 排序、Canvas 拖动、Context 操作不反写 Governance、Project 或 Git。
+项目目录不会靠 cwd、标题或时间猜测。首次换机器或项目移动后，通过产品内的 folder / rebind 流程验证 canonical identity。
 
-## 正本在哪
+## Windows packaged build
 
-| 问题 | 权威来源 |
-|---|---|
-| 当前事实（代码 / 测试 / Runtime / 依赖） | Git、实际文件、测试、Harness Runtime |
-| 执行基准 | `doc/` · *E LONG-TERM BASELINE — FROZEN v2* |
-| Reuse / donor / license 决策 | `doc/` · *REUSE-MAP FINAL v2* |
-| 产品意图与边界（历史合同） | `doc/` · *Yunmin Workbench 项目完整描述* |
-| 已核验的第三方溯源与许可证 | `THIRD_PARTY_NOTICES.md` |
+```powershell
+pnpm package:win
+```
 
-`doc/` 是文档与交接资料入口，**不是 Source of Truth**。基准文档里的 SHA、测试数字与依赖都是快照，不能反过来覆盖真实外部事实。
+输出为 `release/Yunmin-Workbench-0.1.0-x64-Setup.exe`（NSIS x64 installer）以及 `release/win-unpacked/`。当前没有代码签名证书，因此这些产物是 **unsigned RC artifacts**；Windows 会显示未知发布者提示。仓库不会自动发布 GitHub Release。
 
-## Projection Integrity（domain 级约束）
+安装器使用稳定 app id `com.yunmin.workbench`，升级沿用同一安装 identity。卸载器不删除 `%APPDATA%\yunmin-workbench`；重新安装后 Workbench-owned state 仍在。开发运行与 packaged app 当前使用同一默认 user-data identity；测试或隔离运行应显式设置 `WB_STATE_DIR`。
 
-1. **Observation Contract**：投影实体带 `observed = { source, sourceRef, observedAt, verification }`；heuristic 永不与 canonical/protocol 同级；无模型 confidence。
-2. **Execution Binding**：Binding 属于一次 Runtime Session/Execution，不永久绑 Conversation；只从各 Harness 原生 session ref 写入，不以 cwd/provider/time 猜 identity。
-3. **State Separation**：`TaskState` / `RuntimeState` / `AttentionState` 永久分开；不生成假 Task、不做 Task Board。
-4. **Frozen Packet Validity**：依赖全部可核验且一致 → CURRENT；fingerprint 改变 → STALE；来源消失 → INVALID。Frozen body 不可变，变化只产生新版本。
-5. **Intent/Receipt**：`DRAFT → DISPATCHED → ACCEPTED|REJECTED|FAILED|CANCELLED`；Dispatch receipt 不等于 Task completion。
-6. **Context staging 是稀疏覆盖**：只持久化你的显式决定；恢复默认值即删除覆盖，未动过的项永远跟随 source 默认。
+## 数据与升级边界
 
-## Runtime adapter 当前能力
+- **User-owned:** 项目文件、Git、Governance / Overlay、Harness history。Workbench 的 discovery / projection 不自动覆盖它们；Agent 真正执行时产生的项目修改仍需正常 Git review。
+- **Workbench-owned:** `%APPDATA%\yunmin-workbench\state` 下的窗口 / Compact geometry、Context staging、draft、frozen packet、Activity、Memory use 与本地 bindings。
+- 状态文件带 schema version，关键写入使用同目录 temp + rename。未来 schema 不会被旧版本静默覆盖；损坏的当前本地 binding / attention 文件会保留为 `.rejected-*` 后恢复到可重新绑定的安全空态。
+- Activity 是 history / evidence，不是第二套 Running truth；LiveExecutionRegistry 是 Workbench-owned live runtime 的唯一 writer。
+- `available != used`、`UNKNOWN` 不猜、REAL / TEST 严格分离。正常产品启动不会进入 fixture scene。
 
-| Harness | Dispatch | Observe | Receipt |
-|---|---|---|---|
-| Codex | YES | YES | YES |
-| Claude | YES | YES | YES |
-| DeepSeek | **NO** | **NO** | **NO** |
+## 当前限制
 
-DeepSeek 当前没有经验证的稳定 structured runtime，明确降级，不做 heuristic live。
+- Windows installer 未签名，也没有 auto-update channel；升级需运行新的 installer。
+- 没有项目级开源许可证文件；公开展示不等同于授予再分发许可。第三方来源与许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+- OpenCode 的 approval / user-input、外部进程实时观察、file events 与完整 history projection 尚未实现。
+- Claude / Codex 的 resume 只有经过 provider-owned exact seam 验证后才会开放；当前不会 fuzzy match。
+- DeepSeek 保持只探测、不可 dispatch，直到存在可信 structured protocol。
 
-## 外部事实 env seam
+## Repository verification
 
-| 变量 | 作用 |
-|---|---|
-| `GOV_OVERLAY` | 指定 Personal Overlay 根目录（生产发现路径的正式 seam） |
-| `WB_OVERLAY_SEARCH_ROOT` | 覆盖 Overlay 扫描根目录 |
-| `WB_STATE_DIR` | 把 Workbench 自有状态重定向到临时目录（E2E 用） |
-| `WB_CLAUDE_HISTORY_ROOT` / `WB_CODEX_HISTORY_ROOT` / `WB_CODEX_ARCHIVED_HISTORY_ROOT` | 覆盖只读历史根目录 |
-| `WB_ELECTRON_ARGS` | 额外的 Electron 启动开关（见上） |
-| `WB_RENDERER_LEGACY` | `=1` 时回退旧版界面（rollback/debug 用，默认 vNext） |
+GitHub Actions 独立执行：
 
-## 架构边界速览
+- TypeScript typecheck、Vitest、production build、README 本地链接 / 图片校验；
+- Linux + `xvfb-run` 的 portable hermetic Electron E2E；
+- Windows x64 unsigned NSIS package 与 packaged Electron smoke。
 
-- `src/core`：纯函数零 IO（parse / Staging / Packet / Activity / attention / history / memory）；Canvas 区分 membership 结构关系与 execution 真实流
-- `src/main/adapters`：只读 Overlay、Git、项目文件、Harness 协议；`src/main`：IPC + Workbench 自有状态（Frozen Packet / Draft / Staging / Activity / Window / Attention / Portability）
-- `src/renderer-vnext`：默认产品界面；`src/renderer-compact`：小窗；`src/renderer`：旧版回退
-- R0 可靠性（不可回退）：Frozen store per-file 校验与 corruption isolation、atomic 写、Activity JSONL 确定性隔离、IPC 分页、single instance。
+设计恢复历史与 approved baseline 保存在 [`docs/design-recovery/`](docs/design-recovery/)，但 README 中的产品截图全部来自当前 production Electron。
