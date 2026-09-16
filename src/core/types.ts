@@ -426,6 +426,8 @@ export interface AttentionItem {
   eventRef?: string;
   observedAt: string;
   verification: ObservationVerification;
+  /** Bounded source evidence for on-demand inspection, never the row label. */
+  provenance?: string;
 }
 
 export interface AttentionPacketFact {

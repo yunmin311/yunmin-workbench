@@ -23,6 +23,7 @@ import { encodeStateKey } from './stateKey';
 
 const CabinetStagingSchema = z.object({
   schemaVersion: z.literal(CABINET_STAGING_SCHEMA_VERSION),
+  defaultPolicy: z.literal('explicit-relations-v2').optional(),
   scope: z.object({
     kind: z.literal('project-context-cabinet'),
     projectId: z.string().min(1),

@@ -278,6 +278,7 @@ export interface ExecutionStory {
   doing: string;
   context: string[];
   outputs: string[];
+  latestOutput?: string;
   evidence: string[];
   next: string;
   packetId?: string;
@@ -290,16 +291,17 @@ export function buildExecutionStory(revision: WorkGraphRevision, nodeId: string)
   const facts = revision.candidate.semanticFacts;
   const selected = facts.nodes.find((candidate) => candidate.id === nodeId);
   if (!selected) return null;
+  const outputTime = (executionId: string) => facts.edges
+    .filter((edge) => edge.kind === 'produces' && edge.source === executionId)
+    .map((edge) => facts.nodes.find((candidate) => candidate.id === edge.target))
+    .filter((candidate): candidate is Extract<WorkGraphNode, { kind: 'artifact' }> => candidate?.kind === 'artifact')
+    .reduce((latest, artifact) => artifact.observedAt > latest ? artifact.observedAt : latest, '');
   const linkedExecutions = selected.kind === 'task'
     ? facts.edges
       .filter((edge) => edge.kind === 'execution-of' && edge.source === selected.id)
       .map((edge) => facts.nodes.find((candidate) => candidate.id === edge.target))
       .filter((candidate): candidate is Extract<WorkGraphNode, { kind: 'execution' }> => candidate?.kind === 'execution')
-      .sort((a, b) => {
-        const outputCount = (executionId: string) => facts.edges
-          .filter((edge) => edge.kind === 'produces' && edge.source === executionId).length;
-        return outputCount(b.id) - outputCount(a.id) || a.id.localeCompare(b.id);
-      })
+      .sort((a, b) => outputTime(b.id).localeCompare(outputTime(a.id)) || a.id.localeCompare(b.id))
     : [];
   const node = selected.kind === 'execution' ? selected : linkedExecutions[0];
   if (!node) return null;
@@ -325,10 +327,21 @@ export function buildExecutionStory(revision: WorkGraphRevision, nodeId: string)
       .filter((label): label is string => Boolean(label))
     : [];
   const nextFacts = [...new Set([...directNext, ...taskNext])];
+  const chronologyExecutionIds = selected.kind === 'task'
+    ? new Set(linkedExecutions.map((execution) => execution.id))
+    : new Set([executionNodeId]);
+  const orderedOutputs = facts.edges
+    .filter((edge) => edge.kind === 'produces' && chronologyExecutionIds.has(edge.source))
+    .map((edge) => byId.get(edge.target))
+    .filter((candidate): candidate is Extract<WorkGraphNode, { kind: 'artifact' }> => candidate?.kind === 'artifact')
+    .filter((artifact) => Boolean(artifact.content?.trim()))
+    .sort((a, b) => a.observedAt.localeCompare(b.observedAt) || a.id.localeCompare(b.id))
+    .map((artifact) => artifact.content!.trim());
   return {
     doing: task?.label ?? 'No canonical Task linked',
     context: labelsFor('uses-context'),
-    outputs: labelsFor('produces'),
+    outputs: orderedOutputs,
+    ...(orderedOutputs.length > 0 ? { latestOutput: orderedOutputs.at(-1) } : {}),
     evidence: labelsFor('evidences', 'in'),
     next: nextFacts.length > 0 ? nextFacts.join(' · ') : 'No next-step fact yet',
     ...(node.packetId ? { packetId: node.packetId } : {}),

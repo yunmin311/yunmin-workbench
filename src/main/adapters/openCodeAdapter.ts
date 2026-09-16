@@ -55,6 +55,41 @@ function isNativeSessionRef(value: unknown): value is string {
   return typeof value === 'string' && /^ses_[A-Za-z0-9_-]+$/.test(value);
 }
 
+const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]/g;
+const ANSI_ESCAPE = /\u001B(?:[@-_][0-?]*[ -/]*[@-~]|\][^\u0007]*(?:\u0007|\u001B\\))/g;
+
+function boundedFailureProvenance(value: unknown, limit = 4_000): string {
+  let raw: string;
+  try { raw = typeof value === 'string' ? value : JSON.stringify(value); } catch { raw = String(value); }
+  const clean = raw.replace(ANSI_ESCAPE, '').replace(CONTROL_CHARS, '').trim();
+  if (clean.length <= limit) return clean;
+  const half = Math.floor((limit - 24) / 2);
+  return `${clean.slice(0, half)}\n… provenance bounded …\n${clean.slice(-half)}`;
+}
+
+function nestedMessage(value: unknown): string {
+  if (!value || typeof value !== 'object') return typeof value === 'string' ? value : '';
+  const record = value as Record<string, unknown>;
+  if (typeof record.message === 'string') return record.message;
+  if (record.data && typeof record.data === 'object' && typeof (record.data as Record<string, unknown>).message === 'string') {
+    return (record.data as Record<string, unknown>).message as string;
+  }
+  return '';
+}
+
+function providerFailure(value: unknown): { message: string; provenance: string } {
+  const provenance = boundedFailureProvenance(value);
+  const detail = `${nestedMessage(value)} ${provenance}`.toLowerCase();
+  if (/\b429\b|rate.?limit|usage.?limit|too many requests/.test(detail)) {
+    return { message: 'OpenCode provider rate limit reached. Try again later.', provenance };
+  }
+  if (/auth|unauthori[sz]ed|invalid.?key|credential/.test(detail)) {
+    return { message: 'OpenCode provider authentication failed. Check the configured provider credentials.', provenance };
+  }
+  const direct = nestedMessage(value).trim();
+  return { message: direct ? `OpenCode provider failed: ${direct.slice(0, 240)}` : 'OpenCode provider failed.', provenance };
+}
+
 /**
  * OpenCode's official CLI is the production seam:
  * - `session list --format json` exposes exact native session identities.
@@ -245,6 +280,7 @@ export class OpenCodeAdapter {
       let sawFinish = false;
       let settledFromTerminalEvidence = false;
       let resultText = '';
+      let structuredFailure: { message: string; provenance: string } | undefined;
       const emit = (event: Omit<OpenCodeProtocolEvent, 'harness' | 'observedAt' | 'dispatchRef' | 'runtimeSessionRef'>) => {
         this.emit({ ...event, harness: 'opencode', dispatchRef: intentId, runtimeSessionRef: sessionId, observedAt: new Date().toISOString() });
       };
@@ -288,7 +324,8 @@ export class OpenCodeAdapter {
             sawFinish = true;
             emit({ kind: 'turn', method: 'turn/completed', params: event, verification: 'VERIFIED', sourceRef: 'opencode:run:step_finish' });
           } else if (type === 'error') {
-            emit({ kind: 'error', method: 'adapter/error', params: event.error, verification: 'OBSERVED', sourceRef: 'opencode:run:error' });
+            structuredFailure = providerFailure(event.error);
+            emit({ kind: 'error', method: 'adapter/error', params: structuredFailure, verification: 'OBSERVED', sourceRef: 'opencode:run:error' });
           }
           if (sawFinish) {
             terminalTimer = setTimeout(() => {
@@ -326,7 +363,7 @@ export class OpenCodeAdapter {
       return {
         intentId, harness: 'opencode', status: 'FAILED', at: new Date().toISOString(), runtimeRef: sessionId,
         source: 'process', protocolEvidence: `OpenCode run incomplete (exit=${exitCode}; start=${sawStart}; finish=${sawFinish})`,
-        message: stderr.slice(-800) || 'OpenCode did not provide complete structured lifecycle evidence',
+        message: structuredFailure?.message || boundedFailureProvenance(stderr, 800) || 'OpenCode did not provide complete structured lifecycle evidence',
       };
     } catch (error) {
       return { intentId, harness: 'opencode', status: 'FAILED', at: new Date().toISOString(), source: 'process', protocolEvidence: 'OpenCode dispatch exception', message: boundedProcessError(error) };

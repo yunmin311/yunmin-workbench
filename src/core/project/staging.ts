@@ -5,7 +5,9 @@ import { projectFileSourceRef } from './sourceIdentity';
 /**
  * Context staging candidates for a task (PDF §5).
  * Memory hooks and INBOX items enter as References (locators, not bodies);
- * governance facts enter as Included context. Manual items are Workbench-owned.
+ * governance facts enter as Available context. A selected Work/Task/
+ * Conversation may promote only exact related ids when the Cabinet opens;
+ * broad project governance is never treated as used by default.
  * sourceRef points at the canonical file so packets can do staleness checks.
  */
 export function buildStaging(snapshot: OverlaySnapshot, projectId: string): ContextItem[] {
@@ -20,7 +22,7 @@ export function buildStaging(snapshot: OverlaySnapshot, projectId: string): Cont
         title: `Gate: ${k}`,
         source: `adapter:${projectId}`,
         body: v,
-        state: 'included',
+        state: 'available',
         pinned: false,
         isReference: false,
         sourceRef: adapterRef,
@@ -33,7 +35,7 @@ export function buildStaging(snapshot: OverlaySnapshot, projectId: string): Cont
         title: `Canonical source: ${adapter.canonicalSource.path}`,
         source: `adapter:${projectId}`,
         body: `${adapter.canonicalSource.remote ?? ''} @ ${adapter.canonicalSource.commit ?? '?'}`,
-        state: 'included',
+        state: 'available',
         pinned: false,
         isReference: true,
         sourceRef: projectFileSourceRef(projectId, adapter.canonicalSource.path),

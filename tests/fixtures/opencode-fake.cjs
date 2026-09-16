@@ -36,6 +36,13 @@ if (args[0] === 'run') {
     setInterval(() => undefined, 1000);
     return;
   }
+  if (mode === 'provider-limit') {
+    emit({
+      type: 'error', sessionID: session,
+      error: { name: 'FreeUsageLimitError', data: { message: 'Too many requests for free-model. Retry later.' }, statusCode: 429 },
+    });
+    process.exit(1);
+  }
   if (mode === 'tool') emit({
     type: 'tool_use', sessionID: session,
     part: { id: 'prt_tool', type: 'tool', tool: 'read', state: { status: 'completed', output: 'ok' } },

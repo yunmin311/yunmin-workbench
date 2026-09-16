@@ -77,8 +77,11 @@ test('REAL work-capsule keeps all 20 Tasks reachable through spatial drill-in', 
     await lastTask.click();
     await expect(win.getByRole('complementary', { name: 'Focus Detail' })).toContainText('Prove the complete core flow');
     await win.getByRole('complementary', { name: 'Focus Detail' }).getByRole('button', { name: 'Prepare Work', exact: true }).click();
-    await expect(win.getByRole('region', { name: 'Context Cabinet' })).toContainText('Prove the complete core flow');
-    await win.getByRole('region', { name: 'Context Cabinet' }).getByRole('button', { name: 'Close Context Cabinet' }).click();
+    const cabinet = win.getByRole('region', { name: 'Context Cabinet' });
+    await expect(cabinet).toContainText('Prove the complete core flow');
+    await expect(cabinet).toContainText('Will use 0');
+    await expect(cabinet).toContainText('Available');
+    await cabinet.getByRole('button', { name: 'Close Context Cabinet' }).click();
     await win.screenshot({ path: join(shots, '02-expanded-panned-real-900x700.png') });
 
     const drillExit = win.locator('.approved-drill-exit button[aria-label="Show fewer tasks in Work Capsule v1 核心"]');

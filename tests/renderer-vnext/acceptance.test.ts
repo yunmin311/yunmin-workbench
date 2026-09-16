@@ -164,6 +164,24 @@ describe('vNext renderer acceptance', () => {
     });
   });
 
+  it('shows the latest observed response first while retaining exact chronology', async () => {
+    const ordered = facts();
+    ordered.adapterExecutions.push({
+      executionId: 'paseo-agent-2', backend: 'paseo', provider: 'codex', runtimeRef: 'agent-2',
+      projectId: 'p1', workId: 'w1', taskId: 'task-1', runtimeState: 'idle', live: false,
+      evidenceRefs: [], sourceRef: 'paseo:agent-2',
+    });
+    ordered.artifacts.push({
+      artifactId: 'result-2', projectId: 'p1', kind: 'agent-result', executionId: 'paseo-agent-2',
+      eventRef: 'event-final-2', title: 'Agent response completed', content: 'Final verified conclusion.',
+      observedAt: '2026-09-08T00:00:02.000Z', verification: 'OBSERVED', evidenceRefs: [],
+    });
+    const result = await compileWorkGraph({ projectId: 'p1', sourceDigest: 'ordered', facts: ordered, now: NOW });
+    const story = buildExecutionStory(result.revision!, 'task:p1:task-1');
+    expect(story?.latestOutput).toBe('Final verified conclusion.');
+    expect(story?.outputs).toEqual(['No contract mismatch; no files changed.', 'Final verified conclusion.']);
+  });
+
   it('bookmarks an explicit selection only inside its own project', async () => {
     const rev = await revision();
     const nodes = rev.candidate.semanticFacts.nodes;

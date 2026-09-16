@@ -5,9 +5,23 @@ import '../../../src/design/tokens.css';
 import './styles/index.css';
 import './styles/approved-blue.css';
 import type { WorkGraphRevision } from './types';
-import type { HarnessSessionPresence } from '../../core/types';
+import type { AttentionItem, HarnessSessionPresence } from '../../core/types';
+import { applyAttentionLocalState, reduceAttention } from '../../core/attention/reducer';
 import { projectIdsFromOverlay } from './workGraphView';
-import { startHarnessPresenceRefresh } from './presenceFreshness';
+import { projectLiveExecutionActivity, startHarnessPresenceRefresh, type LiveExecutionPresence, type RuntimePresenceSnapshot } from './presenceFreshness';
+
+async function loadRuntimePresence(projectId: string): Promise<RuntimePresenceSnapshot> {
+  const [liveExecutions, activity, local] = await Promise.all([
+    window.wb.loadLiveExecutions(),
+    window.wb.loadActivity({ limit: 200 }),
+    window.wb.loadAttentionLocal(),
+  ]);
+  return {
+    liveExecutions,
+    attention: applyAttentionLocalState(reduceAttention({ activity: activity.events, limit: 200 }), local)
+      .filter((item) => item.projectId === projectId),
+  };
+}
 
 function App() {
   const [revision, setRevision] = useState<WorkGraphRevision | null>(null);
@@ -19,6 +33,8 @@ function App() {
   const [overlayEmpty, setOverlayEmpty] = useState(false);
   const [hasBinding, setHasBinding] = useState(false);
   const [harnessSessions, setHarnessSessions] = useState<HarnessSessionPresence[]>([]);
+  const [liveExecutions, setLiveExecutions] = useState<LiveExecutionPresence[]>([]);
+  const [runtimeAttention, setRuntimeAttention] = useState<AttentionItem[]>([]);
   const presenceProjectId = useRef<string | null>(null);
 
   const load = useCallback(async (projectId?: string) => {
@@ -32,6 +48,8 @@ function App() {
         if (response.error) throw new Error(response.error);
         setRevision(response.revision);
         setHarnessSessions([]);
+        setLiveExecutions([]);
+        setRuntimeAttention([]);
         setIsFixture(response.revision !== null);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -49,7 +67,19 @@ function App() {
       setRevision(response.revision ?? null);
       const loadedProjectId = response.revision?.candidate.scope.projectId ?? null;
       presenceProjectId.current = loadedProjectId;
-      setHarnessSessions(loadedProjectId ? await window.wb.listHarnessSessions(loadedProjectId) : []);
+      if (loadedProjectId) {
+        const [sessions, runtime] = await Promise.all([
+          window.wb.listHarnessSessions(loadedProjectId),
+          loadRuntimePresence(loadedProjectId),
+        ]);
+        setHarnessSessions(sessions);
+        setLiveExecutions(runtime.liveExecutions);
+        setRuntimeAttention(runtime.attention);
+      } else {
+        setHarnessSessions([]);
+        setLiveExecutions([]);
+        setRuntimeAttention([]);
+      }
       setProjectIds(projectIdsFromOverlay(overlay));
       setOverlayEmpty(overlay.projects.length === 0);
       setHasBinding(binding !== null);
@@ -79,6 +109,16 @@ function App() {
       currentProjectId: () => presenceProjectId.current,
       listSessions: (projectId) => window.wb.listHarnessSessions(projectId),
       apply: setHarnessSessions,
+      loadRuntime: loadRuntimePresence,
+      applyRuntime: (runtime) => {
+        setLiveExecutions(runtime.liveExecutions);
+        setRuntimeAttention(runtime.attention);
+      },
+      observeActivity: (event) => {
+        const projectId = presenceProjectId.current;
+        if (!projectId) return;
+        setLiveExecutions((current) => projectLiveExecutionActivity(current, event, projectId));
+      },
       subscribeActivity: (listener) => window.wb.onActivityChanged(listener),
     });
     return presence.dispose;
@@ -156,6 +196,8 @@ function App() {
         <WorkGraphCanvas
           revision={revision}
           harnessSessions={harnessSessions}
+          liveExecutions={liveExecutions}
+          runtimeAttention={runtimeAttention}
           projectIds={projectIds}
           onSelectProject={(projectId) => void load(projectId)}
           onRefresh={() => load(revision.candidate.scope.projectId)}

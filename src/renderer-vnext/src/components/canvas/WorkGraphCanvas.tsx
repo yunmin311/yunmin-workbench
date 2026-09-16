@@ -9,7 +9,8 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import type { WorkGraphRevision } from '../../types';
-import type { HarnessSessionPresence } from '../../../../core/types';
+import type { AttentionItem, HarnessSessionPresence } from '../../../../core/types';
+import type { LiveExecutionPresence } from '../../presenceFreshness';
 import { ContextCabinet, type CabinetSelection } from '../cabinet/ContextCabinet';
 import { DispatchSurface, type DispatchPreflightState, type DispatchSelection } from '../dispatch/DispatchSurface';
 import {
@@ -131,13 +132,14 @@ function FocusDetailPanel({ detail, story, onClose, onPrepare }: {
       </details>
       {story && (
         <section className="execution-story" aria-label="Execution story">
-          <p className="wb-kicker">Running now</p>
+          <p className="wb-kicker">Latest result</p>
           <dl>
             <dt>Doing</dt><dd>{story.doing}</dd>
             <dt>Using</dt><dd>{story.context.length > 0 ? story.context.join(' · ') : 'No consumed Context fact'}</dd>
-            <dt>Output</dt><dd>{story.outputs.length > 0 ? story.outputs.join(' · ') : 'No produced Artifact fact yet'}</dd>
+            <dt>Output</dt><dd>{story.latestOutput ?? 'No produced Artifact fact yet'}</dd>
             <dt>Next</dt><dd>{story.next}</dd>
           </dl>
+          {story.outputs.length > 1 && <details className="execution-chronology"><summary>Full response chronology · {story.outputs.length}</summary>{story.outputs.map((output, index) => <p key={`${index}:${output.slice(0, 32)}`}>{output}</p>)}</details>}
           {(story.packetId || story.intentId) && (
             <p className="execution-trace wb-mono">
               {story.packetId ? `packet ${story.packetId}` : ''}{story.packetId && story.intentId ? ' · ' : ''}{story.intentId ? `intent ${story.intentId}` : ''}
@@ -166,9 +168,11 @@ function FocusDetailPanel({ detail, story, onClose, onPrepare }: {
   );
 }
 
-export function WorkGraphCanvas({ revision, harnessSessions, projectIds, onSelectProject, onRefresh, navigateRequest, onNavigated }: {
+export function WorkGraphCanvas({ revision, harnessSessions, liveExecutions, runtimeAttention, projectIds, onSelectProject, onRefresh, navigateRequest, onNavigated }: {
   revision: WorkGraphRevision;
   harnessSessions: HarnessSessionPresence[];
+  liveExecutions: LiveExecutionPresence[];
+  runtimeAttention: AttentionItem[];
   projectIds: string[];
   onSelectProject: (projectId: string) => void;
   onRefresh: () => Promise<void>;
@@ -437,10 +441,23 @@ export function WorkGraphCanvas({ revision, harnessSessions, projectIds, onSelec
     void window.wb.setCurrentSelection(selection).catch(() => undefined);
   }, [selectedNode, revision]);
 
+  const relatedContextIds = selectedNode
+    ? revision.candidate.semanticFacts.edges.flatMap((edge) => {
+      if (edge.source !== selectedNode.id) return [];
+      if (edge.kind === 'uses-context' && edge.target.startsWith(`context:${revision.candidate.scope.projectId}:`)) {
+        return [edge.target.slice(`context:${revision.candidate.scope.projectId}:`.length)];
+      }
+      if (edge.kind === 'blocked-by' && edge.target.startsWith(`gate:${revision.candidate.scope.projectId}:`)) {
+        return [`gate:${revision.candidate.scope.projectId}:${edge.target.slice(`gate:${revision.candidate.scope.projectId}:`.length)}`];
+      }
+      return [];
+    })
+    : [];
   const cabinetSelection: CabinetSelection | null = selectedNode
     ? {
       kind: selectedNode.data.kind,
       label: selectedNode.data.label,
+      relatedContextIds: [...new Set(relatedContextIds)],
       ...((selectedNode.data.semantic.kind === 'conversation')
         ? {
           conversationKey: selectedNode.data.semantic.conversationKey,
@@ -546,9 +563,7 @@ export function WorkGraphCanvas({ revision, harnessSessions, projectIds, onSelec
   const semanticProject = semanticNodes.find((node) => node.kind === 'project');
   const semanticWork = semanticNodes.find((node) => node.kind === 'work');
   const includedContext = semanticNodes.filter((node) => node.kind === 'context' && node.state === 'included');
-  const executionRows = semanticNodes.filter((node) => node.kind === 'execution').slice(0, 3);
   const conversationRows = semanticNodes.filter((node) => node.kind === 'conversation').slice(0, 4);
-  const gateRows = semanticNodes.filter((node) => node.kind === 'gate').slice(0, 2);
   const mainTitle = preparationStage === 'preflight'
     ? 'Prepare & send'
     : detail?.label ?? semanticWork?.label ?? semanticProject?.label ?? revision.candidate.scope.projectId;
@@ -684,15 +699,15 @@ export function WorkGraphCanvas({ revision, harnessSessions, projectIds, onSelec
       <aside className="approved-team-dock" aria-label="Team and runtime">
         <header className="approved-dock-head"><div><span className="approved-kicker">TEAM / RUNTIME</span><h3>{preparationStage === 'preflight' ? 'Send review' : detail ? 'Task detail' : 'Session presence'}</h3></div><button type="button" aria-label="Dock options">···</button></header>
         {detail && preparationStage === null ? (
-          <><nav className="approved-dock-tabs" aria-label="Task detail views"><button type="button" className={focusDockTab === 'context' ? 'active' : ''} aria-pressed={focusDockTab === 'context'} onClick={() => setFocusDockTab('context')}>Context</button><button type="button" className={focusDockTab === 'activity' ? 'active' : ''} aria-pressed={focusDockTab === 'activity'} onClick={() => setFocusDockTab('activity')}>Activity</button><button type="button" className={focusDockTab === 'evidence' ? 'active' : ''} aria-pressed={focusDockTab === 'evidence'} onClick={() => setFocusDockTab('evidence')}>Evidence</button></nav><div className="approved-dock-scroll approved-detail-scroll">{focusDockTab === 'context' ? <FocusDetailPanel detail={detail} story={executionStory} onClose={() => setSelectedId(null)} onPrepare={openPreparation}/> : focusDockTab === 'activity' ? <aside className="focus-panel wb-glass" role="complementary" aria-label="Focus Detail"><p className="wb-kicker">ACTIVITY</p><h2 className="focus-title">{detail.label}</h2>{executionStory ? <section className="execution-story" aria-label="Execution story"><dl><dt>Doing</dt><dd>{executionStory.doing}</dd><dt>Using</dt><dd>{executionStory.context.length > 0 ? executionStory.context.join(' · ') : 'No consumed Context fact'}</dd><dt>Output</dt><dd>{executionStory.outputs.length > 0 ? executionStory.outputs.join(' · ') : 'No produced Artifact fact yet'}</dd><dt>Next</dt><dd>{executionStory.next}</dd></dl></section> : <p className="focus-empty">No execution linked to this selection.</p>}</aside> : <aside className="focus-panel wb-glass" role="complementary" aria-label="Focus Detail"><p className="wb-kicker">EVIDENCE</p><h2 className="focus-title">{detail.label}</h2><dl className="focus-meta"><dt>Verification</dt><dd>{detail.verification}</dd><dt>Source</dt><dd className="wb-mono">{detail.source}</dd><dt>Source ref</dt><dd className="wb-mono">{detail.sourceRef || '—'}</dd></dl>{detail.relations.length === 0 ? <p className="focus-empty">No linked evidence fact.</p> : <p className="focus-empty">{detail.relations.length} verified relation{detail.relations.length === 1 ? '' : 's'} available in Context.</p>}</aside>}</div></>
+          <><nav className="approved-dock-tabs" aria-label="Task detail views"><button type="button" className={focusDockTab === 'context' ? 'active' : ''} aria-pressed={focusDockTab === 'context'} onClick={() => setFocusDockTab('context')}>Context</button><button type="button" className={focusDockTab === 'activity' ? 'active' : ''} aria-pressed={focusDockTab === 'activity'} onClick={() => setFocusDockTab('activity')}>Activity</button><button type="button" className={focusDockTab === 'evidence' ? 'active' : ''} aria-pressed={focusDockTab === 'evidence'} onClick={() => setFocusDockTab('evidence')}>Evidence</button></nav><div className="approved-dock-scroll approved-detail-scroll">{focusDockTab === 'context' ? <FocusDetailPanel detail={detail} story={executionStory} onClose={() => setSelectedId(null)} onPrepare={openPreparation}/> : focusDockTab === 'activity' ? <aside className="focus-panel wb-glass" role="complementary" aria-label="Focus Detail"><p className="wb-kicker">ACTIVITY</p><h2 className="focus-title">{detail.label}</h2>{executionStory ? <section className="execution-story" aria-label="Execution story"><dl><dt>Doing</dt><dd>{executionStory.doing}</dd><dt>Using</dt><dd>{executionStory.context.length > 0 ? executionStory.context.join(' · ') : 'No consumed Context fact'}</dd><dt>Latest</dt><dd>{executionStory.latestOutput ?? 'No produced Artifact fact yet'}</dd><dt>Next</dt><dd>{executionStory.next}</dd></dl>{executionStory.outputs.length > 1 && <details className="execution-chronology"><summary>Full response chronology · {executionStory.outputs.length}</summary>{executionStory.outputs.map((output, index) => <p key={`${index}:${output.slice(0, 32)}`}>{output}</p>)}</details>}</section> : <p className="focus-empty">No execution linked to this selection.</p>}</aside> : <aside className="focus-panel wb-glass" role="complementary" aria-label="Focus Detail"><p className="wb-kicker">EVIDENCE</p><h2 className="focus-title">{detail.label}</h2><dl className="focus-meta"><dt>Verification</dt><dd>{detail.verification}</dd><dt>Source</dt><dd className="wb-mono">{detail.source}</dd><dt>Source ref</dt><dd className="wb-mono">{detail.sourceRef || '—'}</dd></dl>{detail.relations.length === 0 ? <p className="focus-empty">No linked evidence fact.</p> : <p className="focus-empty">{detail.relations.length} verified relation{detail.relations.length === 1 ? '' : 's'} available in Context.</p>}</aside>}</div></>
         ) : preparationStage === 'preflight' ? (
-          <><nav className="approved-dock-tabs" aria-label="Send review views"><button type="button" className={sendDockTab === 'preflight' ? 'active' : ''} aria-pressed={sendDockTab === 'preflight'} onClick={() => setSendDockTab('preflight')}>Preflight</button><button type="button" className={sendDockTab === 'packet' ? 'active' : ''} aria-pressed={sendDockTab === 'packet'} onClick={() => setSendDockTab('packet')}>Packet</button><button type="button" className={sendDockTab === 'evidence' ? 'active' : ''} aria-pressed={sendDockTab === 'evidence'} onClick={() => setSendDockTab('evidence')}>Evidence</button></nav><div className="approved-dock-scroll approved-send-review">{sendDockTab === 'preflight' ? <><section className="approved-readiness"><span>{dispatchPreflight?.checking ? '…' : `${passedPreflightChecks}/${dispatchPreflight?.checks.length ?? '—'}`}</span><div><label>{dispatchReady ? 'READY TO SEND' : dispatchPreflight?.checking ? 'CHECKING' : 'NEEDS REVIEW'}</label><h4>{mainTitle}</h4></div></section><div className="approved-check-list">{dispatchPreflight?.checks.map((check) => <p key={check.id} className={`is-${check.status.toLowerCase()}`}><b>{check.status === 'PASS' ? '✓' : '○'} {check.label}</b><span>{check.detail}</span></p>) ?? <p><b>○ Preflight</b><span>Checking real snapshot and runner facts…</span></p>}</div></> : sendDockTab === 'packet' ? <section className="approved-review-panel" aria-label="Packet review"><span className="approved-kicker">FROZEN PACKET</span><h4>{mainTitle}</h4><dl className="focus-meta"><dt>Packet</dt><dd className="wb-mono">{preparedPacket?.packetId ?? 'No frozen packet'}</dd><dt>Target</dt><dd className="wb-mono">{preparedPacket?.conversationKey ?? 'No conversation selected'}</dd></dl></section> : <section className="approved-review-panel" aria-label="Preflight evidence"><span className="approved-kicker">EVIDENCE</span><div className="approved-check-list">{dispatchPreflight?.checks.map((check) => <p key={check.id} className={`is-${check.status.toLowerCase()}`}><b>{check.label}</b><span>{check.detail}</span></p>) ?? <p><b>Preflight</b><span>Checking real facts…</span></p>}</div></section>}<section><span className="approved-kicker">PROVENANCE</span><p className="wb-mono">{preparedPacket?.packetId ?? 'No frozen packet'}</p></section></div></>
+          <><nav className="approved-dock-tabs" aria-label="Send review views"><button type="button" className={sendDockTab === 'preflight' ? 'active' : ''} aria-pressed={sendDockTab === 'preflight'} onClick={() => setSendDockTab('preflight')}>Preflight</button><button type="button" className={sendDockTab === 'packet' ? 'active' : ''} aria-pressed={sendDockTab === 'packet'} onClick={() => setSendDockTab('packet')}>Packet</button><button type="button" className={sendDockTab === 'evidence' ? 'active' : ''} aria-pressed={sendDockTab === 'evidence'} onClick={() => setSendDockTab('evidence')}>Evidence</button></nav><div className="approved-dock-scroll approved-send-review"><section className="approved-send-runtime" aria-label="Live execution and attention"><span className={`approved-session-status ${liveExecutions.length > 0 ? 'working' : runtimeAttention.length > 0 ? 'attention' : 'idle'}`}/><b>{liveExecutions.length > 0 ? `${liveExecutions.length} running` : runtimeAttention.length > 0 ? `${runtimeAttention.length} needs you` : 'Runtime idle'}</b><small>{liveExecutions[0] ? `${liveExecutions[0].harness} · ${liveExecutions[0].externalSessionRef}` : runtimeAttention[0]?.summary ?? 'No live execution or attention fact.'}</small></section>{runtimeAttention.map((item) => <details className="approved-attention-detail" key={item.id}><summary>{item.summary}</summary><p>{item.provenance ?? item.sourceRef}</p></details>)}{sendDockTab === 'preflight' ? <><section className="approved-readiness"><span>{dispatchPreflight?.checking ? '…' : `${passedPreflightChecks}/${dispatchPreflight?.checks.length ?? '—'}`}</span><div><label>{dispatchReady ? 'READY TO SEND' : dispatchPreflight?.checking ? 'CHECKING' : 'NEEDS REVIEW'}</label><h4>{mainTitle}</h4></div></section><div className="approved-check-list">{dispatchPreflight?.checking || !dispatchPreflight ? <p><b>○ Preflight</b><span>Checking real snapshot and runner facts…</span></p> : dispatchPreflight.checks.map((check) => <p key={check.id} className={`is-${check.status.toLowerCase()}`}><b>{check.status === 'PASS' ? '✓' : '○'} {check.label}</b><span>{check.detail}</span></p>)}</div></> : sendDockTab === 'packet' ? <section className="approved-review-panel" aria-label="Packet review"><span className="approved-kicker">FROZEN PACKET</span><h4>{mainTitle}</h4><dl className="focus-meta"><dt>Packet</dt><dd className="wb-mono">{preparedPacket?.packetId ?? 'No frozen packet'}</dd><dt>Target</dt><dd className="wb-mono">{preparedPacket?.conversationKey ?? 'No conversation selected'}</dd></dl></section> : <section className="approved-review-panel" aria-label="Preflight evidence"><span className="approved-kicker">EVIDENCE</span><div className="approved-check-list">{dispatchPreflight?.checking || !dispatchPreflight ? <p><b>Preflight</b><span>Checking real facts…</span></p> : dispatchPreflight.checks.map((check) => <p key={check.id} className={`is-${check.status.toLowerCase()}`}><b>{check.label}</b><span>{check.detail}</span></p>)}</div></section>}<section><span className="approved-kicker">PROVENANCE</span><p className="wb-mono">{preparedPacket?.packetId ?? 'No frozen packet'}</p></section></div></>
         ) : (
           <><div className="approved-dock-scroll">
             <section className="approved-session-group approved-presence-group"><label>PRESENCE <em>{conversationRows.length + harnessSessions.length}</em></label>{conversationRows.length === 0 && harnessSessions.length === 0 ? <p className="approved-runtime-empty">No bound conversation or native session fact.</p> : <>{conversationRows.map((node) => <button type="button" className="approved-session-row" key={node.id} onClick={() => setSelectedId(node.id)}><span className={`approved-session-status ${node.attentionState !== 'none' && node.attentionState !== 'unknown' ? 'attention' : node.runtimeState === 'working' ? 'working' : 'idle'}`}/><span><b>{node.label}</b><small>{node.platform} · {node.lifecycleState} · {node.runtimeState}</small></span>{node.attentionState !== 'none' && node.attentionState !== 'unknown' && <em className="approved-session-attention">{node.attentionState}</em>}</button>)}{harnessSessions.map((session) => <div role="listitem" className="approved-session-row" key={`${session.harness}:${session.nativeRef}`} title={session.sourceRef}><span className={`approved-session-status ${session.runtimeState === 'working' ? 'working' : 'idle'}`}/><span><b>{session.label}</b><small>{session.harness} · {session.agent ?? 'agent UNKNOWN'} · {session.runtimeState}</small></span></div>)}</>}</section>
-            {gateRows.length > 0 && <section className="approved-session-group approved-attention-group"><label>NEEDS YOU <em>{gateRows.length}</em></label>{gateRows.map((node) => <button type="button" className="approved-session-row" key={node.id} onClick={() => setSelectedId(node.id)}><span className="approved-session-status attention"/><span><b>{node.label}</b><small>{node.gateKind} · {node.level}</small></span></button>)}</section>}
-            <section className="approved-runtime-summary" aria-label="Runtime summary"><span>RUNNING</span><b>{executionRows.length}</b><small>{executionRows.length === 0 ? 'No live execution fact.' : executionRows.map((node) => `${node.provider} · ${node.runtimeState}`).join(' / ')}</small></section>
-          </div><footer className="approved-dock-foot"><span><i className="approved-presence live"/>{executionRows.filter((node) => node.live).length} working</span><span>{gateRows.length} needs you</span></footer></>
+            {runtimeAttention.length > 0 && <section className="approved-session-group approved-attention-group"><label>NEEDS YOU <em>{runtimeAttention.length}</em></label>{runtimeAttention.map((item) => <details className="approved-attention-detail" key={item.id}><summary>{item.summary}</summary><p>{item.provenance ?? item.sourceRef}</p></details>)}</section>}
+            <section className="approved-runtime-summary" aria-label="Runtime summary"><span>RUNNING</span><b>{liveExecutions.length}</b><small>{liveExecutions.length === 0 ? 'No live execution fact.' : liveExecutions.map((item) => `${item.harness} · ${item.externalSessionRef}`).join(' / ')}</small></section>
+          </div><footer className="approved-dock-foot"><span><i className="approved-presence live"/>{liveExecutions.length} working</span><span>{runtimeAttention.length} needs you</span></footer></>
         )}
       </aside>
     </div>

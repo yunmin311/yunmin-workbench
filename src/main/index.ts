@@ -477,7 +477,15 @@ function registerIpc(): { refresh: () => Promise<OverlaySnapshot> } {
     if (event.method === 'process/cancelled') {
       void recordActivity({ ...base, kind: 'process-cancelled', runtimeState: 'stopped' as const, summary: 'OpenCode process cancelled by user', observed: { ...base.observed, source: 'process' as const, verification: 'OBSERVED' as const } });
     } else if (event.method === 'adapter/error') {
-      void recordActivity({ ...base, kind: 'harness-error', runtimeState: 'error' as const, summary: typeof params?.message === 'string' ? params.message : 'OpenCode harness error', attentionKey: threadId ? `runtime:opencode:${threadId}` : `dispatch:${event.dispatchRef}`, observed: { ...base.observed, source: 'process' as const, verification: 'OBSERVED' as const } });
+      void recordActivity({
+        ...base,
+        kind: 'harness-error',
+        runtimeState: 'error' as const,
+        summary: typeof params?.message === 'string' ? params.message : 'OpenCode harness error',
+        ...(typeof params?.provenance === 'string' ? { content: params.provenance } : {}),
+        attentionKey: threadId ? `runtime:opencode:${threadId}` : `dispatch:${event.dispatchRef}`,
+        observed: { ...base.observed, source: 'process' as const, verification: 'OBSERVED' as const },
+      });
     } else if (event.method === 'session/started' && threadId) {
       void recordActivity({ ...base, capability: 'externalSessionRef', kind: 'session-started', summary: 'OpenCode session started', runtimeState: 'unknown' as const, binding: { harness: 'opencode', machine: context.machine, cwd: context.cwd, externalSessionRef: threadId } });
     } else if (event.method === 'turn/started') {
@@ -1218,7 +1226,9 @@ const rememberRuntime = (threadId: string) => {
         kind: receipt.status === 'ACCEPTED' ? 'handoff-accepted'
           : receipt.status === 'CANCELLED' ? 'handoff-cancelled' : 'handoff-failed',
         summary: receipt.status === 'ACCEPTED' ? `${harness} accepted the packet`
-          : receipt.status === 'CANCELLED' ? `${harness} handoff cancelled by user` : `${harness} handoff ${receipt.status.toLowerCase()}`,
+          : receipt.status === 'CANCELLED' ? `${harness} handoff cancelled by user`
+            : receipt.message ?? `${harness} handoff ${receipt.status.toLowerCase()}`,
+        ...(receipt.status === 'FAILED' ? { content: receipt.protocolEvidence } : {}),
          attentionKey: request.intentId,
          runtimeRef: receipt.runtimeRef, turnRef: receipt.turnRef,
          intentId: request.intentId, groupId: request.groupId, parentSourceRef: request.parentSourceRef,
@@ -1558,6 +1568,7 @@ const rememberRuntime = (threadId: string) => {
           evidenceRefs: item.eventRef ? [item.eventRef] : [],
           observedAt: item.observedAt,
           verification: item.verification,
+          ...(item.provenance ? { provenance: item.provenance } : {}),
         })),
       });
       const previousRevision = lastGoodWorkGraphs.get(projectId);

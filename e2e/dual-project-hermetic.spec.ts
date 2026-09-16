@@ -307,7 +307,23 @@ test('hermetic dual projects: discovery, switch, selection, compact handoff, sta
     await expect(cabinet).toContainText('staging for · Beta task one');
 
     // Staging isolation: an explicit decision in beta never leaks into alpha.
-    await cabinet.getByRole('button', { name: 'Excluded: Gate: beta-ship' }).click();
+    // Compact handoff can replace the Cabinet projection while Playwright is
+    // waiting for actionability. Dispatch against the current exact controls;
+    // the persisted decision below remains the product assertion.
+    await win.evaluate(() => {
+      const toggle = document.querySelector<HTMLButtonElement>(
+        '.context-cabinet .cabinet-group-toggle[aria-controls="cabinet-group-governance"]',
+      );
+      if (!toggle) throw new Error('missing Governance group');
+      toggle.click();
+    });
+    await expect(cabinet.locator('#cabinet-group-governance')).toBeVisible();
+    await win.evaluate(() => {
+      const button = [...document.querySelectorAll<HTMLButtonElement>('.context-cabinet button')]
+        .find((candidate) => candidate.getAttribute('aria-label') === 'Excluded: Gate: beta-ship');
+      if (!button) throw new Error('missing beta-ship Excluded control');
+      button.click();
+    });
     await expect.poll(() => win.evaluate(async () => window.wb.loadCabinetStaging('beta-hermetic'))
       .then((result) => result.staging?.decisions.length ?? 0), { timeout: 10_000 }).toBeGreaterThan(0);
     const alphaStaging = await win.evaluate(async () => (await window.wb.loadCabinetStaging('alpha-hermetic')).staging);

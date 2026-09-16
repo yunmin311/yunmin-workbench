@@ -70,12 +70,17 @@ function bindingFor(group: CabinetSourceGroup): CabinetBinding {
 }
 
 /** Deterministic Cabinet candidates from the real Overlay snapshot. */
-export function buildCabinetItems(snapshot: OverlaySnapshot, projectId: string): CabinetItem[] {
+export function buildCabinetItems(
+  snapshot: OverlaySnapshot,
+  projectId: string,
+  exactRelatedContextIds: ReadonlySet<string> = new Set(),
+): CabinetItem[] {
   const fingerprinted = new Set(snapshot.sourceFingerprints.map((f) => f.sourceRef));
   return buildStaging(snapshot, projectId).map((item) => {
     const group = groupFor(item.source);
     return {
       ...item,
+      state: exactRelatedContextIds.has(item.id) ? 'included' : item.state,
       group,
       binding: bindingFor(group),
       fingerprintAvailable: item.sourceRef !== undefined && fingerprinted.has(item.sourceRef),

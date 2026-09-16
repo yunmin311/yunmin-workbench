@@ -177,6 +177,7 @@ test('hermetic cabinet staging persists sparse overrides, never resolved snapsho
       .toContainText('No conversations bound to sparse-hermetic');
 
     // One Exclude persists exactly one explicit decision — never the collection.
+    await cabinet.getByRole('button', { name: /Governance/ }).click();
     await cabinet.getByRole('button', { name: 'Excluded: Gate: sparse-ship' }).click();
     await expect.poll(storedDecisions, { timeout: 10_000 }).toEqual([
       expect.objectContaining({ contextId: 'gate:sparse-hermetic:sparse-ship', state: 'excluded', pinned: false }),
@@ -199,14 +200,15 @@ test('hermetic cabinet staging persists sparse overrides, never resolved snapsho
     await expect(cabinet.locator('.cabinet-detail .cabinet-reason'))
       .toContainText('Source default:');
 
-    // Reverting to the inherited default (included) deletes the override.
-    await cabinet.getByRole('button', { name: 'Included: Gate: sparse-ship' }).click();
+    // Reverting to the inherited default (available) deletes the override.
+    await cabinet.getByRole('button', { name: 'Available: Gate: sparse-ship' }).click();
     await expect.poll(storedDecisions, { timeout: 10_000 }).toEqual([]);
 
     // Reload the Cabinet: the reverted item is back to its source-default reason.
     await cabinet.getByRole('button', { name: 'Close Context Cabinet' }).click();
     const reopened = await openCabinet();
     expect(await storedDecisions()).toEqual([]);
+    await reopened.getByRole('button', { name: /Governance/ }).click();
     await openDetail('Gate: sparse-ship');
     await expect(reopened.locator('.cabinet-detail .cabinet-reason'))
       .toContainText('Source default:');

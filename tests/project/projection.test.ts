@@ -101,10 +101,10 @@ describe('buildCanvasGraph', () => {
 describe('buildStaging', () => {
   const staging = buildStaging(snapshot(), 'creative-os');
 
-  it('includes gates as included body context', () => {
+  it('offers broad governance as available body context', () => {
     const gates = staging.filter((c) => c.source === 'adapter:creative-os');
     expect(gates.length).toBeGreaterThan(0);
-    expect(gates.every((c) => c.state === 'included')).toBe(true);
+    expect(gates.every((c) => c.state === 'available')).toBe(true);
   });
 
   it('offers memory hooks as available references, not bodies', () => {

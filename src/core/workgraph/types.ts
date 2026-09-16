@@ -271,6 +271,7 @@ export interface WorkGraphGateNode extends WorkGraphNodeBase {
   summary: string;
   sourceId?: string;
   evidenceRefs: string[];
+  provenance?: string;
 }
 
 /** Handoff node — explicit handoff between two executions. */

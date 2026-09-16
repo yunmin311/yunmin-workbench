@@ -46,6 +46,18 @@ export interface DispatchPreflightState {
   checks: PreflightView[];
 }
 
+export function presentDispatchPreflight(
+  ready: boolean,
+  setupReady: boolean,
+  checks: PreflightView[],
+): DispatchPreflightState {
+  return {
+    ready: setupReady && ready,
+    checking: !setupReady,
+    checks: setupReady ? checks : [],
+  };
+}
+
 function mergeFingerprints(groups: { sourceRef: string; sha256: string }[][]): { sourceRef: string; sha256: string }[] {
   const merged = new Map<string, string>();
   for (const group of groups) {
@@ -188,18 +200,22 @@ export function DispatchSurface({ projectId, selection, initialConversationKey, 
     && packetDetail !== null
     && packetValidity !== null
     && Object.keys(capabilities).length > 0;
+  const presentedPreflight = useMemo(() => presentDispatchPreflight(
+    preflight.ok && packetDetail !== null,
+    setupReady,
+    preflight.checks,
+  ), [packetDetail, preflight.checks, preflight.ok, setupReady]);
 
   useEffect(() => {
     onReadinessChange?.(preflight.ok && packetDetail !== null);
   }, [onReadinessChange, packetDetail, preflight.ok]);
 
   useEffect(() => {
-    onPreflightChange?.({
-      ready: preflight.ok && packetDetail !== null,
-      checking: !setupReady,
-      checks: preflight.checks,
-    });
-  }, [onPreflightChange, packetDetail, preflight.checks, preflight.ok, setupReady]);
+    // Unresolved inputs are not negative facts. Do not publish the
+    // synchronous preflight's temporary BLOCK rows until every async
+    // source needed to classify them has settled.
+    onPreflightChange?.(presentedPreflight);
+  }, [onPreflightChange, presentedPreflight]);
 
   const dispatch = useCallback(() => {
     if (!canDispatch || !packetDetail) return;
@@ -236,7 +252,7 @@ export function DispatchSurface({ projectId, selection, initialConversationKey, 
   }, [canDispatch, draft, packetDetail, projectId]);
 
   const canonical = isCanonicalTaskDispatch(draft);
-  const passedChecks = preflight.checks.filter((check) => check.status === 'PASS').length;
+  const passedChecks = presentedPreflight.checks.filter((check) => check.status === 'PASS').length;
 
   return (
     <section className="dispatch-surface approved-dispatch-composer" role="region" aria-label="Dispatch">
@@ -267,11 +283,13 @@ export function DispatchSurface({ projectId, selection, initialConversationKey, 
           {(Object.entries(capabilities) as [HarnessCapabilities['harness'], HarnessCapabilities][]).map(([harness, caps]) => <button key={harness} type="button" className={`dispatch-executor${draft.provider === harness ? ' is-active' : ''}`} disabled={!caps.canDispatch} aria-pressed={draft.provider === harness} onClick={() => pickExecutor(harness)} title={caps.canDispatch ? `Send this run to ${harness}` : `Unavailable: ${caps.evidence}`}><span className="executor-provider">{harness}</span><span className="executor-backend">{caps.canDispatch ? 'Ready' : 'Unavailable'}</span></button>)}
         </div>
         <span className={`approved-preflight-summary ${setupReady ? 'dispatch-ready' : 'dispatch-checking'}${canDispatch ? ' is-ready' : ''}`} role="status">
-          <b>{setupReady ? `${passedChecks}/${preflight.checks.length}` : '…'}</b>
+          <b>{setupReady ? `${passedChecks}/${presentedPreflight.checks.length}` : '…'}</b>
           <span>{setupReady ? (preflight.ok ? 'Preflight ready' : 'Needs review') : 'Checking'}</span>
         </span>
         <ul className="dispatch-preflight approved-dispatch-preflight" aria-label="Dispatch preflight evidence">
-          {preflight.checks.map((check) => <li key={check.id} className={`preflight-check is-${check.status.toLowerCase()}`}><span className="preflight-status">{check.status}</span><span className="preflight-label">{check.label}</span><span className="preflight-detail">{check.detail}</span></li>)}
+          {presentedPreflight.checking
+            ? <li className="preflight-check is-pending"><span className="preflight-status">…</span><span className="preflight-label">Checking</span><span className="preflight-detail">Verifying snapshot, target, and runner facts…</span></li>
+            : presentedPreflight.checks.map((check) => <li key={check.id} className={`preflight-check is-${check.status.toLowerCase()}`}><span className="preflight-status">{check.status}</span><span className="preflight-label">{check.label}</span><span className="preflight-detail">{check.detail}</span></li>)}
         </ul>
       </div>
       <label className="approved-instruction-surface approved-dispatch-instruction" htmlFor="dispatch-instruction"><span>Instruction</span><textarea id="dispatch-instruction" className="dispatch-instruction" rows={1} value={draft.instruction} onChange={(event) => setDraft((current) => setDispatchInstruction(current, event.target.value))} placeholder="What should this run do?" /></label>

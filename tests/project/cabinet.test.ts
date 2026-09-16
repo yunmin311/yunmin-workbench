@@ -61,8 +61,8 @@ describe('Context Cabinet staging domain (PHASE 3C.1)', () => {
     const items = buildCabinetItems(snapshotFixture(), 'creative-os');
     const byId = new Map(items.map((item) => [item.id, item]));
 
-    // Governance: adapter gates + canonical source, source-declared included.
-    expect(byId.get('gate:creative-os:visual')).toMatchObject({ group: 'governance', binding: 'project', state: 'included', fingerprintAvailable: true });
+    // Broad project governance is a candidate, not an automatic consumer fact.
+    expect(byId.get('gate:creative-os:visual')).toMatchObject({ group: 'governance', binding: 'project', state: 'available', fingerprintAvailable: true });
     expect(byId.get('canon:creative-os')).toMatchObject({ group: 'governance', isReference: true, sourceRef: 'project-file:creative-os:CLAUDE.md', fingerprintAvailable: false });
     // Exact project scope only: the other-project INBOX line never appears.
     expect(byId.get('inbox:2')).toMatchObject({ group: 'inbox', binding: 'project', state: 'available' });
@@ -74,13 +74,21 @@ describe('Context Cabinet staging domain (PHASE 3C.1)', () => {
     });
   });
 
-  it('keeps available != included: defaults come from the source, memory never starts included', () => {
+  it('keeps broad project context Available unless an exact selected fact relates it', () => {
     const items = buildCabinetItems(snapshotFixture(), 'creative-os');
     const memory = items.find((item) => item.group === 'memory')!;
     expect(memory.state).toBe('available');
     expect(memory.pinned).toBe(false);
     const summary = cabinetSummary(items);
-    expect(summary).toMatchObject({ included: 3, available: 2, excluded: 0, pinned: 0 });
+    expect(summary).toMatchObject({ included: 0, available: 5, excluded: 0, pinned: 0 });
+
+    const exact = buildCabinetItems(snapshotFixture(), 'creative-os', new Set([
+      'gate:creative-os:visual',
+      'canon:creative-os',
+    ]));
+    expect(exact.find((item) => item.id === 'gate:creative-os:visual')?.state).toBe('included');
+    expect(exact.find((item) => item.id === 'canon:creative-os')?.state).toBe('included');
+    expect(exact.find((item) => item.id === 'gate:creative-os:verify')?.state).toBe('available');
   });
 
   it('include / exclude decisions are deterministic and idempotent', () => {
@@ -126,7 +134,9 @@ describe('Context Cabinet staging domain (PHASE 3C.1)', () => {
   it('staging decisions persist under the formal project-context-cabinet scope and never mutate the snapshot', () => {
     const snapshot = snapshotFixture();
     const frozen = structuredClone(snapshot);
-    const items = buildCabinetItems(snapshot, 'creative-os');
+    const items = buildCabinetItems(snapshot, 'creative-os', new Set([
+      'gate:creative-os:visual', 'gate:creative-os:verify', 'canon:creative-os',
+    ]));
     const memoryId = 'memory:token-budget-and-optimization';
     const staged = applyCabinetPin(applyCabinetState(items, memoryId, 'included'), memoryId, true);
 
@@ -326,7 +336,9 @@ describe('Context Cabinet staging domain (PHASE 3C.1)', () => {
 
   it('same staging + same sources compile a deterministic packet that never dispatches', () => {
     const snapshot = snapshotFixture();
-    const items = buildCabinetItems(snapshot, 'creative-os');
+    const items = buildCabinetItems(snapshot, 'creative-os', new Set([
+      'gate:creative-os:visual', 'gate:creative-os:verify', 'canon:creative-os',
+    ]));
     const memoryId = 'memory:token-budget-and-optimization';
     const staged = cabinetStaging(applyCabinetState(items, memoryId, 'included'));
 

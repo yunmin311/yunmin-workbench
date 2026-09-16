@@ -69,6 +69,28 @@ describe('OpenCode adapter native contract', () => {
     }
   });
 
+  it('turns structured provider failures into a short summary plus bounded provenance', async () => {
+    process.env.FAKE_MODE = 'provider-limit';
+    const adapter = make();
+    const events: Array<{ method: string; params?: unknown }> = [];
+    adapter.onEvent((event) => events.push(event));
+    try {
+      const receipt = await adapter.dispatch('66666666-6666-4666-8666-666666666666', process.cwd(), 'hello');
+      expect(receipt).toMatchObject({ status: 'FAILED', message: 'OpenCode provider rate limit reached. Try again later.' });
+      expect(events).toContainEqual(expect.objectContaining({
+        method: 'adapter/error',
+        params: expect.objectContaining({
+          message: 'OpenCode provider rate limit reached. Try again later.',
+          provenance: expect.stringContaining('FreeUsageLimitError'),
+        }),
+      }));
+      const provenance = (events.find((event) => event.method === 'adapter/error')?.params as { provenance: string }).provenance;
+      expect(provenance.length).toBeLessThanOrEqual(4_000);
+    } finally {
+      delete process.env.FAKE_MODE;
+    }
+  });
+
   it('settles from a quiet structured step_finish when the CLI wrapper keeps the process open', async () => {
     process.env.FAKE_MODE = 'finish-hang';
     const adapter = new OpenCodeAdapter({ command: process.execPath, commandArgs: [FAKE], terminalSettleMs: 100 });

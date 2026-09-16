@@ -706,6 +706,7 @@ export function buildWorkGraphCandidate(options: WorkGraphCompileOptions): WorkG
       level: g.level,
       title: g.title,
       summary: g.summary,
+      ...(g.provenance ? { provenance: g.provenance } : {}),
       ...(g.sourceId ? { sourceId: g.sourceId } : {}),
       evidenceRefs: [...g.evidenceRefs],
     });

@@ -59,6 +59,7 @@ function eventItem(
     sessionRef: event.runtimeRef, sourceRef: event.observed.sourceRef,
     eventRef: event.id, observedAt: event.observed.observedAt,
     verification: event.observed.verification,
+    ...(event.content ? { provenance: event.content } : {}),
   };
 }
 
