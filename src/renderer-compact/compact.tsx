@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { CompactApp } from './CompactApp';
 import '../design/tokens.css';
 import './compact.css';
+import './approved-compact.css';
 
 const container = document.getElementById('compact-root');
 if (container) {

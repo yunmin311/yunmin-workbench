@@ -34,6 +34,7 @@ import type {
   HandoffReceipt,
   HarnessCapabilities,
   HarnessDispatchRequest,
+  HarnessSessionPresence,
   OverlaySnapshot,
   SourceFingerprint,
   TaskPacket,
@@ -47,6 +48,7 @@ import type { ProfileImportPreview } from '../core/portability/bundle';
 import type { ProjectRootBindingsV1 } from '../main/projectRootBindings';
 import type { MemoryEvidenceExpansion, MemorySearchQuery, MemorySearchResult, MemoryUseStateV1 } from '../core/memory/types';
 import type { DoctorReport } from '../main/doctor';
+import type { RuntimePresenceEnvelope, RuntimePresenceSnapshot } from '../core/runtimePresence';
 
 export interface WorkbenchContractV1 {
   loadOverlay(opts?: { refresh?: boolean }): Promise<OverlaySnapshot>;
@@ -111,15 +113,18 @@ export interface WorkbenchContractV1 {
   loadAllHarnessCapabilities(
     environment?: ExecutionEnvironment,
   ): Promise<Record<string, HarnessCapabilities>>;
+  listHarnessSessions(projectId: string): Promise<HarnessSessionPresence[]>;
   dispatchToHarness(request: HarnessDispatchRequest): Promise<HandoffReceipt>;
   smokeHarness(
     projectId: string,
-    harness: 'codex' | 'claude' | 'deepseek',
-  ): Promise<HandoffReceipt | { userAgent: string; ephemeralThreadId: string }>;
+    harness: HarnessCapabilities['harness'],
+  ): Promise<HandoffReceipt | { userAgent: string; ephemeralThreadId: string } | HarnessSessionPresence[]>;
 
   loadLiveExecutions(): Promise<
     { executionId: string; harness: string; externalSessionRef: string; startedAt: string; canCancel: boolean }[]
   >;
+  loadRuntimePresence(): Promise<RuntimePresenceSnapshot>;
+  onRuntimePresenceChanged(cb: (envelope: RuntimePresenceEnvelope) => void): () => void;
   cancelExecution(executionId: string): Promise<{ delivered: boolean; reason?: string }>;
 
   loadActivity(options?: { beforeByte?: number; limit?: number }): Promise<{
@@ -231,9 +236,12 @@ const CONTRACT_METHOD_NAMES: ReadonlyArray<ContractMethodNames> = [
   'saveWorkspaceSession',
   'loadHarnessCapabilities',
   'loadAllHarnessCapabilities',
+  'listHarnessSessions',
   'dispatchToHarness',
   'smokeHarness',
   'loadLiveExecutions',
+  'loadRuntimePresence',
+  'onRuntimePresenceChanged',
   'cancelExecution',
   'loadActivity',
   'clearActivity',

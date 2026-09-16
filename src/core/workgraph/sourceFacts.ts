@@ -63,6 +63,7 @@ export function buildCanonicalWorkGraphFacts(input: CanonicalWorkGraphFactInput)
   });
   const semantic = projection.semanticFacts;
   const evidenceById = new Map(semantic.evidenceRefs.map((item) => [item.id, item]));
+  const activityById = new Map(projectActivity.map((event) => [event.id, event]));
 
   const adapterExecutions = semantic.runtimeExecutions.map((execution) => {
     const observed = execution.evidenceRefs.map((id) => evidenceById.get(id)).find(Boolean);
@@ -102,6 +103,9 @@ export function buildCanonicalWorkGraphFacts(input: CanonicalWorkGraphFactInput)
     ...(artifact.eventRef ? { eventRef: artifact.eventRef } : {}),
     title: artifact.title,
     ...(artifact.content !== undefined ? { content: artifact.content } : {}),
+    ...(artifact.eventRef && activityById.get(artifact.eventRef)
+      ? { observedAt: activityById.get(artifact.eventRef)!.observed.observedAt }
+      : {}),
     evidenceRefs: [...artifact.evidenceRefs],
   }));
 

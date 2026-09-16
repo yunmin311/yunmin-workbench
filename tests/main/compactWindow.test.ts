@@ -127,11 +127,12 @@ describe('Compact snapshot assembly (same facts as Full, nothing invented)', () 
 describe('Compact window bounds (multi-monitor / DPI clamping)', () => {
   it('defaults to the top-right edge of the primary work area, clamped', () => {
     const bounds = defaultCompactBounds(WORK_AREA, false);
-    expect(bounds.width).toBe(380);
+    expect(bounds.width).toBe(368);
+    expect(bounds.height).toBe(350);
     expect(bounds.y).toBe(12);
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(WORK_AREA.width);
     const expanded = defaultCompactBounds(WORK_AREA, true);
-    expect(expanded.height).toBe(380);
+    expect(expanded.height).toBe(404);
   });
 
   it('restores persisted bounds onto the containing display and clamps invalid ones', () => {
@@ -153,6 +154,12 @@ describe('Compact window bounds (multi-monitor / DPI clamping)', () => {
     expect(offScreen.x).toBeGreaterThanOrEqual(0);
     expect(offScreen.y).toBeGreaterThanOrEqual(0);
     expect(offScreen.x + offScreen.width).toBeLessThanOrEqual(WORK_AREA.width);
+    const legacyTooSmall = computeCompactBounds(
+      { schemaVersion: 1, expanded: false, x: 20, y: 20, width: 280, height: 208 },
+      displays, 1,
+    );
+    expect(legacyTooSmall.width).toBe(320);
+    expect(legacyTooSmall.height).toBe(300);
     // Absurd size clamps to the work area.
     const huge = computeCompactBounds(
       { schemaVersion: 1, expanded: true, x: 10, y: 10, width: 9999, height: 9999 },

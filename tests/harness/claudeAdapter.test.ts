@@ -202,4 +202,14 @@ describe('Claude adapter — honest capability', () => {
     expect(result.runtimeRef).toMatch(/^claude-session-/);
     adapter.close();
   });
+
+  it('keeps a protocol session identity distinct from its unsupported resume capability', () => {
+    const adapter = new ClaudeCodeAdapter({ command: process.execPath, commandArgs: [FAKE] });
+    const identity = adapter.sessionIdentity('claude-session-native', 'claude:stream-json:system:init:session_id');
+    expect(identity).toMatchObject({
+      harness: 'claude', provider: 'claude', nativeSessionId: 'claude-session-native',
+      resume: { capability: 'UNSUPPORTED' },
+    });
+    adapter.close();
+  });
 });

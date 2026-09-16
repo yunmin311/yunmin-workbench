@@ -1,0 +1,163 @@
+{
+  "generatedAt": "2026-09-14T03:47:26.695Z",
+  "cssScope": {
+    "allowed": [
+      "background",
+      "background-image",
+      "background-color",
+      "color",
+      "border-color",
+      "border-left-color",
+      "box-shadow",
+      "stroke"
+    ],
+    "forbiddenDeclarations": [],
+    "pass": true
+  },
+  "renders": [
+    {
+      "state": "hero",
+      "viewport": "1440x900",
+      "baselinePath": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-blue\\01-full-hero-approved-green-1440x900.png",
+      "bluePath": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-blue\\01-full-hero-blue-1440x900.png",
+      "geometryDeltas": [],
+      "structuralEqual": true,
+      "grayscale": {
+        "width": 1440,
+        "height": 900,
+        "meanAbs": 2.505,
+        "p95": 3.739,
+        "p99": 4.377,
+        "max": 178.478
+      },
+      "issues": [],
+      "pass": true
+    },
+    {
+      "state": "focus",
+      "viewport": "1440x900",
+      "baselinePath": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-blue\\02-focused-work-approved-green-1440x900.png",
+      "bluePath": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-blue\\02-focused-work-blue-1440x900.png",
+      "geometryDeltas": [],
+      "structuralEqual": true,
+      "grayscale": {
+        "width": 1440,
+        "height": 900,
+        "meanAbs": 2.589,
+        "p95": 3.739,
+        "p99": 5.027,
+        "max": 178.478
+      },
+      "issues": [],
+      "pass": true
+    },
+    {
+      "state": "send",
+      "viewport": "1440x900",
+      "baselinePath": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-blue\\03-send-ready-approved-green-1440x900.png",
+      "bluePath": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-blue\\03-send-ready-blue-1440x900.png",
+      "geometryDeltas": [],
+      "structuralEqual": true,
+      "grayscale": {
+        "width": 1440,
+        "height": 900,
+        "meanAbs": 2.522,
+        "p95": 3.739,
+        "p99": 5.027,
+        "max": 178.478
+      },
+      "issues": [],
+      "pass": true
+    },
+    {
+      "state": "compact",
+      "viewport": "1440x900",
+      "baselinePath": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-blue\\04-compact-approved-green-1440x900.png",
+      "bluePath": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-blue\\04-compact-blue-1440x900.png",
+      "geometryDeltas": [],
+      "structuralEqual": true,
+      "grayscale": {
+        "width": 1440,
+        "height": 900,
+        "meanAbs": 1.434,
+        "p95": 2.814,
+        "p99": 3.175,
+        "max": 89.554
+      },
+      "issues": [],
+      "pass": true
+    },
+    {
+      "state": "hero",
+      "viewport": "900x700",
+      "baselinePath": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-blue\\01-full-hero-approved-green-900x700.png",
+      "bluePath": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-blue\\01-full-hero-blue-900x700.png",
+      "geometryDeltas": [],
+      "structuralEqual": true,
+      "grayscale": {
+        "width": 900,
+        "height": 700,
+        "meanAbs": 2.841,
+        "p95": 3.739,
+        "p99": 6.247,
+        "max": 115.476
+      },
+      "issues": [],
+      "pass": true
+    },
+    {
+      "state": "focus",
+      "viewport": "900x700",
+      "baselinePath": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-blue\\02-focused-work-approved-green-900x700.png",
+      "bluePath": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-blue\\02-focused-work-blue-900x700.png",
+      "geometryDeltas": [],
+      "structuralEqual": true,
+      "grayscale": {
+        "width": 900,
+        "height": 700,
+        "meanAbs": 2.902,
+        "p95": 3.739,
+        "p99": 6.394,
+        "max": 115.476
+      },
+      "issues": [],
+      "pass": true
+    },
+    {
+      "state": "send",
+      "viewport": "900x700",
+      "baselinePath": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-blue\\03-send-ready-approved-green-900x700.png",
+      "bluePath": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-blue\\03-send-ready-blue-900x700.png",
+      "geometryDeltas": [],
+      "structuralEqual": true,
+      "grayscale": {
+        "width": 900,
+        "height": 700,
+        "meanAbs": 2.923,
+        "p95": 3.739,
+        "p99": 6.607,
+        "max": 115.476
+      },
+      "issues": [],
+      "pass": true
+    },
+    {
+      "state": "compact",
+      "viewport": "900x700",
+      "baselinePath": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-blue\\04-compact-approved-green-900x700.png",
+      "bluePath": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-blue\\04-compact-blue-900x700.png",
+      "geometryDeltas": [],
+      "structuralEqual": true,
+      "grayscale": {
+        "width": 900,
+        "height": 700,
+        "meanAbs": 1.607,
+        "p95": 2.886,
+        "p99": 3.799,
+        "max": 89.554
+      },
+      "issues": [],
+      "pass": true
+    }
+  ]
+}

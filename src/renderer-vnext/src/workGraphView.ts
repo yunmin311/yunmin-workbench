@@ -14,6 +14,12 @@ export interface WorkGraphNodeData {
   sourceRef: string;
   /** Set on synthetic region containers. */
   region?: WorkspaceRegion;
+  /** Renderer-only progressive disclosure for a Work region. */
+  disclosure?: {
+    hiddenCount: number;
+    expanded: boolean;
+    onToggle: () => void;
+  };
 }
 
 export interface WorkGraphEdgeData {
@@ -272,6 +278,7 @@ export interface ExecutionStory {
   doing: string;
   context: string[];
   outputs: string[];
+  latestOutput?: string;
   evidence: string[];
   next: string;
   packetId?: string;
@@ -282,12 +289,32 @@ export interface ExecutionStory {
  * the graph. Missing facts remain explicit instead of being narrated. */
 export function buildExecutionStory(revision: WorkGraphRevision, nodeId: string): ExecutionStory | null {
   const facts = revision.candidate.semanticFacts;
-  const node = facts.nodes.find((candidate) => candidate.id === nodeId);
-  if (!node || node.kind !== 'execution') return null;
+  const selected = facts.nodes.find((candidate) => candidate.id === nodeId);
+  if (!selected) return null;
+  const outputTime = (executionId: string) => facts.edges
+    .filter((edge) => edge.kind === 'produces' && edge.source === executionId)
+    .map((edge) => facts.nodes.find((candidate) => candidate.id === edge.target))
+    .filter((candidate): candidate is Extract<WorkGraphNode, { kind: 'artifact' }> => candidate?.kind === 'artifact')
+    .reduce((latest, artifact) => artifact.observedAt > latest ? artifact.observedAt : latest, '');
+  const linkedExecutions = selected.kind === 'task'
+    ? facts.edges
+      .filter((edge) => edge.kind === 'execution-of' && edge.source === selected.id)
+      .map((edge) => facts.nodes.find((candidate) => candidate.id === edge.target))
+      .filter((candidate): candidate is Extract<WorkGraphNode, { kind: 'execution' }> => candidate?.kind === 'execution')
+      .sort((a, b) => outputTime(b.id).localeCompare(outputTime(a.id)) || a.id.localeCompare(b.id))
+    : [];
+  const node = selected.kind === 'execution' ? selected : linkedExecutions[0];
+  if (!node) return null;
+  const executionNodeId = node.id;
   const byId = new Map(facts.nodes.map((candidate) => [candidate.id, candidate]));
   const labelsFor = (kind: WorkGraphEdge['kind'], direction: 'out' | 'in' = 'out') => facts.edges
-    .filter((edge) => edge.kind === kind && (direction === 'out' ? edge.source === nodeId : edge.target === nodeId))
-    .map((edge) => byId.get(direction === 'out' ? edge.target : edge.source)?.label)
+    .filter((edge) => edge.kind === kind && (direction === 'out' ? edge.source === executionNodeId : edge.target === executionNodeId))
+    .map((edge) => {
+      const related = byId.get(direction === 'out' ? edge.target : edge.source);
+      return kind === 'produces' && related?.kind === 'artifact' && related.content?.trim()
+        ? related.content.trim()
+        : related?.label;
+    })
     .filter((label): label is string => Boolean(label));
   const task = node.taskId
     ? facts.nodes.find((candidate) => candidate.kind === 'task' && candidate.taskId === node.taskId)
@@ -300,10 +327,21 @@ export function buildExecutionStory(revision: WorkGraphRevision, nodeId: string)
       .filter((label): label is string => Boolean(label))
     : [];
   const nextFacts = [...new Set([...directNext, ...taskNext])];
+  const chronologyExecutionIds = selected.kind === 'task'
+    ? new Set(linkedExecutions.map((execution) => execution.id))
+    : new Set([executionNodeId]);
+  const orderedOutputs = facts.edges
+    .filter((edge) => edge.kind === 'produces' && chronologyExecutionIds.has(edge.source))
+    .map((edge) => byId.get(edge.target))
+    .filter((candidate): candidate is Extract<WorkGraphNode, { kind: 'artifact' }> => candidate?.kind === 'artifact')
+    .filter((artifact) => Boolean(artifact.content?.trim()))
+    .sort((a, b) => a.observedAt.localeCompare(b.observedAt) || a.id.localeCompare(b.id))
+    .map((artifact) => artifact.content!.trim());
   return {
     doing: task?.label ?? 'No canonical Task linked',
     context: labelsFor('uses-context'),
-    outputs: labelsFor('produces'),
+    outputs: orderedOutputs,
+    ...(orderedOutputs.length > 0 ? { latestOutput: orderedOutputs.at(-1) } : {}),
     evidence: labelsFor('evidences', 'in'),
     next: nextFacts.length > 0 ? nextFacts.join(' · ') : 'No next-step fact yet',
     ...(node.packetId ? { packetId: node.packetId } : {}),

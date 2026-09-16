@@ -11,6 +11,7 @@ import {
 } from '../../../../core/project/dispatchDraft';
 import { checkPacketValidity, renderAgentInput } from '../../../../core/project/packet';
 import type { FrozenPacket, FrozenPacketSummary, HarnessCapabilities, OverlaySnapshot, PacketValidity } from '../../../../core/types';
+import { composeDispatchInput } from '../../dispatchInput';
 
 /**
  * Explicit Dispatch Surface (PHASE 3D.1) —
@@ -32,11 +33,29 @@ export interface DispatchSelection {
   conversationKey?: string;
 }
 
-interface PreflightView {
+export interface PreflightView {
   id: string;
   label: string;
   status: 'PASS' | 'BLOCK';
   detail: string;
+}
+
+export interface DispatchPreflightState {
+  ready: boolean;
+  checking: boolean;
+  checks: PreflightView[];
+}
+
+export function presentDispatchPreflight(
+  ready: boolean,
+  setupReady: boolean,
+  checks: PreflightView[],
+): DispatchPreflightState {
+  return {
+    ready: setupReady && ready,
+    checking: !setupReady,
+    checks: setupReady ? checks : [],
+  };
 }
 
 function mergeFingerprints(groups: { sourceRef: string; sha256: string }[][]): { sourceRef: string; sha256: string }[] {
@@ -47,13 +66,15 @@ function mergeFingerprints(groups: { sourceRef: string; sha256: string }[][]): {
   return [...merged].map(([sourceRef, sha256]) => ({ sourceRef, sha256 }));
 }
 
-export function DispatchSurface({ projectId, selection, initialConversationKey, initialPacketId, onEditContext, onClose }: {
+export function DispatchSurface({ projectId, selection, initialConversationKey, initialPacketId, onEditContext, onClose, onReadinessChange, onPreflightChange }: {
   projectId: string;
   selection: DispatchSelection | null;
   initialConversationKey?: string;
   initialPacketId?: string;
   onEditContext?: () => void;
   onClose: () => void;
+  onReadinessChange?: (ready: boolean) => void;
+  onPreflightChange?: (state: DispatchPreflightState) => void;
 }) {
   const [snapshot, setSnapshot] = useState<OverlaySnapshot | null>(null);
   const [draft, setDraft] = useState<DispatchDraftV1>(() => {
@@ -179,6 +200,22 @@ export function DispatchSurface({ projectId, selection, initialConversationKey, 
     && packetDetail !== null
     && packetValidity !== null
     && Object.keys(capabilities).length > 0;
+  const presentedPreflight = useMemo(() => presentDispatchPreflight(
+    preflight.ok && packetDetail !== null,
+    setupReady,
+    preflight.checks,
+  ), [packetDetail, preflight.checks, preflight.ok, setupReady]);
+
+  useEffect(() => {
+    onReadinessChange?.(preflight.ok && packetDetail !== null);
+  }, [onReadinessChange, packetDetail, preflight.ok]);
+
+  useEffect(() => {
+    // Unresolved inputs are not negative facts. Do not publish the
+    // synchronous preflight's temporary BLOCK rows until every async
+    // source needed to classify them has settled.
+    onPreflightChange?.(presentedPreflight);
+  }, [onPreflightChange, presentedPreflight]);
 
   const dispatch = useCallback(() => {
     if (!canDispatch || !packetDetail) return;
@@ -194,7 +231,7 @@ export function DispatchSurface({ projectId, selection, initialConversationKey, 
           intentId,
           projectId,
           conversationKey: draft.conversationKey!,
-          packetText: renderAgentInput(packetDetail),
+          packetText: composeDispatchInput(draft.instruction, renderAgentInput(packetDetail)),
           harness: draft.provider!,
           environment: { kind: 'real' },
           groupId: globalThis.crypto.randomUUID(),
@@ -215,161 +252,54 @@ export function DispatchSurface({ projectId, selection, initialConversationKey, 
   }, [canDispatch, draft, packetDetail, projectId]);
 
   const canonical = isCanonicalTaskDispatch(draft);
+  const passedChecks = presentedPreflight.checks.filter((check) => check.status === 'PASS').length;
 
   return (
-    <section className="dispatch-surface" role="region" aria-label="Dispatch">
-      <header className="dispatch-header">
-        <div className="preparation-steps" aria-label="Preparation progress">
-          <button type="button" onClick={onEditContext} aria-label="Back to Context"><b>1</b> Context</button>
-          <span className="is-current"><b>2</b> Preflight</span>
-          <span><b>3</b> Execute</span>
-        </div>
-        <h2>Review and start</h2>
+    <section className="dispatch-surface approved-dispatch-composer" role="region" aria-label="Dispatch">
+      <button type="button" className="cabinet-close approved-dispatch-close" aria-label="Close Dispatch" onClick={onClose}>×</button>
+      <div className="approved-dispatch-review">
+        <span className="dispatch-label">SEND-READY · {draft.provider ?? 'CHOOSE RUNNER'}</span>
+        <p>{selection?.label ?? 'Context-only dispatch'} · immutable snapshot review</p>
         <span className="cabinet-scope">{projectId}</span>
         {canonical
           ? <span className="dispatch-lineage is-canonical">Task {draft.taskId} · Work {draft.workId}</span>
           : (draft.workId !== undefined || draft.taskId !== undefined)
             ? <span className="dispatch-lineage is-partial">Needs a task</span>
             : <span className="dispatch-lineage is-quick">No task attached</span>}
-        <button type="button" className="cabinet-close" aria-label="Close Dispatch" onClick={onClose}>×</button>
-      </header>
-      {error && <p className="cabinet-error">{error}</p>}
-      <div className="dispatch-body">
-        <div className="dispatch-fields">
-          <div className="dispatch-field">
-            <span className="dispatch-label">Task</span>
-            <div className="dispatch-value">
-              {selection && (selection.kind === 'task' || selection.kind === 'work')
-                ? <>{selection.label}{selection.taskState && selection.taskState !== 'unknown' && <> · state <span className={`currentness is-${selection.taskState.toLowerCase()}`}>{selection.taskState}</span></>}</>
-                : <span className="dispatch-muted">No task picked — this sends context only, not linked to a task.</span>}
-            </div>
-          </div>
-
-          <div className="dispatch-field">
-            <label className="dispatch-label" htmlFor="dispatch-conversation">Chat</label>
-            <select
-              id="dispatch-conversation"
-              className="dispatch-select"
-              value={draft.conversationKey ?? ''}
-              onChange={(event) => pickConversation(event.target.value || null)}
-            >
-              <option value="">— select an existing conversation —</option>
-              {draft.conversationKey && !conversations.some((conversation) => conversation.key === draft.conversationKey) && (
-                <option value={draft.conversationKey}>Checking conversation…</option>
-              )}
-              {conversations.map((conversation) => (
-                <option key={conversation.key} value={conversation.key}>
-                  {conversation.role} · {conversation.platform}
-                </option>
-              ))}
-            </select>
-            <p className="dispatch-hint">Only for this run — it never changes the task itself.</p>
-          </div>
-
-          <div className="dispatch-field">
-            <label className="dispatch-label" htmlFor="dispatch-packet">Snapshot</label>
-            <select
-              id="dispatch-packet"
-              className="dispatch-select"
-              value={draft.packetId ?? ''}
-              disabled={draft.conversationKey === undefined}
-              onChange={(event) => {
-                setDraft((current) => setDispatchPacket(current, event.target.value || null));
-                setReceipt(null);
-              }}
-            >
-              <option value="">— select a snapshot —</option>
-              {frozenList.map((item) => (
-                <option key={item.packetId} value={item.packetId}>
-                  v{item.version} · {item.packetId.slice(0, 8)}… · {item.frozenAt.slice(0, 16)} · ~{item.roughTokens} tok
-                </option>
-              ))}
-            </select>
-            {draft.packetId !== undefined && packetDetail && (
-              <p className="dispatch-hint">
-                {packetDetail.packetId} · {packetValidity
-                  ? <span className={`currentness is-${packetValidity.toLowerCase()}`}>{packetValidity}</span>
-                  : 'checking…'}
-                {' '}· {packetDetail.included.length} context · {packetDetail.references.length} references · ~{packetDetail.roughTokens} tok
-                {packetNote && <> · {packetNote}</>}
-              </p>
-            )}
-            <p className="dispatch-hint">To change what&apos;s included, go back — snapshots are immutable, a new one is made instead.</p>
-          </div>
-
-          <div className="dispatch-field">
-            <span className="dispatch-label">Run with</span>
-            <div className="dispatch-executors" role="group" aria-label="Executor selection">
-              {(Object.entries(capabilities) as [HarnessCapabilities['harness'], HarnessCapabilities][]).map(([harness, caps]) => (
-                <button
-                  key={harness}
-                  type="button"
-                  className={`dispatch-executor${draft.provider === harness ? ' is-active' : ''}`}
-                  disabled={!caps.canDispatch}
-                  aria-pressed={draft.provider === harness}
-                  onClick={() => pickExecutor(harness)}
-                  title={caps.canDispatch ? `Send this run to ${harness}` : `Unavailable: ${caps.evidence}`}
-                >
-                  <span className="executor-provider">{harness}</span>
-                  <span className="executor-backend">{caps.canDispatch ? 'Ready' : 'Unavailable'}</span>
-                </button>
-              ))}
-              <span className="executor-note" title="The Paseo runner is not connected in this build.">
-                Paseo runner · not connected
-              </span>
-            </div>
-          </div>
-
-          <div className="dispatch-field">
-            <label className="dispatch-label" htmlFor="dispatch-instruction">Instruction</label>
-            <textarea
-              id="dispatch-instruction"
-              className="dispatch-instruction"
-              rows={3}
-              value={draft.instruction}
-              onChange={(event) => setDraft((current) => setDispatchInstruction(current, event.target.value))}
-              placeholder="What should this run do? (visible and reviewable; sent verbatim above the snapshot)"
-            />
-          </div>
-        </div>
-
-        <aside className="dispatch-preflight" aria-label="Dispatch preflight">
-          <h3>Preflight</h3>
-          {!setupReady ? (
-            <p className="dispatch-checking" role="status">Checking snapshot, project files and runners…</p>
-          ) : (
-            <ul className="dispatch-ready">
-              {preflight.checks.map((check) => (
-                <li key={check.id} className={`preflight-check is-${check.status.toLowerCase()}`}>
-                  <span className="preflight-status">{check.status}</span>
-                  <span className="preflight-label">{check.label}</span>
-                  <span className="preflight-detail">{check.detail}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-          <p className="dispatch-consequence" role="status">
-            {canDispatch && packetDetail
-              ? `Sends ${packetDetail.included.length + packetDetail.references.length} items and your instruction to ${draft.provider} in ${runChatShort}. Watch it under Running.`
-              : 'Pick a chat, a snapshot and a runner above — then send.'}
-          </p>
-          <button
-            type="button"
-            className="dispatch-button"
-            disabled={!canDispatch}
-            onClick={dispatch}
-            title={canDispatch ? 'Send the snapshot and instruction now' : 'Finish the checklist above first'}
-          >
-            {dispatching ? 'Sending…' : 'Send'}
-          </button>
-          {receipt && (
-            <p className={`dispatch-receipt is-${receipt.status.toLowerCase()}`} role="status" aria-label="Dispatch receipt">
-              {receipt.status} · {receipt.detail}
-            </p>
-          )}
-          <p className="dispatch-hint">Runs, used context and outputs appear here after a real run — this screen never invents them.</p>
-        </aside>
       </div>
+      {error && <p className="cabinet-error">{error}</p>}
+      {packetDetail && (
+        <div className="approved-dispatch-shelf" aria-label="Snapshot context">
+          {[...packetDetail.included, ...packetDetail.references].slice(0, 3).map((item) => (
+            <span key={item.id}><i>{item.isReference ? 'REF' : 'CTX'}</i>{item.title}</span>
+          ))}
+          <em>{packetDetail.included.length + packetDetail.references.length} sources · ~{packetDetail.roughTokens} tok</em>
+        </div>
+      )}
+      <div className="approved-target-meta-strip" aria-label="Dispatch target and metadata">
+        <label htmlFor="dispatch-conversation"><span>Chat</span><select id="dispatch-conversation" className="dispatch-select" value={draft.conversationKey ?? ''} onChange={(event) => pickConversation(event.target.value || null)}><option value="">Choose chat…</option>{draft.conversationKey && !conversations.some((conversation) => conversation.key === draft.conversationKey) && <option value={draft.conversationKey}>Checking conversation…</option>}{conversations.map((conversation) => <option key={conversation.key} value={conversation.key}>{conversation.role} · {conversation.platform}</option>)}</select></label>
+        <label htmlFor="dispatch-packet"><span>Snapshot</span><select id="dispatch-packet" className="dispatch-select" value={draft.packetId ?? ''} disabled={draft.conversationKey === undefined} onChange={(event) => { setDraft((current) => setDispatchPacket(current, event.target.value || null)); setReceipt(null); }}><option value="">Choose snapshot…</option>{frozenList.map((item) => <option key={item.packetId} value={item.packetId}>v{item.version} · {item.packetId.slice(0, 8)}… · ~{item.roughTokens} tok</option>)}</select></label>
+        <div className="dispatch-executors" role="group" aria-label="Executor selection">
+          {(Object.entries(capabilities) as [HarnessCapabilities['harness'], HarnessCapabilities][]).map(([harness, caps]) => <button key={harness} type="button" className={`dispatch-executor${draft.provider === harness ? ' is-active' : ''}`} disabled={!caps.canDispatch} aria-pressed={draft.provider === harness} onClick={() => pickExecutor(harness)} title={caps.canDispatch ? `Send this run to ${harness}` : `Unavailable: ${caps.evidence}`}><span className="executor-provider">{harness}</span><span className="executor-backend">{caps.canDispatch ? 'Ready' : 'Unavailable'}</span></button>)}
+        </div>
+        <span className={`approved-preflight-summary ${setupReady ? 'dispatch-ready' : 'dispatch-checking'}${canDispatch ? ' is-ready' : ''}`} role="status">
+          <b>{setupReady ? `${passedChecks}/${presentedPreflight.checks.length}` : '…'}</b>
+          <span>{setupReady ? (preflight.ok ? 'Preflight ready' : 'Needs review') : 'Checking'}</span>
+        </span>
+        <ul className="dispatch-preflight approved-dispatch-preflight" aria-label="Dispatch preflight evidence">
+          {presentedPreflight.checking
+            ? <li className="preflight-check is-pending"><span className="preflight-status">…</span><span className="preflight-label">Checking</span><span className="preflight-detail">Verifying snapshot, target, and runner facts…</span></li>
+            : presentedPreflight.checks.map((check) => <li key={check.id} className={`preflight-check is-${check.status.toLowerCase()}`}><span className="preflight-status">{check.status}</span><span className="preflight-label">{check.label}</span><span className="preflight-detail">{check.detail}</span></li>)}
+        </ul>
+      </div>
+      <label className="approved-instruction-surface approved-dispatch-instruction" htmlFor="dispatch-instruction"><span>Instruction</span><textarea id="dispatch-instruction" className="dispatch-instruction" rows={1} value={draft.instruction} onChange={(event) => setDraft((current) => setDispatchInstruction(current, event.target.value))} placeholder="What should this run do?" /></label>
+      <footer className="approved-dispatch-actions">
+        <span>{packetDetail ? <><b>{packetDetail.included.length + packetDetail.references.length}</b> sources · <b>1</b> target</> : 'Checking snapshot…'}</span>
+        <button type="button" className="secondary-button" onClick={onEditContext} aria-label="Back to Context">Back to edit</button>
+        <button type="button" className="dispatch-button" disabled={!canDispatch} onClick={dispatch} title={canDispatch ? 'Send the snapshot and instruction now' : 'Finish the checklist above first'}>{dispatching ? 'Sending…' : 'Send packet'}</button>
+      </footer>
+      <p className="dispatch-consequence" role="status">{canDispatch && packetDetail ? `Sends ${packetDetail.included.length + packetDetail.references.length} items to ${draft.provider} in ${runChatShort}.` : 'Pick an available runner to finish preflight.'}</p>
+      {receipt && <p className={`dispatch-receipt is-${receipt.status.toLowerCase()}`} role="status" aria-label="Dispatch receipt">{receipt.status} · {receipt.detail}</p>}
     </section>
   );
 }

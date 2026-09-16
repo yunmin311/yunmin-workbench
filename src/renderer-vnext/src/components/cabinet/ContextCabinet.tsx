@@ -48,6 +48,8 @@ export interface CabinetSelection {
   label: string;
   conversationKey?: string;
   canonicalConversationId?: string;
+  /** Exact graph relations only; never relevance, title, cwd, or recency. */
+  relatedContextIds?: string[];
 }
 
 interface PacketResult {
@@ -80,7 +82,9 @@ function deterministicReason(item: CabinetItem, userDecided: boolean): string {
   }
   switch (item.group) {
     case 'governance':
-      return 'Source default: the project adapter declares this governance context; it enters staging included.';
+      return item.state === 'included'
+        ? 'Exact relation: the selected Work, Task, or Conversation directly declares this Context.'
+        : 'Source default: project governance is available until explicitly included.';
     case 'inbox':
       return 'Source default: a project-scoped INBOX line the source flags for attention; available until included.';
     case 'file':
@@ -138,6 +142,7 @@ export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
   // in this set may enter persisted decisions — untouched contexts stay out.
   const baseDefaultsRef = useRef(new Map<string, CabinetSourceDefault>());
   const decidedRef = useRef(new Set<string>());
+  const relatedContextKey = [...(selection?.relatedContextIds ?? [])].sort().join('\u0000');
 
   useEffect(() => {
     let alive = true;
@@ -156,7 +161,7 @@ export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
         const loaded = await window.wb.loadOverlay();
         if (!alive) return;
         setSnapshot(loaded);
-        const base = buildCabinetItems(loaded, projectId);
+        const base = buildCabinetItems(loaded, projectId, new Set(relatedContextKey ? relatedContextKey.split('\u0000') : []));
         const stored = await window.wb.loadCabinetStaging(projectId);
         if (!alive) return;
         setStagingProblem(stored.problem ?? '');
@@ -167,8 +172,7 @@ export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
         // untouched contexts leave no record, so this set is exact for new
         // writes. Bloated stores from the pre-sparse era keep their records
         // untouched here — they are reported, never silently rewritten.
-        decidedRef.current = new Set(staging?.decisions.map((decision) => decision.contextId) ?? []);
-        setUserDecidedIds(new Set(decidedRef.current));
+        const storedDecisionIds = new Set(staging?.decisions.map((decision) => decision.contextId) ?? []);
 
         // Explicit file selections resolve fresh from disk every open.
         const freshFiles: ContextItem[] = [];
@@ -201,6 +205,17 @@ export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
           ...freshFiles.map((file) => asCabinetItem(file, freshFingerprints)),
           ...(pinnedItem ? [asCabinetItem(pinnedItem, freshFingerprints)] : []),
         ];
+        // v1 sparse files were authored when every adapter governance item
+        // defaulted to Included. Preserve what the user deliberately left in
+        // that curated set, then write the explicit-relations marker on the
+        // next normal staging action. New/unmarked relevance is never guessed.
+        const legacyKeptIds = staging && staging.defaultPolicy !== 'explicit-relations-v2'
+          ? withFiles
+            .filter((item) => item.group === 'governance' && !storedDecisionIds.has(item.id))
+            .map((item) => item.id)
+          : [];
+        decidedRef.current = new Set([...storedDecisionIds, ...legacyKeptIds]);
+        setUserDecidedIds(new Set(decidedRef.current));
         // Inherited defaults snapshot: pre-override states. Reverting an item
         // to these values deletes its override instead of persisting it.
         baseDefaultsRef.current = new Map(
@@ -211,7 +226,7 @@ export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
           const decision = decisions.get(item.id);
           return decision
             ? { ...item, state: decision.state, pinned: decision.state === 'included' ? decision.pinned : false }
-            : item;
+            : legacyKeptIds.includes(item.id) ? { ...item, state: 'included' as const } : item;
         });
         setItems(hydratedItems);
         setExpandedGroups(new Set(GROUP_ORDER.filter((group) =>
@@ -221,7 +236,7 @@ export function ContextCabinet({ projectId, selection, onPrepared, onClose }: {
       }
     })();
     return () => { alive = false; };
-  }, [projectId]);
+  }, [projectId, relatedContextKey]);
 
   const currentFingerprints = useMemo(
     () => (snapshot ? mergeFingerprints([snapshot.sourceFingerprints, fileFingerprints]) : []),

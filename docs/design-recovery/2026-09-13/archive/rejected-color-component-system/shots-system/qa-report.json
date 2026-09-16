@@ -1,0 +1,720 @@
+{
+  "generatedAt": "2026-09-14T03:34:54.207Z",
+  "hero": [
+    {
+      "palette": "ember",
+      "viewport": "1440x900",
+      "screenshot": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-system\\01-graphite-ember-1440x900.png",
+      "pass": true,
+      "boxes": {
+        ".app": {
+          "left": 0,
+          "top": 0,
+          "right": 1440,
+          "bottom": 900,
+          "width": 1440,
+          "height": 900
+        },
+        ".presence": {
+          "left": 0,
+          "top": 0,
+          "right": 64,
+          "bottom": 900,
+          "width": 64,
+          "height": 900
+        },
+        ".work-rail": {
+          "left": 64,
+          "top": 0,
+          "right": 312,
+          "bottom": 900,
+          "width": 248,
+          "height": 900
+        },
+        ".main": {
+          "left": 312,
+          "top": 0,
+          "right": 1120,
+          "bottom": 900,
+          "width": 808,
+          "height": 900
+        },
+        ".main-head": {
+          "left": 312,
+          "top": 0,
+          "right": 1120,
+          "bottom": 106,
+          "width": 808,
+          "height": 106
+        },
+        ".plane": {
+          "left": 332,
+          "top": 124,
+          "right": 1100,
+          "bottom": 692,
+          "width": 768,
+          "height": 568
+        },
+        ".composer-wrap": {
+          "left": 312,
+          "top": 706,
+          "right": 1120,
+          "bottom": 900,
+          "width": 808,
+          "height": 194
+        },
+        ".composer": {
+          "left": 332,
+          "top": 706,
+          "right": 1100,
+          "bottom": 882,
+          "width": 768,
+          "height": 176
+        },
+        ".dock": {
+          "left": 1120,
+          "top": 0,
+          "right": 1440,
+          "bottom": 900,
+          "width": 320,
+          "height": 900
+        }
+      },
+      "issues": []
+    },
+    {
+      "palette": "slate",
+      "viewport": "1440x900",
+      "screenshot": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-system\\02-slate-signal-1440x900.png",
+      "pass": true,
+      "boxes": {
+        ".app": {
+          "left": 0,
+          "top": 0,
+          "right": 1440,
+          "bottom": 900,
+          "width": 1440,
+          "height": 900
+        },
+        ".presence": {
+          "left": 0,
+          "top": 0,
+          "right": 64,
+          "bottom": 900,
+          "width": 64,
+          "height": 900
+        },
+        ".work-rail": {
+          "left": 64,
+          "top": 0,
+          "right": 312,
+          "bottom": 900,
+          "width": 248,
+          "height": 900
+        },
+        ".main": {
+          "left": 312,
+          "top": 0,
+          "right": 1120,
+          "bottom": 900,
+          "width": 808,
+          "height": 900
+        },
+        ".main-head": {
+          "left": 312,
+          "top": 0,
+          "right": 1120,
+          "bottom": 106,
+          "width": 808,
+          "height": 106
+        },
+        ".plane": {
+          "left": 332,
+          "top": 124,
+          "right": 1100,
+          "bottom": 692,
+          "width": 768,
+          "height": 568
+        },
+        ".composer-wrap": {
+          "left": 312,
+          "top": 706,
+          "right": 1120,
+          "bottom": 900,
+          "width": 808,
+          "height": 194
+        },
+        ".composer": {
+          "left": 332,
+          "top": 706,
+          "right": 1100,
+          "bottom": 882,
+          "width": 768,
+          "height": 176
+        },
+        ".dock": {
+          "left": 1120,
+          "top": 0,
+          "right": 1440,
+          "bottom": 900,
+          "width": 320,
+          "height": 900
+        }
+      },
+      "issues": []
+    },
+    {
+      "palette": "mineral",
+      "viewport": "1440x900",
+      "screenshot": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-system\\03-mineral-quiet-1440x900.png",
+      "pass": true,
+      "boxes": {
+        ".app": {
+          "left": 0,
+          "top": 0,
+          "right": 1440,
+          "bottom": 900,
+          "width": 1440,
+          "height": 900
+        },
+        ".presence": {
+          "left": 0,
+          "top": 0,
+          "right": 64,
+          "bottom": 900,
+          "width": 64,
+          "height": 900
+        },
+        ".work-rail": {
+          "left": 64,
+          "top": 0,
+          "right": 312,
+          "bottom": 900,
+          "width": 248,
+          "height": 900
+        },
+        ".main": {
+          "left": 312,
+          "top": 0,
+          "right": 1120,
+          "bottom": 900,
+          "width": 808,
+          "height": 900
+        },
+        ".main-head": {
+          "left": 312,
+          "top": 0,
+          "right": 1120,
+          "bottom": 106,
+          "width": 808,
+          "height": 106
+        },
+        ".plane": {
+          "left": 332,
+          "top": 124,
+          "right": 1100,
+          "bottom": 692,
+          "width": 768,
+          "height": 568
+        },
+        ".composer-wrap": {
+          "left": 312,
+          "top": 706,
+          "right": 1120,
+          "bottom": 900,
+          "width": 808,
+          "height": 194
+        },
+        ".composer": {
+          "left": 332,
+          "top": 706,
+          "right": 1100,
+          "bottom": 882,
+          "width": 768,
+          "height": 176
+        },
+        ".dock": {
+          "left": 1120,
+          "top": 0,
+          "right": 1440,
+          "bottom": 900,
+          "width": 320,
+          "height": 900
+        }
+      },
+      "issues": []
+    },
+    {
+      "palette": "ember",
+      "viewport": "900x700",
+      "screenshot": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-system\\01-graphite-ember-900x700.png",
+      "pass": true,
+      "boxes": {
+        ".app": {
+          "left": 0,
+          "top": 0,
+          "right": 900,
+          "bottom": 700,
+          "width": 900,
+          "height": 700
+        },
+        ".presence": {
+          "left": 0,
+          "top": 0,
+          "right": 64,
+          "bottom": 700,
+          "width": 64,
+          "height": 700
+        },
+        ".main": {
+          "left": 64,
+          "top": 0,
+          "right": 900,
+          "bottom": 512,
+          "width": 836,
+          "height": 512
+        },
+        ".main-head": {
+          "left": 64,
+          "top": 0,
+          "right": 900,
+          "bottom": 96,
+          "width": 836,
+          "height": 96
+        },
+        ".plane": {
+          "left": 78,
+          "top": 108,
+          "right": 886,
+          "bottom": 326,
+          "width": 808,
+          "height": 218
+        },
+        ".composer-wrap": {
+          "left": 64,
+          "top": 336,
+          "right": 900,
+          "bottom": 512,
+          "width": 836,
+          "height": 176
+        },
+        ".composer": {
+          "left": 78,
+          "top": 336,
+          "right": 886,
+          "bottom": 500,
+          "width": 808,
+          "height": 164
+        },
+        ".dock": {
+          "left": 64,
+          "top": 512,
+          "right": 900,
+          "bottom": 700,
+          "width": 836,
+          "height": 188
+        }
+      },
+      "issues": []
+    },
+    {
+      "palette": "slate",
+      "viewport": "900x700",
+      "screenshot": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-system\\02-slate-signal-900x700.png",
+      "pass": true,
+      "boxes": {
+        ".app": {
+          "left": 0,
+          "top": 0,
+          "right": 900,
+          "bottom": 700,
+          "width": 900,
+          "height": 700
+        },
+        ".presence": {
+          "left": 0,
+          "top": 0,
+          "right": 64,
+          "bottom": 700,
+          "width": 64,
+          "height": 700
+        },
+        ".main": {
+          "left": 64,
+          "top": 0,
+          "right": 900,
+          "bottom": 512,
+          "width": 836,
+          "height": 512
+        },
+        ".main-head": {
+          "left": 64,
+          "top": 0,
+          "right": 900,
+          "bottom": 96,
+          "width": 836,
+          "height": 96
+        },
+        ".plane": {
+          "left": 78,
+          "top": 108,
+          "right": 886,
+          "bottom": 326,
+          "width": 808,
+          "height": 218
+        },
+        ".composer-wrap": {
+          "left": 64,
+          "top": 336,
+          "right": 900,
+          "bottom": 512,
+          "width": 836,
+          "height": 176
+        },
+        ".composer": {
+          "left": 78,
+          "top": 336,
+          "right": 886,
+          "bottom": 500,
+          "width": 808,
+          "height": 164
+        },
+        ".dock": {
+          "left": 64,
+          "top": 512,
+          "right": 900,
+          "bottom": 700,
+          "width": 836,
+          "height": 188
+        }
+      },
+      "issues": []
+    },
+    {
+      "palette": "mineral",
+      "viewport": "900x700",
+      "screenshot": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-system\\03-mineral-quiet-900x700.png",
+      "pass": true,
+      "boxes": {
+        ".app": {
+          "left": 0,
+          "top": 0,
+          "right": 900,
+          "bottom": 700,
+          "width": 900,
+          "height": 700
+        },
+        ".presence": {
+          "left": 0,
+          "top": 0,
+          "right": 64,
+          "bottom": 700,
+          "width": 64,
+          "height": 700
+        },
+        ".main": {
+          "left": 64,
+          "top": 0,
+          "right": 900,
+          "bottom": 512,
+          "width": 836,
+          "height": 512
+        },
+        ".main-head": {
+          "left": 64,
+          "top": 0,
+          "right": 900,
+          "bottom": 96,
+          "width": 836,
+          "height": 96
+        },
+        ".plane": {
+          "left": 78,
+          "top": 108,
+          "right": 886,
+          "bottom": 326,
+          "width": 808,
+          "height": 218
+        },
+        ".composer-wrap": {
+          "left": 64,
+          "top": 336,
+          "right": 900,
+          "bottom": 512,
+          "width": 836,
+          "height": 176
+        },
+        ".composer": {
+          "left": 78,
+          "top": 336,
+          "right": 886,
+          "bottom": 500,
+          "width": 808,
+          "height": 164
+        },
+        ".dock": {
+          "left": 64,
+          "top": 512,
+          "right": 900,
+          "bottom": 700,
+          "width": 836,
+          "height": 188
+        }
+      },
+      "issues": []
+    }
+  ],
+  "lab": [
+    {
+      "viewport": "1440x900",
+      "screenshot": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-system\\component-lab-1440x900.png",
+      "fullScreenshot": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-system\\component-lab-1440x900-full.png",
+      "pass": true,
+      "issues": [],
+      "contrasts": [
+        {
+          "fg": "--t1",
+          "bg": "--canvas",
+          "ratio": 16.3
+        },
+        {
+          "fg": "--t2",
+          "bg": "--canvas",
+          "ratio": 8.59
+        },
+        {
+          "fg": "--t3",
+          "bg": "--canvas",
+          "ratio": 5.1
+        },
+        {
+          "fg": "--t1",
+          "bg": "--s1",
+          "ratio": 15.45
+        },
+        {
+          "fg": "--t2",
+          "bg": "--s1",
+          "ratio": 8.14
+        },
+        {
+          "fg": "--accent",
+          "bg": "--shell",
+          "ratio": 5.92
+        }
+      ],
+      "documentHeight": 3713
+    },
+    {
+      "viewport": "900x700",
+      "screenshot": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-system\\component-lab-900x700.png",
+      "fullScreenshot": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-system\\component-lab-900x700-full.png",
+      "pass": true,
+      "issues": [],
+      "contrasts": [
+        {
+          "fg": "--t1",
+          "bg": "--canvas",
+          "ratio": 16.3
+        },
+        {
+          "fg": "--t2",
+          "bg": "--canvas",
+          "ratio": 8.59
+        },
+        {
+          "fg": "--t3",
+          "bg": "--canvas",
+          "ratio": 5.1
+        },
+        {
+          "fg": "--t1",
+          "bg": "--s1",
+          "ratio": 15.45
+        },
+        {
+          "fg": "--t2",
+          "bg": "--s1",
+          "ratio": 8.14
+        },
+        {
+          "fg": "--accent",
+          "bg": "--shell",
+          "ratio": 5.92
+        }
+      ],
+      "documentHeight": 5579
+    }
+  ],
+  "paletteLabChecks": [
+    {
+      "palette": "ember",
+      "pass": true,
+      "issues": [],
+      "contrasts": [
+        {
+          "fg": "--t1",
+          "bg": "--canvas",
+          "ratio": 16.3
+        },
+        {
+          "fg": "--t2",
+          "bg": "--canvas",
+          "ratio": 8.59
+        },
+        {
+          "fg": "--t3",
+          "bg": "--canvas",
+          "ratio": 5.1
+        },
+        {
+          "fg": "--t1",
+          "bg": "--s1",
+          "ratio": 15.45
+        },
+        {
+          "fg": "--t2",
+          "bg": "--s1",
+          "ratio": 8.14
+        },
+        {
+          "fg": "--accent",
+          "bg": "--shell",
+          "ratio": 5.92
+        }
+      ]
+    },
+    {
+      "palette": "slate",
+      "pass": true,
+      "issues": [],
+      "contrasts": [
+        {
+          "fg": "--t1",
+          "bg": "--canvas",
+          "ratio": 16.35
+        },
+        {
+          "fg": "--t2",
+          "bg": "--canvas",
+          "ratio": 8.52
+        },
+        {
+          "fg": "--t3",
+          "bg": "--canvas",
+          "ratio": 5.25
+        },
+        {
+          "fg": "--t1",
+          "bg": "--s1",
+          "ratio": 15.36
+        },
+        {
+          "fg": "--t2",
+          "bg": "--s1",
+          "ratio": 8
+        },
+        {
+          "fg": "--accent",
+          "bg": "--shell",
+          "ratio": 7.51
+        }
+      ]
+    },
+    {
+      "palette": "mineral",
+      "pass": true,
+      "issues": [],
+      "contrasts": [
+        {
+          "fg": "--t1",
+          "bg": "--canvas",
+          "ratio": 16.06
+        },
+        {
+          "fg": "--t2",
+          "bg": "--canvas",
+          "ratio": 8.09
+        },
+        {
+          "fg": "--t3",
+          "bg": "--canvas",
+          "ratio": 4.71
+        },
+        {
+          "fg": "--t1",
+          "bg": "--s1",
+          "ratio": 15.37
+        },
+        {
+          "fg": "--t2",
+          "bg": "--s1",
+          "ratio": 7.74
+        },
+        {
+          "fg": "--accent",
+          "bg": "--shell",
+          "ratio": 6.28
+        }
+      ]
+    }
+  ],
+  "overlays": [
+    {
+      "viewport": "1440x900",
+      "screenshot": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-system\\component-lab-overlays-1440x900.png",
+      "pass": true,
+      "contained": true,
+      "stage": {
+        "left": 41,
+        "top": 294.84375,
+        "right": 695,
+        "bottom": 604.84375
+      },
+      "modal": {
+        "left": 42,
+        "top": 295.84375,
+        "right": 694,
+        "bottom": 603.84375
+      }
+    }
+  ],
+  "geometryParity": [
+    {
+      "palette": "ember",
+      "viewport": "1440x900",
+      "pass": true,
+      "deltas": []
+    },
+    {
+      "palette": "slate",
+      "viewport": "1440x900",
+      "pass": true,
+      "deltas": []
+    },
+    {
+      "palette": "mineral",
+      "viewport": "1440x900",
+      "pass": true,
+      "deltas": []
+    },
+    {
+      "palette": "ember",
+      "viewport": "900x700",
+      "pass": true,
+      "deltas": []
+    },
+    {
+      "palette": "slate",
+      "viewport": "900x700",
+      "pass": true,
+      "deltas": []
+    },
+    {
+      "palette": "mineral",
+      "viewport": "900x700",
+      "pass": true,
+      "deltas": []
+    }
+  ]
+}

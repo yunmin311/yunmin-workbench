@@ -1,0 +1,11 @@
+Continue the Design Intent Recovery / Visual Rebuild in E:\1project\yunmin-workbench on branch codex/workbench-vnext.
+
+Previous OpenCode run stopped because the upstream provider rejected a request containing 51 images (limit 50). Do not reset or discard the current working tree. First inspect git status/diff/log and preserve useful WIP.
+
+Read START-HERE.txt, then CURRENT/Yunmin-Workbench-Design-Intent-2026-09-13.docx. Consult ARCHIVE only as historical evidence. Do not recursively treat old doc/ ZIP packs as current instructions.
+
+Do not resume broad production implementation yet. Recover/finish the four high-fidelity design compositions: Full Workbench Hero; Task Focus + Context/Action; Send-ready; Compact/Edge. Compare them against the current GitHub screenshots and the donor mapping. The new compositions must differ in composition, hierarchy, and interaction model, not merely polish.
+
+Do not load dozens of screenshots into one model request. Inspect only the few images needed for the current comparison, in small batches.
+
+Do not push. Do not rewrite README or current project docs before user visual approval. New current documentation should be written only after the visual direction is approved; keep historical doc/ archives untouched.

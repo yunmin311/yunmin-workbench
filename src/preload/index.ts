@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
-import type { ActivityEvent, AttentionLocalState, ContextItem, ExecutionEnvironment, FrozenPacket, FrozenPacketSummary, GitFacts, HandoffReceipt, HarnessCapabilities, HarnessDispatchRequest, OverlaySnapshot, SourceFingerprint, TaskPacket } from '../core/types';
+import type { ActivityEvent, AttentionLocalState, ContextItem, ExecutionEnvironment, FrozenPacket, FrozenPacketSummary, GitFacts, HandoffReceipt, HarnessCapabilities, HarnessDispatchRequest, HarnessSessionPresence, OverlaySnapshot, SourceFingerprint, TaskPacket } from '../core/types';
 import type { WorkbenchDraftV1 } from '../core/project/draft';
 import type { CabinetStagingV1 } from '../core/project/cabinetStaging';
 import type { WorkspaceSessionV1 } from '../core/project/workspaceSession';
@@ -10,6 +10,7 @@ import type { MemoryEvidenceExpansion, MemorySearchQuery, MemorySearchResult, Me
 import type { DoctorReport } from '../main/doctor';
 import type { WorkbenchContract } from './contract';
 import type { WorkGraphRevision } from '../core/workgraph/revision';
+import type { RuntimePresenceEnvelope, RuntimePresenceSnapshot } from '../core/runtimePresence';
 
 const api = {
   loadOverlay: (opts?: { refresh?: boolean }): Promise<OverlaySnapshot> =>
@@ -101,12 +102,21 @@ const api = {
     ipcRenderer.invoke('harness:capabilities'),
   loadAllHarnessCapabilities: (environment: ExecutionEnvironment = { kind: 'real' }): Promise<Record<string, HarnessCapabilities>> =>
     ipcRenderer.invoke('harness:capabilitiesAll', environment),
+  listHarnessSessions: (projectId: string): Promise<HarnessSessionPresence[]> =>
+    ipcRenderer.invoke('harness:sessions', projectId),
   dispatchToHarness: (request: HarnessDispatchRequest): Promise<HandoffReceipt> =>
     ipcRenderer.invoke('harness:dispatch', request),
-  smokeHarness: (projectId: string, harness: 'codex' | 'claude' | 'deepseek'): Promise<HandoffReceipt | { userAgent: string; ephemeralThreadId: string }> =>
+  smokeHarness: (projectId: string, harness: HarnessCapabilities['harness']): Promise<HandoffReceipt | { userAgent: string; ephemeralThreadId: string } | HarnessSessionPresence[]> =>
     ipcRenderer.invoke('harness:smoke', projectId, harness),
   loadLiveExecutions: (): Promise<{ executionId: string; harness: string; externalSessionRef: string; startedAt: string; canCancel: boolean }[]> =>
     ipcRenderer.invoke('runtime:live'),
+  loadRuntimePresence: (): Promise<RuntimePresenceSnapshot> =>
+    ipcRenderer.invoke('runtime:presence'),
+  onRuntimePresenceChanged: (cb: (envelope: RuntimePresenceEnvelope) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, envelope: RuntimePresenceEnvelope) => cb(envelope);
+    ipcRenderer.on('runtime:presence-changed', listener);
+    return () => ipcRenderer.removeListener('runtime:presence-changed', listener);
+  },
   cancelExecution: (executionId: string): Promise<{ delivered: boolean; reason?: string }> =>
     ipcRenderer.invoke('harness:cancel', { executionId }),
   loadActivity: (options?: { beforeByte?: number; limit?: number }): Promise<{

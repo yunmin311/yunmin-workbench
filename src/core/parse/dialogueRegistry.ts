@@ -10,7 +10,7 @@ import type {
 
 const STATUSES: DialogueStatus[] = ['ACTIVE', 'PAUSED', 'FROZEN', 'STANDBY'];
 const VERIFICATIONS: Verification[] = ['VERIFIED', 'UNVERIFIED'];
-const PLATFORMS: Platform[] = ['claude', 'codex', 'deepseek'];
+const PLATFORMS: Platform[] = ['claude', 'codex', 'deepseek', 'opencode'];
 
 function pick<T extends string>(value: unknown, allowed: T[], fallback: T): T {
   return typeof value === 'string' && (allowed as string[]).includes(value) ? (value as T) : fallback;

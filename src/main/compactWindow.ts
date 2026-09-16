@@ -26,12 +26,13 @@ import { z } from 'zod';
  * lifecycle. A real quit destroys it.
  */
 
-const COMPACT_DEFAULT_WIDTH = 380;
-// Collapsed height fits the drag strip + project/work/task rows + both
-// action buttons with no scrolling: the two actions must never hide below
-// the fold in the resting state.
-const COMPACT_COLLAPSED_HEIGHT = 208;
-const COMPACT_EXPANDED_HEIGHT = 380;
+const COMPACT_DEFAULT_WIDTH = 368;
+const COMPACT_MIN_WIDTH = 320;
+const COMPACT_MIN_HEIGHT = 300;
+// The resting edge panel always contains Current Work, Attention,
+// Runtime/Session Presence and both actions without scrolling.
+const COMPACT_COLLAPSED_HEIGHT = 350;
+const COMPACT_EXPANDED_HEIGHT = 404;
 const EDGE_MARGIN = 12;
 
 export const DEFAULT_COMPACT_TOGGLE_SHORTCUT = 'Alt+Shift+B';
@@ -118,8 +119,8 @@ export function computeCompactBounds(
   const bounds: AmbientRectangle = {
     x: preference.x ?? 0,
     y: preference.y ?? 0,
-    width: preference.width ?? COMPACT_DEFAULT_WIDTH,
-    height: (preference.height ?? (preference.expanded ? COMPACT_EXPANDED_HEIGHT : COMPACT_COLLAPSED_HEIGHT)),
+    width: Math.max(COMPACT_MIN_WIDTH, preference.width ?? COMPACT_DEFAULT_WIDTH),
+    height: Math.max(COMPACT_MIN_HEIGHT, preference.height ?? (preference.expanded ? COMPACT_EXPANDED_HEIGHT : COMPACT_COLLAPSED_HEIGHT)),
   };
   if (point) return clampAmbientBounds(bounds, workArea);
   return defaultCompactBounds(workArea, preference.expanded);
@@ -148,8 +149,8 @@ export async function createCompactWindow(stateDir: string): Promise<BrowserWind
     y: bounds.y,
     width: bounds.width,
     height: bounds.height,
-    minWidth: 280,
-    minHeight: 96,
+    minWidth: COMPACT_MIN_WIDTH,
+    minHeight: COMPACT_MIN_HEIGHT,
     maxWidth: 640,
     maxHeight: 560,
     frame: false,

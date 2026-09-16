@@ -62,6 +62,8 @@ export interface CabinetFileSelectionV1 {
 
 export interface CabinetStagingV1 {
   schemaVersion: typeof CABINET_STAGING_SCHEMA_VERSION;
+  /** Absent means the file was authored against the legacy broad-included defaults. */
+  defaultPolicy?: 'explicit-relations-v2';
   scope: CabinetStagingScopeV1;
   taskSummary: string;
   decisions: CabinetStagingDecisionV1[];
@@ -100,6 +102,7 @@ export function buildCabinetStaging(
   const overridden = explicitIds ? items.filter((item) => explicitIds.has(item.id)) : items;
   return {
     schemaVersion: CABINET_STAGING_SCHEMA_VERSION,
+    defaultPolicy: 'explicit-relations-v2',
     scope: cabinetStagingScope(projectId),
     taskSummary,
     decisions: overridden.map((item, order) => ({

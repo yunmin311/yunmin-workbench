@@ -349,6 +349,7 @@ export interface WorkGraphAttentionFact {
   evidenceRefs: string[];
   observedAt: string;
   verification: 'VERIFIED' | 'OBSERVED' | 'INFERRED' | 'UNKNOWN';
+  provenance?: string;
 }
 
 export interface WorkGraphArtifactFact {

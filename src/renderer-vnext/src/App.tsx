@@ -1,10 +1,24 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { WorkGraphCanvas } from './components/canvas/WorkGraphCanvas';
 
 import '../../../src/design/tokens.css';
 import './styles/index.css';
+import './styles/approved-blue.css';
 import type { WorkGraphRevision } from './types';
+import type { AttentionItem, HarnessSessionPresence } from '../../core/types';
+import type { RuntimePresenceSnapshot } from '../../core/runtimePresence';
+import { applyAttentionLocalState, reduceAttention } from '../../core/attention/reducer';
 import { projectIdsFromOverlay } from './workGraphView';
+import { startHarnessPresenceRefresh, type LiveExecutionPresence } from './presenceFreshness';
+
+async function loadRuntimeAttention(projectId: string): Promise<AttentionItem[]> {
+  const [activity, local] = await Promise.all([
+    window.wb.loadActivity({ limit: 200 }),
+    window.wb.loadAttentionLocal(),
+  ]);
+  return applyAttentionLocalState(reduceAttention({ activity: activity.events, limit: 200 }), local)
+    .filter((item) => item.projectId === projectId);
+}
 
 function App() {
   const [revision, setRevision] = useState<WorkGraphRevision | null>(null);
@@ -15,16 +29,24 @@ function App() {
   const [projectIds, setProjectIds] = useState<string[]>([]);
   const [overlayEmpty, setOverlayEmpty] = useState(false);
   const [hasBinding, setHasBinding] = useState(false);
+  const [harnessSessions, setHarnessSessions] = useState<HarnessSessionPresence[]>([]);
+  const [liveExecutions, setLiveExecutions] = useState<LiveExecutionPresence[]>([]);
+  const [runtimeAttention, setRuntimeAttention] = useState<AttentionItem[]>([]);
+  const presenceProjectId = useRef<string | null>(null);
 
   const load = useCallback(async (projectId?: string) => {
     setError(null);
     // TEST FIXTURE scene: explicit dev flag, clearly badged in the UI, and
     // never mixed with real facts. The real read model stays the default.
     if (new URLSearchParams(window.location.search).has('fixture')) {
+      presenceProjectId.current = null;
       try {
         const response = await window.wb.getFixtureWorkGraph();
         if (response.error) throw new Error(response.error);
         setRevision(response.revision);
+        setHarnessSessions([]);
+        setLiveExecutions([]);
+        setRuntimeAttention([]);
         setIsFixture(response.revision !== null);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -40,6 +62,22 @@ function App() {
         window.wb.loadOverlayBinding().catch(() => null),
       ]);
       setRevision(response.revision ?? null);
+      const loadedProjectId = response.revision?.candidate.scope.projectId ?? null;
+      presenceProjectId.current = loadedProjectId;
+      if (loadedProjectId) {
+        const [sessions, runtime, attention] = await Promise.all([
+          window.wb.listHarnessSessions(loadedProjectId),
+          window.wb.loadRuntimePresence(),
+          loadRuntimeAttention(loadedProjectId),
+        ]);
+        setHarnessSessions(sessions);
+        setLiveExecutions(runtime.executions);
+        setRuntimeAttention(attention);
+      } else {
+        setHarnessSessions([]);
+        setLiveExecutions([]);
+        setRuntimeAttention([]);
+      }
       setProjectIds(projectIdsFromOverlay(overlay));
       setOverlayEmpty(overlay.projects.length === 0);
       setHasBinding(binding !== null);
@@ -63,6 +101,22 @@ function App() {
       setNavigateRequest(identity);
     });
   }, [load]);
+
+  useEffect(() => {
+    const presence = startHarnessPresenceRefresh({
+      currentProjectId: () => presenceProjectId.current,
+      listSessions: (projectId) => window.wb.listHarnessSessions(projectId),
+      apply: setHarnessSessions,
+      loadAttention: loadRuntimeAttention,
+      applyAttention: setRuntimeAttention,
+      loadRuntimePresence: () => window.wb.loadRuntimePresence(),
+      applyRuntimePresence: (runtime: RuntimePresenceSnapshot) => setLiveExecutions(runtime.executions),
+      subscribeRuntimePresence: (listener) => window.wb.onRuntimePresenceChanged(listener),
+      subscribeActivity: (listener) => window.wb.onActivityChanged(listener),
+    });
+    void presence.refresh();
+    return presence.dispose;
+  }, []);
 
   const chooseFolder = useCallback(async () => {
     setError(null);
@@ -135,6 +189,9 @@ function App() {
       <main className="vnext-main">
         <WorkGraphCanvas
           revision={revision}
+          harnessSessions={harnessSessions}
+          liveExecutions={liveExecutions}
+          runtimeAttention={runtimeAttention}
           projectIds={projectIds}
           onSelectProject={(projectId) => void load(projectId)}
           onRefresh={() => load(revision.candidate.scope.projectId)}

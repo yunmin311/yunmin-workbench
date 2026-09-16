@@ -1,0 +1,515 @@
+[
+  {
+    "state": "hero",
+    "viewport": "1440x900",
+    "screenshot": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-transplant\\01-full-hero-1440x900.png",
+    "pass": true,
+    "issues": [],
+    "boxes": [
+      {
+        "name": "shell",
+        "left": 0,
+        "top": 0,
+        "right": 1440,
+        "bottom": 900,
+        "width": 1440,
+        "height": 900
+      },
+      {
+        "name": "rail",
+        "left": 0,
+        "top": 0,
+        "right": 64,
+        "bottom": 900,
+        "width": 64,
+        "height": 900
+      },
+      {
+        "name": "sidebar",
+        "left": 64,
+        "top": 0,
+        "right": 312,
+        "bottom": 900,
+        "width": 248,
+        "height": 900
+      },
+      {
+        "name": "main-surface",
+        "left": 312,
+        "top": 0,
+        "right": 1120,
+        "bottom": 900,
+        "width": 808,
+        "height": 900
+      },
+      {
+        "name": "plane-head",
+        "left": 312,
+        "top": 0,
+        "right": 1120,
+        "bottom": 106,
+        "width": 808,
+        "height": 106
+      },
+      {
+        "name": "spatial-viewport",
+        "left": 312,
+        "top": 106,
+        "right": 1120,
+        "bottom": 788,
+        "width": 808,
+        "height": 682
+      },
+      {
+        "name": "composer",
+        "left": 336,
+        "top": 788,
+        "right": 1096,
+        "bottom": 884,
+        "width": 760,
+        "height": 96
+      },
+      {
+        "name": "team-dock",
+        "left": 1120,
+        "top": 0,
+        "right": 1440,
+        "bottom": 900,
+        "width": 320,
+        "height": 900
+      }
+    ]
+  },
+  {
+    "state": "focus",
+    "viewport": "1440x900",
+    "screenshot": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-transplant\\02-focused-work-1440x900.png",
+    "pass": true,
+    "issues": [],
+    "boxes": [
+      {
+        "name": "shell",
+        "left": 0,
+        "top": 0,
+        "right": 1440,
+        "bottom": 900,
+        "width": 1440,
+        "height": 900
+      },
+      {
+        "name": "rail",
+        "left": 0,
+        "top": 0,
+        "right": 64,
+        "bottom": 900,
+        "width": 64,
+        "height": 900
+      },
+      {
+        "name": "sidebar",
+        "left": 64,
+        "top": 0,
+        "right": 312,
+        "bottom": 900,
+        "width": 248,
+        "height": 900
+      },
+      {
+        "name": "main-surface",
+        "left": 312,
+        "top": 0,
+        "right": 1120,
+        "bottom": 900,
+        "width": 808,
+        "height": 900
+      },
+      {
+        "name": "plane-head",
+        "left": 312,
+        "top": 0,
+        "right": 1120,
+        "bottom": 106,
+        "width": 808,
+        "height": 106
+      },
+      {
+        "name": "spatial-viewport",
+        "left": 312,
+        "top": 106,
+        "right": 1120,
+        "bottom": 752,
+        "width": 808,
+        "height": 646
+      },
+      {
+        "name": "composer",
+        "left": 336,
+        "top": 752,
+        "right": 1096,
+        "bottom": 884,
+        "width": 760,
+        "height": 132
+      },
+      {
+        "name": "team-dock",
+        "left": 1120,
+        "top": 0,
+        "right": 1440,
+        "bottom": 900,
+        "width": 320,
+        "height": 900
+      }
+    ]
+  },
+  {
+    "state": "send",
+    "viewport": "1440x900",
+    "screenshot": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-transplant\\03-send-ready-1440x900.png",
+    "pass": true,
+    "issues": [],
+    "boxes": [
+      {
+        "name": "shell",
+        "left": 0,
+        "top": 0,
+        "right": 1440,
+        "bottom": 900,
+        "width": 1440,
+        "height": 900
+      },
+      {
+        "name": "rail",
+        "left": 0,
+        "top": 0,
+        "right": 64,
+        "bottom": 900,
+        "width": 64,
+        "height": 900
+      },
+      {
+        "name": "sidebar",
+        "left": 64,
+        "top": 0,
+        "right": 312,
+        "bottom": 900,
+        "width": 248,
+        "height": 900
+      },
+      {
+        "name": "main-surface",
+        "left": 312,
+        "top": 0,
+        "right": 1120,
+        "bottom": 900,
+        "width": 808,
+        "height": 900
+      },
+      {
+        "name": "plane-head",
+        "left": 312,
+        "top": 0,
+        "right": 1120,
+        "bottom": 106,
+        "width": 808,
+        "height": 106
+      },
+      {
+        "name": "spatial-viewport",
+        "left": 312,
+        "top": 106,
+        "right": 1120,
+        "bottom": 718,
+        "width": 808,
+        "height": 612
+      },
+      {
+        "name": "composer",
+        "left": 336,
+        "top": 718,
+        "right": 1096,
+        "bottom": 884,
+        "width": 760,
+        "height": 166
+      },
+      {
+        "name": "team-dock",
+        "left": 1120,
+        "top": 0,
+        "right": 1440,
+        "bottom": 900,
+        "width": 320,
+        "height": 900
+      }
+    ]
+  },
+  {
+    "state": "compact",
+    "viewport": "1440x900",
+    "screenshot": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-transplant\\04-compact-1440x900.png",
+    "pass": true,
+    "issues": [],
+    "boxes": [
+      {
+        "name": "compact-stage",
+        "left": 0,
+        "top": 0,
+        "right": 1440,
+        "bottom": 900,
+        "width": 1440,
+        "height": 900
+      },
+      {
+        "name": "compact-window",
+        "left": 1040,
+        "top": 276,
+        "right": 1408,
+        "bottom": 624,
+        "width": 368,
+        "height": 348
+      }
+    ]
+  },
+  {
+    "state": "hero",
+    "viewport": "900x700",
+    "screenshot": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-transplant\\01-full-hero-900x700.png",
+    "pass": true,
+    "issues": [],
+    "boxes": [
+      {
+        "name": "shell",
+        "left": 0,
+        "top": 0,
+        "right": 900,
+        "bottom": 700,
+        "width": 900,
+        "height": 700
+      },
+      {
+        "name": "rail",
+        "left": 0,
+        "top": 0,
+        "right": 64,
+        "bottom": 700,
+        "width": 64,
+        "height": 700
+      },
+      {
+        "name": "main-surface",
+        "left": 64,
+        "top": 0,
+        "right": 900,
+        "bottom": 512,
+        "width": 836,
+        "height": 512
+      },
+      {
+        "name": "plane-head",
+        "left": 64,
+        "top": 0,
+        "right": 900,
+        "bottom": 92,
+        "width": 836,
+        "height": 92
+      },
+      {
+        "name": "spatial-viewport",
+        "left": 64,
+        "top": 92,
+        "right": 900,
+        "bottom": 442,
+        "width": 836,
+        "height": 350
+      },
+      {
+        "name": "composer",
+        "left": 76,
+        "top": 442,
+        "right": 888,
+        "bottom": 502,
+        "width": 812,
+        "height": 60
+      },
+      {
+        "name": "team-dock",
+        "left": 64,
+        "top": 512,
+        "right": 900,
+        "bottom": 700,
+        "width": 836,
+        "height": 188
+      }
+    ]
+  },
+  {
+    "state": "focus",
+    "viewport": "900x700",
+    "screenshot": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-transplant\\02-focused-work-900x700.png",
+    "pass": true,
+    "issues": [],
+    "boxes": [
+      {
+        "name": "shell",
+        "left": 0,
+        "top": 0,
+        "right": 900,
+        "bottom": 700,
+        "width": 900,
+        "height": 700
+      },
+      {
+        "name": "rail",
+        "left": 0,
+        "top": 0,
+        "right": 64,
+        "bottom": 700,
+        "width": 64,
+        "height": 700
+      },
+      {
+        "name": "main-surface",
+        "left": 64,
+        "top": 0,
+        "right": 900,
+        "bottom": 512,
+        "width": 836,
+        "height": 512
+      },
+      {
+        "name": "plane-head",
+        "left": 64,
+        "top": 0,
+        "right": 900,
+        "bottom": 92,
+        "width": 836,
+        "height": 92
+      },
+      {
+        "name": "spatial-viewport",
+        "left": 64,
+        "top": 92,
+        "right": 900,
+        "bottom": 406,
+        "width": 836,
+        "height": 314
+      },
+      {
+        "name": "composer",
+        "left": 76,
+        "top": 406,
+        "right": 888,
+        "bottom": 502,
+        "width": 812,
+        "height": 96
+      },
+      {
+        "name": "team-dock",
+        "left": 64,
+        "top": 512,
+        "right": 900,
+        "bottom": 700,
+        "width": 836,
+        "height": 188
+      }
+    ]
+  },
+  {
+    "state": "send",
+    "viewport": "900x700",
+    "screenshot": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-transplant\\03-send-ready-900x700.png",
+    "pass": true,
+    "issues": [],
+    "boxes": [
+      {
+        "name": "shell",
+        "left": 0,
+        "top": 0,
+        "right": 900,
+        "bottom": 700,
+        "width": 900,
+        "height": 700
+      },
+      {
+        "name": "rail",
+        "left": 0,
+        "top": 0,
+        "right": 64,
+        "bottom": 700,
+        "width": 64,
+        "height": 700
+      },
+      {
+        "name": "main-surface",
+        "left": 64,
+        "top": 0,
+        "right": 900,
+        "bottom": 512,
+        "width": 836,
+        "height": 512
+      },
+      {
+        "name": "plane-head",
+        "left": 64,
+        "top": 0,
+        "right": 900,
+        "bottom": 92,
+        "width": 836,
+        "height": 92
+      },
+      {
+        "name": "spatial-viewport",
+        "left": 64,
+        "top": 92,
+        "right": 900,
+        "bottom": 381,
+        "width": 836,
+        "height": 289
+      },
+      {
+        "name": "composer",
+        "left": 76,
+        "top": 381,
+        "right": 888,
+        "bottom": 502,
+        "width": 812,
+        "height": 121
+      },
+      {
+        "name": "team-dock",
+        "left": 64,
+        "top": 512,
+        "right": 900,
+        "bottom": 700,
+        "width": 836,
+        "height": 188
+      }
+    ]
+  },
+  {
+    "state": "compact",
+    "viewport": "900x700",
+    "screenshot": "E:\\1project\\yunmin-workbench\\docs\\design-recovery\\2026-09-13\\shots-transplant\\04-compact-900x700.png",
+    "pass": true,
+    "issues": [],
+    "boxes": [
+      {
+        "name": "compact-stage",
+        "left": 0,
+        "top": 0,
+        "right": 900,
+        "bottom": 700,
+        "width": 900,
+        "height": 700
+      },
+      {
+        "name": "compact-window",
+        "left": 530,
+        "top": 190.5,
+        "right": 882,
+        "bottom": 509.5,
+        "width": 352,
+        "height": 319
+      }
+    ]
+  }
+]

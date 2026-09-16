@@ -14,8 +14,9 @@ function capability(harness: HarnessCapabilities['harness'], dispatch: boolean):
   };
 }
 
-const matrix = (codex: boolean, claude: boolean, deepseek: boolean) => ({
-  codex: capability('codex', codex), claude: capability('claude', claude), deepseek: capability('deepseek', deepseek),
+const matrix = (codex: boolean, claude: boolean, deepseek: boolean, opencode = false) => ({
+  codex: capability('codex', codex), claude: capability('claude', claude),
+  opencode: capability('opencode', opencode), deepseek: capability('deepseek', deepseek),
 });
 
 describe('Harness target selection', () => {

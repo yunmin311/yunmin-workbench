@@ -71,6 +71,33 @@ describe('Project -> Work -> Execution', () => {
     expect(edgeKinds).toContain('execution-of');
     expect(edgeKinds.filter((k) => k === 'membership').length).toBeGreaterThanOrEqual(3);
   });
+
+  it('links an execution to its exact canonical Task identity', async () => {
+    const facts = baseFacts({
+      governanceBindings: [
+        { projectId: 'p1', workId: 'w1', workLabel: 'Auth work', binding: { projectId: 'p1', root: '/r', canonicalPath: '/r', observedAt: NOW, verification: 'VERIFIED' } },
+      ],
+      tasks: [{
+        taskId: 'T006', projectId: 'p1', label: 'Shared types', source: 'canonical-project-fact',
+        sourceRef: 'canonical:T006', observedAt: NOW, verification: 'VERIFIED', workId: 'w1',
+        conversationKeys: [], evidenceRefs: [],
+      }],
+      adapterExecutions: [{
+        executionId: 'e1', backend: 'native', provider: 'codex', runtimeRef: 'thread-1',
+        projectId: 'p1', workId: 'w1', taskId: 'T006', runtimeState: 'idle', live: false,
+        intentId: 'intent-1', evidenceRefs: [], sourceRef: 'native:thread-1',
+      }],
+    });
+
+    const { revision } = await compileWorkGraph(options('p1', facts));
+    expect(revision?.candidate.semanticFacts.edges).toContainEqual(expect.objectContaining({
+      kind: 'execution-of',
+      source: 'task:p1:T006',
+      target: 'execution:p1:e1',
+      structuralSource: { entityId: 'execution:p1:e1', fieldPath: 'taskId' },
+      intentId: 'intent-1',
+    }));
+  });
 });
 
 describe('canonical Work, Task, and Artifact projection', () => {

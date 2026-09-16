@@ -36,7 +36,11 @@ function facts(): WorkGraphSourceFacts {
       { contextId: 'available', projectId: 'p1', title: 'Available only', source: 'manual', body: '', state: 'available', pinned: false, isReference: false, evidenceRefs: [] },
       { contextId: 'included', projectId: 'p1', title: 'Included', source: 'manual', body: '', state: 'included', pinned: false, isReference: false, evidenceRefs: [], consumedBy: { executionId: 'paseo-agent-1', action: 'included' } },
     ],
-    attentionItems: [], artifacts: [],
+    attentionItems: [], artifacts: [{
+      artifactId: 'result-1', projectId: 'p1', kind: 'agent-result', executionId: 'paseo-agent-1',
+      eventRef: 'event-final', title: 'Agent response completed', content: 'No contract mismatch; no files changed.',
+      observedAt: NOW, verification: 'OBSERVED', evidenceRefs: [],
+    }],
     tasks: [{
       taskId: 'task-1', projectId: 'p1', label: 'Close Phase 3B', source: 'governance-tasks',
       sourceRef: 'governance:task-1', observedAt: NOW, verification: 'UNKNOWN', taskState: 'active',
@@ -144,10 +148,38 @@ describe('vNext renderer acceptance', () => {
     expect(story).toMatchObject({
       doing: 'Close Phase 3B',
       context: ['Included'],
-      outputs: [],
+      outputs: ['No contract mismatch; no files changed.'],
       next: 'No next-step fact yet',
     });
     expect(JSON.stringify(story)).not.toContain('Available only');
+  });
+
+  it('resolves a canonical Task result through its exact execution relation', async () => {
+    const story = buildExecutionStory(await revision(), 'task:p1:task-1');
+    expect(story).toMatchObject({
+      doing: 'Close Phase 3B',
+      context: ['Included'],
+      outputs: ['No contract mismatch; no files changed.'],
+      next: 'No next-step fact yet',
+    });
+  });
+
+  it('shows the latest observed response first while retaining exact chronology', async () => {
+    const ordered = facts();
+    ordered.adapterExecutions.push({
+      executionId: 'paseo-agent-2', backend: 'paseo', provider: 'codex', runtimeRef: 'agent-2',
+      projectId: 'p1', workId: 'w1', taskId: 'task-1', runtimeState: 'idle', live: false,
+      evidenceRefs: [], sourceRef: 'paseo:agent-2',
+    });
+    ordered.artifacts.push({
+      artifactId: 'result-2', projectId: 'p1', kind: 'agent-result', executionId: 'paseo-agent-2',
+      eventRef: 'event-final-2', title: 'Agent response completed', content: 'Final verified conclusion.',
+      observedAt: '2026-09-08T00:00:02.000Z', verification: 'OBSERVED', evidenceRefs: [],
+    });
+    const result = await compileWorkGraph({ projectId: 'p1', sourceDigest: 'ordered', facts: ordered, now: NOW });
+    const story = buildExecutionStory(result.revision!, 'task:p1:task-1');
+    expect(story?.latestOutput).toBe('Final verified conclusion.');
+    expect(story?.outputs).toEqual(['No contract mismatch; no files changed.', 'Final verified conclusion.']);
   });
 
   it('bookmarks an explicit selection only inside its own project', async () => {

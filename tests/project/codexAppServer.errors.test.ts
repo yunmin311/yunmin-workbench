@@ -41,6 +41,15 @@ describe('Codex adapter survives a missing executable (P0)', () => {
 });
 
 describe('Codex adapter against a fake app-server (protocol fixture)', () => {
+  it('keeps native thread identity separate from unsupported resume', () => {
+    const adapter = new CodexAppServerAdapter({ command: process.execPath, args: [FAKE] });
+    const identity = adapter.sessionIdentity('fake-thread-1', 'codex:thread/start:result.thread.id');
+    expect(identity).toMatchObject({
+      harness: 'codex', provider: 'codex', nativeSessionId: 'fake-thread-1',
+      resume: { capability: 'UNSUPPORTED' },
+    });
+    adapter.close();
+  });
   it('can make a full dispatch ephemeral for a no-trace real smoke', async () => {
     process.env.FAKE_MODE = 'require-ephemeral-dispatch';
     const adapter = new CodexAppServerAdapter({

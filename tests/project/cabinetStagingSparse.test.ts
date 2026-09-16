@@ -15,7 +15,7 @@ import type { ContextIncludeState, OverlaySnapshot } from '../../src/core/types'
 
 const NOW = '2026-09-12T00:00:00.000Z';
 
-/** Same shape as the cabinet domain fixture: gates+canon included, inbox/memory available. */
+/** Same shape as the cabinet domain fixture: broad candidates are Available. */
 function snapshotFixture(): OverlaySnapshot {
   const observation = {
     source: 'canonical-file' as const,
@@ -97,8 +97,8 @@ describe('cabinet staging sparse overrides', () => {
       item: { id: changed.id, state: changed.state, pinned: changed.pinned },
     });
     expect(decided.has(gateId)).toBe(true);
-    // User reverts to the source default (included): the override must go.
-    const reverted = applyCabinetState(excluded, gateId, 'included');
+    // User reverts to the source default (available): the override must go.
+    const reverted = applyCabinetState(excluded, gateId, 'available');
     const back = reverted.find((item) => item.id === gateId)!;
     decided = refreshExplicitDecision({
       baseDefaults: defaults, decided,
@@ -148,8 +148,8 @@ describe('cabinet staging sparse overrides', () => {
     // The explicit override survives the reload.
     expect(byId.get(gateId)).toMatchObject({ state: 'excluded' });
     // Everything else resolves to fresh source defaults — no override record.
-    expect(byId.get('gate:creative-os:verify')).toMatchObject({ state: 'included' });
-    expect(byId.get('canon:creative-os')).toMatchObject({ state: 'included' });
+    expect(byId.get('gate:creative-os:verify')).toMatchObject({ state: 'available' });
+    expect(byId.get('canon:creative-os')).toMatchObject({ state: 'available' });
     expect(byId.get('inbox:2')).toMatchObject({ state: 'available' });
     expect(byId.get('memory:token-budget-and-optimization')).toMatchObject({ state: 'available', pinned: false });
     // The explicit-touch set after reload is exactly the stored override.

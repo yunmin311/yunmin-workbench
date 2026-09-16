@@ -23,7 +23,7 @@
  * - blocked-by edges ONLY when the attention fact names an existing
  *   sourceId (execution/conversation).
  * - execution-of edges ONLY when the adapter fact names an existing
- *   conversationKey/workId.
+ *   conversationKey/workId/taskId.
  * - Paseo agents are Execution nodes, never Work nodes. Sessions are
  *   never root identities (history sessions are evidence only).
  * - UNKNOWN verification/currentness is preserved, never promoted.
@@ -450,6 +450,21 @@ export function buildWorkGraphCandidate(options: WorkGraphCompileOptions): WorkG
         ...(e.intentId ? { intentId: e.intentId } : {}),
       });
     }
+    const taskNode = e.taskId ? taskNodeById.get(e.taskId) : undefined;
+    if (taskNode) {
+      edges.push({
+        kind: 'execution-of',
+        id: `edge:execution-of:${taskNode}:${nodeId}`,
+        projectId,
+        source: taskNode,
+        target: nodeId,
+        structuralSource: { entityId: nodeId, fieldPath: 'taskId' },
+        evidenceRefs: [evId],
+        observedAt: now,
+        verification: 'OBSERVED',
+        ...(e.intentId ? { intentId: e.intentId } : {}),
+      });
+    }
   }
 
   // ---- Context nodes ----
@@ -691,6 +706,7 @@ export function buildWorkGraphCandidate(options: WorkGraphCompileOptions): WorkG
       level: g.level,
       title: g.title,
       summary: g.summary,
+      ...(g.provenance ? { provenance: g.provenance } : {}),
       ...(g.sourceId ? { sourceId: g.sourceId } : {}),
       evidenceRefs: [...g.evidenceRefs],
     });

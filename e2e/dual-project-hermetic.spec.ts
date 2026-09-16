@@ -159,10 +159,16 @@ test('hermetic dual projects: discovery, switch, selection, compact handoff, sta
   const alphaCommit = initHermeticRepo(alphaRepo, alphaRemote, {
     'CLAUDE.md': '# Alpha Hermetic\nSynthetic constitution for hermetic dual-project acceptance.\n',
     'spec.md': '# Alpha spec\nReal-enough spec body.\n',
-    'tasks.md': '# Alpha tasks\n## a-T1\n## a-T2\n',
+    'tasks.md': '# Alpha tasks\n## a-T1\n## a-T2\n## a-T3\n## a-T4\n## a-T5\n',
     'src/alpha.ts': 'export const alpha = 1;\n',
     'canonical-facts.yaml': manifestYaml('alpha-hermetic', [
-      { id: 'w-alpha', label: 'Alpha work', spec: 'spec.md', tasks: [{ id: 'a-T1', label: 'Alpha task one' }, { id: 'a-T2', label: 'Alpha task two' }] },
+      { id: 'w-alpha', label: 'Alpha work', spec: 'spec.md', tasks: [
+        { id: 'a-T1', label: 'Alpha task one' },
+        { id: 'a-T2', label: 'Alpha task two' },
+        { id: 'a-T3', label: 'Alpha task three' },
+        { id: 'a-T4', label: 'Alpha task four' },
+        { id: 'a-T5', label: 'Alpha task five' },
+      ] },
     ], [{ id: 'alpha-hermetic:a-T1:code', file: 'src/alpha.ts', task: 'a-T1' }]),
   });
   const betaCommit = initHermeticRepo(betaRepo, betaRemote, {
@@ -225,22 +231,51 @@ test('hermetic dual projects: discovery, switch, selection, compact handoff, sta
       return out;
     });
     expect(discovered.projects).toEqual(['alpha-hermetic', 'beta-hermetic']);
-    expect(discovered['alpha-hermetic']).toMatchObject({ nodeKinds: { project: 1, work: 1, task: 2, artifact: 1 }, problems: [] });
+    expect(discovered['alpha-hermetic']).toMatchObject({ nodeKinds: { project: 1, work: 1, task: 5, artifact: 1 }, problems: [] });
     expect(discovered['beta-hermetic']).toMatchObject({ nodeKinds: { project: 1, work: 2, task: 3, artifact: 1 }, problems: [] });
 
     // Switch: region rows follow the current project (1 vs 2 works).
-    const nav = win.getByRole('navigation', { name: 'Work regions' });
+    const nav = win.getByRole('complementary', { name: 'Work regions' });
     const select = nav.getByLabel('Switch project');
     await expect(select).toBeEnabled();
-    await expect(nav.locator('.region-nav-row')).toHaveCount(1);
+    await expect(nav.locator('.approved-work-row')).toHaveCount(1);
     await select.selectOption('beta-hermetic');
-    await expect(nav.locator('.region-nav-row')).toHaveCount(2);
+    await expect(nav.locator('.approved-work-row')).toHaveCount(2);
     await select.selectOption('alpha-hermetic');
-    await expect(nav.locator('.region-nav-row')).toHaveCount(1);
+    await expect(nav.locator('.approved-work-row')).toHaveCount(1);
+
+    // Progressive disclosure: the resting Work composition keeps three Task
+    // objects, exposes the exact hidden count, and drills into every Task
+    // without changing semantic facts.
+    const alphaRegion = win.locator('.react-flow__node-wb-region');
+    const alphaTasks = win.locator('.react-flow__node-wb-task');
+    await expect(alphaTasks).toHaveCount(3);
+    const showAll = win.locator('button[aria-label="Show 2 more tasks in Alpha work"]');
+    await expect(showAll).toBeVisible();
+    await showAll.click();
+    await expect(alphaTasks).toHaveCount(5);
+    await expect(alphaRegion).toHaveClass(/is-region-expanded/);
+    await win.locator('.react-flow__node[data-id="task:alpha-hermetic:a-T4"]').click();
+    await expect(win.getByRole('complementary', { name: 'Focus Detail' })).toContainText('Alpha task four');
+    await win.locator('.approved-drill-exit button[aria-label="Show fewer tasks in Alpha work"]').click();
+    await expect(alphaTasks).toHaveCount(3);
+    await expect(win.locator('.react-flow__node[data-id="task:alpha-hermetic:a-T4"]')).toBeVisible();
+    await win.getByRole('button', { name: 'Locate current work' }).click();
+
+    // Drill-in state belongs to this project only.
+    await nav.locator('.approved-work-focus').click();
+    await showAll.click();
+    await select.selectOption('beta-hermetic');
+    await expect(win.locator('button[aria-label^="Show fewer tasks in"]')).toHaveCount(0);
+    await select.selectOption('alpha-hermetic');
+    await expect(alphaTasks).toHaveCount(3);
 
     // Cross-project selection never mints a chimera.
     await select.selectOption('beta-hermetic');
-    await win.locator('.react-flow__node[data-id="task:beta-hermetic:b-T1"]').click();
+    const betaTask = win.locator('.react-flow__node[data-id="task:beta-hermetic:b-T1"]');
+    await expect(betaTask).toBeVisible();
+    await win.waitForTimeout(400);
+    await betaTask.click();
     await expect.poll(() => win.evaluate(async () => window.wb.getCurrentSelection())).toMatchObject({
       projectId: 'beta-hermetic', workId: 'w-beta-1', taskId: 'b-T1',
     });
@@ -272,7 +307,23 @@ test('hermetic dual projects: discovery, switch, selection, compact handoff, sta
     await expect(cabinet).toContainText('staging for · Beta task one');
 
     // Staging isolation: an explicit decision in beta never leaks into alpha.
-    await cabinet.getByRole('button', { name: 'Excluded: Gate: beta-ship' }).click();
+    // Compact handoff can replace the Cabinet projection while Playwright is
+    // waiting for actionability. Dispatch against the current exact controls;
+    // the persisted decision below remains the product assertion.
+    await win.evaluate(() => {
+      const toggle = document.querySelector<HTMLButtonElement>(
+        '.context-cabinet .cabinet-group-toggle[aria-controls="cabinet-group-governance"]',
+      );
+      if (!toggle) throw new Error('missing Governance group');
+      toggle.click();
+    });
+    await expect(cabinet.locator('#cabinet-group-governance')).toBeVisible();
+    await win.evaluate(() => {
+      const button = [...document.querySelectorAll<HTMLButtonElement>('.context-cabinet button')]
+        .find((candidate) => candidate.getAttribute('aria-label') === 'Excluded: Gate: beta-ship');
+      if (!button) throw new Error('missing beta-ship Excluded control');
+      button.click();
+    });
     await expect.poll(() => win.evaluate(async () => window.wb.loadCabinetStaging('beta-hermetic'))
       .then((result) => result.staging?.decisions.length ?? 0), { timeout: 10_000 }).toBeGreaterThan(0);
     const alphaStaging = await win.evaluate(async () => (await window.wb.loadCabinetStaging('alpha-hermetic')).staging);
@@ -280,7 +331,7 @@ test('hermetic dual projects: discovery, switch, selection, compact handoff, sta
     await cabinet.getByRole('button', { name: 'Close Context Cabinet' }).click();
     await select.selectOption('alpha-hermetic');
     await win.locator('.react-flow__node[data-id="task:alpha-hermetic:a-T1"]').click();
-    await win.getByRole('button', { name: 'Prepare Work', exact: true }).click();
+    await win.getByRole('complementary', { name: 'Focus Detail' }).getByRole('button', { name: 'Prepare Work', exact: true }).click();
     const alphaCabinet = win.getByRole('region', { name: 'Context Cabinet' });
     await expect(alphaCabinet).toBeVisible();
     await expect(alphaCabinet.locator('.cabinet-scope')).toHaveText('alpha-hermetic');
@@ -292,7 +343,7 @@ test('hermetic dual projects: discovery, switch, selection, compact handoff, sta
     await win.waitForTimeout(1200);
     await expect(win.locator('.vnext-app')).toBeVisible();
     await expect(select).toHaveValue('alpha-hermetic');
-    await expect(win.getByRole('navigation', { name: 'Work regions' }).locator('.region-nav-row')).toHaveCount(1);
+    await expect(win.getByRole('complementary', { name: 'Work regions' }).locator('.approved-work-row')).toHaveCount(1);
   } finally {
     await app.close();
     rmSync(scratch, { recursive: true, force: true });

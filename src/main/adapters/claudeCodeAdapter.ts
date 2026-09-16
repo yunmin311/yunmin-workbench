@@ -1,7 +1,8 @@
-import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
+import { createHarnessSessionIdentity, type HarnessSessionIdentity } from '../../core/harnessSessionIdentity';
 import type { HandoffReceipt, HarnessCapabilities } from '../../core/types';
+import { runProcess, spawnOwnedProcess, type OwnedProcess } from '../process/processRunner';
 import { allowlistedVersionToken, boundedProcessError } from './evidenceBounds';
 
 export interface ClaudeProtocolEvent {
@@ -56,15 +57,12 @@ export class ClaudeCodeAdapter {
   private readonly command: string;
   private readonly commandArgs: string[];
   private readonly promptViaStdin: boolean;
-  private activeChildren = new Map<string, ChildProcessWithoutNullStreams>();
+  private activeChildren = new Map<string, OwnedProcess>();
   private cancelled = new Set<string>();
 
   constructor(options: ClaudeAdapterOptions = {}) {
-    const defaultWindowsCommand = options.command === undefined && process.platform === 'win32';
-    this.command = defaultWindowsCommand ? (process.env.ComSpec ?? 'cmd.exe') : (options.command ?? 'claude');
-    this.commandArgs = defaultWindowsCommand
-      ? ['/d', '/s', '/c', 'claude.cmd', ...(options.commandArgs ?? [])]
-      : (options.commandArgs ?? []);
+    this.command = options.command ?? 'claude';
+    this.commandArgs = options.commandArgs ?? [];
     this.promptViaStdin = options.command === undefined;
   }
 
@@ -77,59 +75,50 @@ export class ClaudeCodeAdapter {
     for (const l of this.listeners) l(event);
   }
 
-  private terminate(child: ChildProcessWithoutNullStreams): void {
-    try {
-      if (process.platform === 'win32' && child.pid) {
-        spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
-          windowsHide: true, stdio: 'ignore', timeout: 5_000,
-        });
-      } else if (!child.killed) {
-        child.kill('SIGTERM');
-      }
-    } catch {
-      try { child.kill(); } catch {}
-    }
+  sessionIdentity(nativeSessionId: string, sourceRef: string): HarnessSessionIdentity {
+    return createHarnessSessionIdentity({
+      harness: 'claude',
+      provider: 'claude',
+      nativeSessionId,
+      executionHost: { kind: 'local' },
+      resume: { capability: 'UNSUPPORTED', reason: 'No verified exact Claude Code resume seam' },
+      provenance: { verification: 'VERIFIED', sourceRef },
+    });
   }
 
   cancel(intentId: string): boolean {
-    const child = this.activeChildren.get(intentId);
-    if (!child) return false;
+    const owned = this.activeChildren.get(intentId);
+    if (!owned) return false;
     this.cancelled.add(intentId);
-    this.terminate(child);
+    void owned.terminate();
     return true;
   }
 
   async capabilities(): Promise<HarnessCapabilities> {
     try {
-      const child = spawn(this.command, [...this.commandArgs, '--version'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-      const result = await new Promise<{ code: number | null; stdout: string; stderr: string }>((resolve) => {
-        let stdout = '';
-        let stderr = '';
-        child.stdout?.on('data', (c: Buffer) => (stdout += c.toString('utf8')));
-        child.stderr?.on('data', (c: Buffer) => (stderr += c.toString('utf8')));
-        child.on('error', () => resolve({ code: 127, stdout, stderr: 'spawn error' }));
-        child.on('close', (code) => resolve({ code, stdout, stderr }));
-        setTimeout(() => {
-          try { child.kill(); } catch {}
-          resolve({ code: 124, stdout, stderr: 'timeout' });
-        }, 4000);
+      const result = await runProcess({
+        program: this.command,
+        args: [...this.commandArgs, '--version'],
+        timeoutMs: 4_000,
+        maxOutputBytes: 64_000,
+        ownProcessTree: true,
       });
       if (result.code !== 0) {
         // Withhold raw stderr/stdout: only the exit code and our own static
         // markers are allowlisted capability facts.
-        const marker = result.stderr === 'spawn error' || result.stderr === 'timeout' ? ` (${result.stderr})` : '';
+        const marker = result.timedOut ? ' (timeout)' : result.code === 127 ? ' (spawn error)' : '';
         return unavailableCapabilities(`claude --version exited ${result.code}${marker}`);
       }
       const version = allowlistedVersionToken(result.stdout.split(/\r?\n/)[0] ?? '') ?? 'unknown';
       // Probe stream-json support by checking help contains output-format
-      const helpChild = spawn(this.command, [...this.commandArgs, '--help'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-      const help = await new Promise<string>((resolve) => {
-        let out = '';
-        helpChild.stdout?.on('data', (c: Buffer) => (out += c.toString('utf8')));
-        helpChild.on('error', () => resolve(''));
-        helpChild.on('close', () => resolve(out));
-        setTimeout(() => { try { helpChild.kill(); } catch {}; resolve(out); }, 3000);
+      const helpResult = await runProcess({
+        program: this.command,
+        args: [...this.commandArgs, '--help'],
+        timeoutMs: 3_000,
+        maxOutputBytes: 256_000,
+        ownProcessTree: true,
       });
+      const help = helpResult.stdout;
       const supportsStreamJson = help.includes('stream-json');
       if (!supportsStreamJson) return unavailableCapabilities('installed Claude Code does not advertise stream-json');
       return {
@@ -157,29 +146,27 @@ export class ClaudeCodeAdapter {
     text: string,
     onThreadStarted?: (threadId: string) => void,
   ): Promise<HandoffReceipt> {
-    let child: ChildProcessWithoutNullStreams | null = null;
-    let proc: ChildProcessWithoutNullStreams | null = null;
+    let owned: OwnedProcess | null = null;
     try {
       const args = [
         ...this.commandArgs,
         '-p', '--output-format', 'stream-json', '--verbose', '--no-session-persistence',
         ...(this.promptViaStdin ? [] : [text]),
       ];
-      child = spawn(this.command, args, {
+      owned = spawnOwnedProcess({
+        program: this.command,
+        args,
         cwd,
-        windowsHide: true,
-        stdio: ['pipe', 'pipe', 'pipe'],
         env: { ...process.env },
-      }) as ChildProcessWithoutNullStreams;
-      proc = child;
-      if (this.promptViaStdin) proc.stdin.end(text);
-      this.activeChildren.set(intentId, proc);
-      const processChild = proc;
+        input: this.promptViaStdin ? text : undefined,
+        timeoutMs: null,
+        maxOutputBytes: 2_000_000,
+        ownProcessTree: true,
+      });
+      const processChild = owned.child;
+      this.activeChildren.set(intentId, owned);
       let stderr = '';
-      proc.stderr?.on('data', (c: Buffer) => { stderr = `${stderr}${c.toString('utf8')}`.slice(-8000); });
-      proc.on('error', () => undefined);
-      proc.stdout?.on('error', () => undefined);
-      proc.stderr?.on('error', () => undefined);
+      processChild.stderr.on('data', (c: Buffer) => { stderr = `${stderr}${c.toString('utf8')}`.slice(-8000); });
 
       // Parse stream-json lines for session_id and lifecycle
       let sessionId: string | null = null;
@@ -195,7 +182,7 @@ export class ClaudeCodeAdapter {
           dispatchRef: intentId,
         });
       };
-      const rl = createInterface({ input: proc.stdout });
+      const rl = createInterface({ input: processChild.stdout });
       const parsePromise = new Promise<void>((resolve) => {
         rl.on('line', (line) => {
           if (!line.trim()) return;
@@ -222,7 +209,8 @@ export class ClaudeCodeAdapter {
             return;
           }
           if (!sessionId && type === 'system' && subtype === 'init' && typeof msg.session_id === 'string') {
-            sessionId = msg.session_id as string;
+            const identity = this.sessionIdentity(msg.session_id, 'claude:stream-json:system:init:session_id');
+            sessionId = identity.nativeSessionId;
             onThreadStarted?.(sessionId);
             emit({
               kind: 'session', method: 'session/started',
@@ -296,19 +284,15 @@ export class ClaudeCodeAdapter {
         processChild.on('error', () => rl.close());
       });
 
-      const exitCode: number | null = await new Promise((resolve) => {
-        let done = false;
-        const finish = (code: number | null) => { if (!done) { done = true; resolve(code); } };
-        processChild.on('close', (code) => finish(code));
-        processChild.on('error', () => finish(127));
-        processChild.on('exit', (code) => finish(code));
-      });
+      const processResult = await owned.result;
+      const exitCode = processResult.code;
+      stderr ||= processResult.stderr.slice(-8_000);
       // Ensure all lines parsed before evaluating receipt
       await parsePromise;
 
       this.activeChildren.delete(intentId);
       const wasCancelled = this.cancelled.delete(intentId);
-      child = null;
+      owned = null;
 
       if (wasCancelled) {
         emit({
@@ -367,8 +351,8 @@ export class ClaudeCodeAdapter {
         message: String(error),
       };
     } finally {
-      if (child) {
-        this.terminate(child);
+      if (owned) {
+        void owned.terminate();
         this.activeChildren.delete(intentId);
         this.cancelled.delete(intentId);
       }
@@ -387,9 +371,9 @@ export class ClaudeCodeAdapter {
 
   close(): void {
     this.closing = true;
-    for (const [intentId, child] of this.activeChildren) {
+    for (const [intentId, owned] of this.activeChildren) {
       this.cancelled.add(intentId);
-      this.terminate(child);
+      void owned.terminate();
     }
     this.activeChildren.clear();
   }
