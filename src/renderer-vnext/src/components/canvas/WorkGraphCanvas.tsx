@@ -681,7 +681,7 @@ export function WorkGraphCanvas({ revision, harnessSessions, liveExecutions, run
           </section>
           <div className={`approved-action-surface${preparationStage ? ` is-${preparationStage}` : ''}`}>
             {preparationStage === 'preflight' && preparedPacket ? (
-              <DispatchSurface projectId={revision.candidate.scope.projectId} selection={dispatchSelection} initialConversationKey={preparedPacket.conversationKey} initialPacketId={preparedPacket.packetId} onEditContext={() => setPreparationStage('context')} onClose={() => setPreparationStage(null)} onReadinessChange={setDispatchReady} onPreflightChange={setDispatchPreflight} />
+              <DispatchSurface projectId={revision.candidate.scope.projectId} selection={dispatchSelection} initialConversationKey={preparedPacket.conversationKey} initialPacketId={preparedPacket.packetId} onEditContext={() => setPreparationStage('context')} onClose={() => { setPreparationStage(null); void onRefresh(); }} onReadinessChange={setDispatchReady} onPreflightChange={setDispatchPreflight} />
             ) : preparationStage === 'context' ? (
               <ContextCabinet projectId={revision.candidate.scope.projectId} selection={preparationSelection} onPrepared={(packet) => { setPreparedPacket(packet); setPreparationStage('preflight'); }} onClose={() => setPreparationStage(null)} />
             ) : (
