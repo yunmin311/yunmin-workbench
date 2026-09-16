@@ -1183,7 +1183,13 @@ const rememberRuntime = (threadId: string) => {
               ? selectedConversation.sessionId
               : undefined;
             receipt = linkedNativeSession
-              ? await openCodeAdapter.continueSession(request.intentId, cwd, linkedNativeSession, dispatchText, rememberRuntime)
+              ? await openCodeAdapter.continueSession(
+                request.intentId,
+                cwd,
+                openCodeAdapter.sessionIdentity(linkedNativeSession, cwd, `dialogue-registry:${request.conversationKey}:sessionId`),
+                dispatchText,
+                rememberRuntime,
+              )
               : await openCodeAdapter.dispatch(request.intentId, cwd, dispatchText, rememberRuntime);
             if (receipt.runtimeRef) {
               liveExecutions.remove('opencode', receipt.runtimeRef, request.intentId);

@@ -51,11 +51,15 @@ describe('OpenCode adapter native contract', () => {
 
   it('continues only the explicitly supplied native session id', async () => {
     const adapter = make();
+    const identity = adapter.sessionIdentity(
+      'ses_exact_native', process.cwd(), 'opencode:test:explicit-native-session',
+    );
     const receipt = await adapter.continueSession(
-      '22222222-2222-4222-8222-222222222222', process.cwd(), 'ses_exact_native', 'continue',
+      '22222222-2222-4222-8222-222222222222', process.cwd(), identity, 'continue',
     );
     expect(receipt.runtimeRef).toBe('ses_exact_native');
     expect(receipt.status).toBe('ACCEPTED');
+    expect(identity.resume.capability).toBe('SUPPORTED');
   });
 
   it('does not guess a session identity or success when structured terminal evidence is missing', async () => {

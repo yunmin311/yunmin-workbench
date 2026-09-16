@@ -72,8 +72,10 @@ test('real Prepare and Send reaches OpenCode native runtime and returns protocol
     }),
   });
   try {
-    const main = (await app.windows()).find((page) => page.url().includes('renderer-vnext')) ?? await app.firstWindow();
+    await expect.poll(async () => (await app.windows()).some((page) => page.url().includes('renderer-vnext')), { timeout: 20_000 }).toBe(true);
+    const main = (await app.windows()).find((page) => page.url().includes('renderer-vnext'))!;
     await expect(main.locator('.vnext-app')).toBeVisible({ timeout: 20_000 });
+    await expect.poll(async () => (await app.windows()).some((page) => page.url().includes('renderer-compact')), { timeout: 20_000 }).toBe(true);
     const compact = (await app.windows()).find((page) => page.url().includes('renderer-compact'))!;
     await expect(compact.locator('.approved-compact-window')).toBeVisible({ timeout: 20_000 });
 
@@ -135,6 +137,7 @@ test('real Prepare and Send reaches OpenCode native runtime and returns protocol
     console.log(`[real-opencode-execution] ${JSON.stringify({ nativeRef: liveNativeRef, receiptSource: proof.receiptSource, lineage: proof.lineage, output: proof.output })}`);
 
     await surface.getByRole('button', { name: 'Close Dispatch' }).click();
+    await main.getByRole('button', { name: 'Close Focus Detail' }).click();
     await expect(main.locator('.approved-presence-group .approved-session-row').filter({ hasText: 'opencode' }).first()).toBeVisible({ timeout: 10_000 });
 
     const exported = JSON.parse(execFileSync(process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', 'opencode.cmd', 'export', liveNativeRef], { cwd: projectRoot, encoding: 'utf8' })) as {
@@ -149,7 +152,7 @@ test('real Prepare and Send reaches OpenCode native runtime and returns protocol
   } finally {
     await app.close();
     rmSync(overlayRoot, { recursive: true, force: true });
-    rmSync(projectRoot, { recursive: true, force: true });
+    if (!CONTINUE_DIRECTORY) rmSync(projectRoot, { recursive: true, force: true });
     rmSync(stateDir, { recursive: true, force: true });
   }
 });

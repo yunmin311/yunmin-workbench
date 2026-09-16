@@ -1,5 +1,6 @@
 import { createInterface } from 'node:readline';
 import { resolve } from 'node:path';
+import { createOpenCodeSessionIdentity, type HarnessSessionIdentity } from '../../core/harnessSessionIdentity';
 import type { HandoffReceipt, HarnessCapabilities } from '../../core/types';
 import { runProcess, spawnOwnedProcess, type OwnedProcess } from '../process/processRunner';
 import { allowlistedVersionToken, boundedProcessError } from './evidenceBounds';
@@ -122,6 +123,17 @@ export class OpenCodeAdapter {
     for (const listener of this.listeners) listener(event);
   }
 
+  sessionIdentity(nativeSessionId: string, cwd: string, sourceRef: string): HarnessSessionIdentity {
+    return createOpenCodeSessionIdentity({
+      nativeSessionId,
+      cwd,
+      program: this.command,
+      prefixArgs: this.commandArgs,
+      sourceRef,
+      executionHost: { kind: 'local' },
+    });
+  }
+
   private async capture(args: string[], timeoutMs = 5_000, cwd?: string): Promise<{ code: number | null; stdout: string; stderr: string; marker?: string }> {
     const result = await runProcess({
       program: this.command,
@@ -213,29 +225,29 @@ export class OpenCodeAdapter {
     return true;
   }
 
-  async continueSession(intentId: string, cwd: string, nativeSessionRef: string, text: string, onThreadStarted?: (threadId: string) => void): Promise<HandoffReceipt> {
-    if (!isNativeSessionRef(nativeSessionRef)) {
+  async continueSession(intentId: string, cwd: string, identity: HarnessSessionIdentity, text: string, onThreadStarted?: (threadId: string) => void): Promise<HandoffReceipt> {
+    if (identity.harness !== 'opencode' || identity.provider !== 'opencode'
+      || !isNativeSessionRef(identity.nativeSessionId) || identity.resume.capability !== 'SUPPORTED') {
       return {
         intentId, harness: 'opencode', status: 'FAILED', at: new Date().toISOString(), source: 'workbench',
         protocolEvidence: 'OpenCode native session id validation', message: 'Invalid OpenCode native session id',
       };
     }
-    return this.run(intentId, cwd, text, onThreadStarted, nativeSessionRef);
+    return this.run(intentId, cwd, text, onThreadStarted, identity);
   }
 
   async dispatch(intentId: string, cwd: string, text: string, onThreadStarted?: (threadId: string) => void): Promise<HandoffReceipt> {
     return this.run(intentId, cwd, text, onThreadStarted);
   }
 
-  private async run(intentId: string, cwd: string, text: string, onThreadStarted?: (threadId: string) => void, nativeSessionRef?: string): Promise<HandoffReceipt> {
+  private async run(intentId: string, cwd: string, text: string, onThreadStarted?: (threadId: string) => void, resumeIdentity?: HarnessSessionIdentity): Promise<HandoffReceipt> {
     let owned: OwnedProcess | null = null;
     try {
-      const args = [
-        ...this.commandArgs, 'run', '--format', 'json', '--dir', cwd,
-        ...(nativeSessionRef ? ['--session', nativeSessionRef] : []),
-      ];
+      const resumeSeam = resumeIdentity?.resume.capability === 'SUPPORTED' ? resumeIdentity.resume.seam : undefined;
+      const nativeSessionRef = resumeIdentity?.nativeSessionId;
+      const args = resumeSeam?.args ?? [...this.commandArgs, 'run', '--format', 'json', '--dir', cwd];
       owned = spawnOwnedProcess({
-        program: this.command,
+        program: resumeSeam?.program ?? this.command,
         args,
         cwd,
         env: { ...process.env },
@@ -278,7 +290,8 @@ export class OpenCodeAdapter {
               return;
             }
             if (!sessionId) {
-              sessionId = eventSession;
+              const identity = this.sessionIdentity(eventSession, cwd, 'opencode:run:event.sessionID');
+              sessionId = identity.nativeSessionId;
               onThreadStarted?.(sessionId);
               emit({ kind: 'session', method: 'session/started', params: { sessionId }, verification: 'VERIFIED', sourceRef: 'opencode:run:event.sessionID' });
             }

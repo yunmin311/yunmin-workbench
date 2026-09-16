@@ -1,4 +1,5 @@
 import { createInterface } from 'node:readline';
+import { createHarnessSessionIdentity, type HarnessSessionIdentity } from '../../core/harnessSessionIdentity';
 import type { HandoffReceipt, HarnessCapabilities } from '../../core/types';
 import { spawnOwnedProcess, type OwnedProcess } from '../process/processRunner';
 import { allowlistedUserAgent, boundedProcessError } from './evidenceBounds';
@@ -160,6 +161,17 @@ export class CodexAppServerAdapter {
     for (const listener of this.listeners) listener(event);
   }
 
+  sessionIdentity(nativeSessionId: string, sourceRef: string): HarnessSessionIdentity {
+    return createHarnessSessionIdentity({
+      harness: 'codex',
+      provider: 'codex',
+      nativeSessionId,
+      executionHost: { kind: 'local' },
+      resume: { capability: 'UNSUPPORTED', reason: 'No verified exact Codex app-server resume seam' },
+      provenance: { verification: 'VERIFIED', sourceRef },
+    });
+  }
+
   private notify(method: string): void {
     this.ensureProcess().stdin.write(`${JSON.stringify({ method })}\n`);
   }
@@ -242,7 +254,8 @@ export class CodexAppServerAdapter {
     }) as { thread?: { id?: string } };
     const threadId = response.thread?.id;
     if (!threadId) throw new Error('thread/start response omitted thread.id');
-    return { threadId };
+    const identity = this.sessionIdentity(threadId, 'codex:thread/start:result.thread.id');
+    return { threadId: identity.nativeSessionId };
   }
 
   /** Never throws: callers always receive a structured FAILED receipt. */

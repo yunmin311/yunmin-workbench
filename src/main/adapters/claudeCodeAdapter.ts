@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
+import { createHarnessSessionIdentity, type HarnessSessionIdentity } from '../../core/harnessSessionIdentity';
 import type { HandoffReceipt, HarnessCapabilities } from '../../core/types';
 import { runProcess, spawnOwnedProcess, type OwnedProcess } from '../process/processRunner';
 import { allowlistedVersionToken, boundedProcessError } from './evidenceBounds';
@@ -72,6 +73,17 @@ export class ClaudeCodeAdapter {
 
   private emit(event: ClaudeProtocolEvent): void {
     for (const l of this.listeners) l(event);
+  }
+
+  sessionIdentity(nativeSessionId: string, sourceRef: string): HarnessSessionIdentity {
+    return createHarnessSessionIdentity({
+      harness: 'claude',
+      provider: 'claude',
+      nativeSessionId,
+      executionHost: { kind: 'local' },
+      resume: { capability: 'UNSUPPORTED', reason: 'No verified exact Claude Code resume seam' },
+      provenance: { verification: 'VERIFIED', sourceRef },
+    });
   }
 
   cancel(intentId: string): boolean {
@@ -197,7 +209,8 @@ export class ClaudeCodeAdapter {
             return;
           }
           if (!sessionId && type === 'system' && subtype === 'init' && typeof msg.session_id === 'string') {
-            sessionId = msg.session_id as string;
+            const identity = this.sessionIdentity(msg.session_id, 'claude:stream-json:system:init:session_id');
+            sessionId = identity.nativeSessionId;
             onThreadStarted?.(sessionId);
             emit({
               kind: 'session', method: 'session/started',
