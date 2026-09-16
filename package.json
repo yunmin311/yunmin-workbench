@@ -16,7 +16,11 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "e2e": "pnpm build && playwright test",
-    "e2e:hermetic": "playwright test e2e/dual-project-hermetic.spec.ts e2e/cabinet-staging-sparse.spec.ts e2e/draft-close-flush.spec.ts e2e/reliability.spec.ts e2e/demo-workspace.spec.ts"
+    "e2e:hermetic": "playwright test e2e/dual-project-hermetic.spec.ts e2e/cabinet-staging-sparse.spec.ts e2e/draft-close-flush.spec.ts e2e/reliability.spec.ts e2e/demo-workspace.spec.ts",
+    "package:win": "pnpm build && electron-builder --win nsis --x64 --publish never",
+    "package:win:dir": "pnpm build && electron-builder --win dir --x64 --publish never",
+    "e2e:packaged": "playwright test e2e/packaged-windows-smoke.spec.ts",
+    "docs:check": "node scripts/check-readme.mjs"
   },
   "dependencies": {
     "@getpaseo/client": "0.7.2",
@@ -42,9 +46,43 @@
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^34.0.0",
+    "electron-builder": "26.15.3",
     "electron-vite": "^2.3.0",
     "typescript": "^5.7.3",
     "vite": "^5.4.11",
     "vitest": "^2.1.8"
+  },
+  "build": {
+    "appId": "com.yunmin.workbench",
+    "productName": "Yunmin Workbench",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "package.json",
+      "!**/*.map"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "forceCodeSigning": false,
+      "artifactName": "Yunmin-Workbench-${version}-${arch}-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": false,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false
+    }
   }
 }

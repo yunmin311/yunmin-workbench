@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -16,6 +16,7 @@ import {
   readPortableState,
 } from '../../src/main/portabilityPersistence';
 import {
+  projectRootBindingsPath,
   readProjectRootBindings,
   rebindProjectRoot,
 } from '../../src/main/projectRootBindings';
@@ -128,6 +129,19 @@ describe('Workbench Profile Bundle', () => {
 });
 
 describe('Portability persistence and explicit rebind', () => {
+  it('quarantines corrupt v1 project bindings so the user can explicitly rebind, but rejects future schemas', async () => {
+    const stateRoot = mkdtempSync(join(tmpdir(), 'wb-rebind-corrupt-'));
+    const file = projectRootBindingsPath(stateRoot);
+    mkdirSync(join(file, '..'), { recursive: true });
+    writeFileSync(file, '{not json', 'utf8');
+    expect(await readProjectRootBindings(stateRoot)).toEqual({ schemaVersion: 1, bindings: {}, unresolved: {} });
+    expect(readdirSync(join(file, '..')).some((name) => name.startsWith('project-root-bindings-v1.json.rejected-'))).toBe(true);
+
+    writeFileSync(file, JSON.stringify({ schemaVersion: 99, bindings: {}, unresolved: {} }), 'utf8');
+    await expect(readProjectRootBindings(stateRoot)).rejects.toThrow(/unsupported project root bindings schema/i);
+    expect(readFileSync(file, 'utf8')).toContain('"schemaVersion":99');
+  });
+
   it('dry-run writes nothing and committed import round-trips atomically', async () => {
     const source = mkdtempSync(join(tmpdir(), 'wb-portable-source-'));
     const target = mkdtempSync(join(tmpdir(), 'wb-portable-target-'));

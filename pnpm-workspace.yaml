@@ -11,6 +11,7 @@
 # package silently unbuilt on a clean machine.
 allowBuilds:
   electron: true
+  electron-winstaller: false
   esbuild: true
 verifyDepsBeforeRun: false
 

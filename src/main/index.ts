@@ -97,6 +97,11 @@ import { applyAttentionLocalState, reduceAttention } from '../core/attention/red
 // test hook: Playwright E2E redirects Workbench-owned state to a temp dir
 if (process.env.WB_STATE_DIR) app.setPath('userData', process.env.WB_STATE_DIR);
 
+// Stable Windows shell identity for packaged builds. Development and package
+// intentionally retain the package's existing userData identity; tests and
+// isolated runs redirect it explicitly through WB_STATE_DIR above.
+if (process.platform === 'win32') app.setAppUserModelId('com.yunmin.workbench');
+
 const codexAdapter = new CodexAppServerAdapter({
   ephemeralDispatch: process.env.WB_CODEX_EPHEMERAL_DISPATCH === '1',
 });
