@@ -64,10 +64,12 @@ describe('approved blue donor-transplant production contract', () => {
   });
 
   it('preserves spatial legibility while focus raises the selected object', async () => {
-    const source = await read('src/renderer-vnext/src/components/canvas/WorkGraphCanvas.tsx');
-    const css = await read('src/renderer-vnext/src/styles/approved-blue.css');
-    expect(source).toContain("opacity: focusId === null || touched ? 1 : 0.55");
-    expect(css).toContain(".approved-shell.is-focus-mode .react-flow__node:not(.is-neighbor):not(:focus){opacity:.76}");
+    const source = await read('src/renderer-vnext/src/components/canvas/SpatialWorld.tsx');
+    const css = await read('src/renderer-vnext/src/components/canvas/spatialWorld.css');
+    expect(source).toContain("selectedId === object.id ? ' is-selected' : ''");
+    expect(css).toContain('.spatial-object.is-selected,');
+    expect(css).toContain('box-shadow: 0 0 0 3px rgba(79, 106, 181, .15)');
+    expect(css).not.toContain('.spatial-object:not(.is-selected) { opacity:');
   });
 
   it('makes persistent session presence primary and runtime counts secondary', async () => {

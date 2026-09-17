@@ -247,19 +247,19 @@ test('hermetic dual projects: discovery, switch, selection, compact handoff, sta
     // Progressive disclosure: the resting Work composition keeps three Task
     // objects, exposes the exact hidden count, and drills into every Task
     // without changing semantic facts.
-    const alphaRegion = win.locator('.react-flow__node-wb-region');
-    const alphaTasks = win.locator('.react-flow__node-wb-task');
+    const alphaRegion = win.locator('.spatial-group');
+    const alphaTasks = win.locator('.spatial-object[data-family="task"]');
     await expect(alphaTasks).toHaveCount(3);
     const showAll = win.locator('button[aria-label="Show 2 more tasks in Alpha work"]');
     await expect(showAll).toBeVisible();
     await showAll.click();
     await expect(alphaTasks).toHaveCount(5);
-    await expect(alphaRegion).toHaveClass(/is-region-expanded/);
-    await win.locator('.react-flow__node[data-id="task:alpha-hermetic:a-T4"]').click();
+    await expect(alphaRegion).toHaveClass(/is-expanded/);
+    await win.locator('.spatial-object[data-object-id="task:alpha-hermetic:a-T4"]').click();
     await expect(win.getByRole('complementary', { name: 'Focus Detail' })).toContainText('Alpha task four');
     await win.locator('.approved-drill-exit button[aria-label="Show fewer tasks in Alpha work"]').click();
     await expect(alphaTasks).toHaveCount(3);
-    await expect(win.locator('.react-flow__node[data-id="task:alpha-hermetic:a-T4"]')).toBeVisible();
+    await expect(win.locator('.spatial-object[data-object-id="task:alpha-hermetic:a-T4"]')).toBeVisible();
     await win.getByRole('button', { name: 'Locate current work' }).click();
 
     // Drill-in state belongs to this project only.
@@ -272,7 +272,7 @@ test('hermetic dual projects: discovery, switch, selection, compact handoff, sta
 
     // Cross-project selection never mints a chimera.
     await select.selectOption('beta-hermetic');
-    const betaTask = win.locator('.react-flow__node[data-id="task:beta-hermetic:b-T1"]');
+    const betaTask = win.locator('.spatial-object[data-object-id="task:beta-hermetic:b-T1"]');
     await expect(betaTask).toBeVisible();
     await win.waitForTimeout(400);
     await betaTask.click();
@@ -330,7 +330,7 @@ test('hermetic dual projects: discovery, switch, selection, compact handoff, sta
     expect(alphaStaging).toBeNull();
     await cabinet.getByRole('button', { name: 'Close Context Cabinet' }).click();
     await select.selectOption('alpha-hermetic');
-    await win.locator('.react-flow__node[data-id="task:alpha-hermetic:a-T1"]').click();
+    await win.locator('.spatial-object[data-object-id="task:alpha-hermetic:a-T1"]').click();
     await win.getByRole('complementary', { name: 'Focus Detail' }).getByRole('button', { name: 'Prepare Work', exact: true }).click();
     const alphaCabinet = win.getByRole('region', { name: 'Context Cabinet' });
     await expect(alphaCabinet).toBeVisible();

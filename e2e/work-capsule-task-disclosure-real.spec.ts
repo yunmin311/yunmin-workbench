@@ -44,37 +44,43 @@ test('REAL work-capsule keeps all 20 Tasks reachable through spatial drill-in', 
       };
     });
     expect(facts.tasks).toBe(20);
-    const tasks = win.locator('.react-flow__node-wb-task');
-    await expect(tasks).toHaveCount(6);
-    await expect(win.locator('.react-flow__node[data-id="task:work-capsule:v1-T09"]')).toBeVisible();
+    const viewport = win.locator('.spatial-viewport');
+    const tasks = win.locator('.spatial-object[data-family="task"]');
+    await expect(viewport).toHaveAttribute('data-total-objects', '9');
+    expect(await tasks.count()).toBeLessThanOrEqual(6);
+    await expect(win.locator('.spatial-object[data-object-id="task:work-capsule:v1-T09"]')).toBeVisible();
     const showCore = win.locator('button[aria-label="Show 8 more tasks in Work Capsule v1 核心"]');
     await expect(showCore).toBeVisible();
     await expect(win.locator('button[aria-label="Show 6 more tasks in 仓库接入与自更新"]')).toBeVisible();
     await win.screenshot({ path: join(shots, '01-collapsed-current-task-real-900x700.png') });
 
     await showCore.click();
-    await expect(tasks).toHaveCount(11);
-    const expanded = win.locator('.react-flow__node-wb-region.is-region-expanded');
+    await expect(viewport).toHaveAttribute('data-total-objects', '17');
+    const expanded = win.locator('.spatial-group.is-expanded');
     await expect(expanded).toHaveCount(1);
-    await expect.poll(() => win.locator('.react-flow__viewport').evaluate((element) => new DOMMatrixReadOnly(getComputedStyle(element).transform).a))
-      .toBeGreaterThanOrEqual(0.62);
+    await expect.poll(() => viewport.getAttribute('data-zoom').then(Number)).toBeGreaterThanOrEqual(0.6);
     const objectSize = await tasks.first().boundingBox();
     const objectWorldSize = await tasks.first().evaluate((element) => ({
       width: parseFloat(getComputedStyle(element).width),
       height: parseFloat(getComputedStyle(element).height),
     }));
-    expect(objectWorldSize).toMatchObject({ width: 190, height: 156 });
-    expect(objectSize?.width).toBeGreaterThanOrEqual(115);
-    expect(objectSize?.height).toBeGreaterThanOrEqual(94);
-    const initialZoom = await win.locator('.react-flow__viewport').evaluate((element) => new DOMMatrixReadOnly(getComputedStyle(element).transform).a);
-    expect(initialZoom).toBeGreaterThanOrEqual(0.62);
+    expect(objectWorldSize).toMatchObject({ width: 200, height: 132 });
+    expect(objectSize?.width).toBeGreaterThanOrEqual(120);
+    expect(objectSize?.height).toBeGreaterThanOrEqual(79);
+    const initialZoom = Number(await viewport.getAttribute('data-zoom'));
+    expect(initialZoom).toBeGreaterThanOrEqual(0.6);
 
     const plane = (await win.locator('.approved-bounded-plane').boundingBox())!;
-    const lastTask = win.locator('.react-flow__node[data-id="task:work-capsule:v1-T11"]');
+    const lastTask = win.locator('.spatial-object[data-object-id="task:work-capsule:v1-T11"]');
     await win.mouse.move(plane.x + plane.width * 0.72, plane.y + plane.height * 0.55);
-    await win.mouse.wheel(0, 620);
-    await win.waitForTimeout(400);
-    await lastTask.click();
+    for (let step = 0; step < 5 && !(await lastTask.isVisible().catch(() => false)); step += 1) {
+      await viewport.dispatchEvent('wheel', { deltaX: 0, deltaY: 320, ctrlKey: false });
+      await win.waitForTimeout(100);
+    }
+    await expect(lastTask).toBeVisible();
+    const lastTaskBounds = await lastTask.boundingBox();
+    if (!lastTaskBounds) throw new Error('expanded task is not inside the bounded spatial viewport');
+    await win.mouse.click(lastTaskBounds.x + lastTaskBounds.width / 2, lastTaskBounds.y + lastTaskBounds.height / 2);
     await expect(win.getByRole('complementary', { name: 'Focus Detail' })).toContainText('Prove the complete core flow');
     await win.getByRole('complementary', { name: 'Focus Detail' }).getByRole('button', { name: 'Prepare Work', exact: true }).click();
     const cabinet = win.getByRole('region', { name: 'Context Cabinet' });
@@ -87,9 +93,9 @@ test('REAL work-capsule keeps all 20 Tasks reachable through spatial drill-in', 
     const drillExit = win.locator('.approved-drill-exit button[aria-label="Show fewer tasks in Work Capsule v1 核心"]');
     await expect(drillExit).toBeVisible();
     await drillExit.click();
-    await expect(tasks).toHaveCount(6);
-    await expect(win.locator('.react-flow__node[data-id="task:work-capsule:v1-T11"]')).toBeVisible();
+    await expect(viewport).toHaveAttribute('data-total-objects', '9');
     await win.getByRole('button', { name: 'Locate current work' }).click();
+    await expect(win.locator('.spatial-object[data-object-id="task:work-capsule:v1-T11"]')).toBeVisible();
     await expect(win.getByRole('complementary', { name: 'Focus Detail' })).toContainText('Prove the complete core flow');
     const after = await win.evaluate(async () => (await window.wb.getWorkGraphRevision('work-capsule')).revision?.semanticHash ?? null);
     expect(after).toBe(facts.semanticHash);

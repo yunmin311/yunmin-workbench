@@ -262,7 +262,17 @@ their existing status; this notice does not broaden their approved use.
   - Selected results become explicit follow-up Context.
   - Native Session and Map select the same execution identity; coordinates
     never determine conversation truth.
-- No dsh-synapse runtime, storage, or protocol implementation is incorporated.
+- Renderer mechanics adapted from pinned `app.js`:
+  - pointer-centered zoom and bounded camera transforms;
+  - world-coordinate viewport culling and incremental object mounting;
+  - independent object/relation layers with data-model relation endpoints;
+  - request-animation-frame object dragging and incident-edge-only refresh;
+  - collision-free object placement plus data-based focus/locate behavior.
+- Workbench adapters and tests live under `src/renderer-vnext/src/spatial/`,
+  `src/renderer-vnext/src/components/canvas/SpatialWorld.tsx`, and
+  `tests/renderer-vnext/spatialWorld.test.ts`.
+- No dsh-synapse runtime, storage, protocol, terminal, or semantic authoring
+  implementation is incorporated.
 
 MIT License
 
